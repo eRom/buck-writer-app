@@ -1,5 +1,7 @@
 import { serve } from '@hono/node-server';
 import { Resend } from 'resend';
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { buildApp } from './app.js';
 import { loadEnv } from './env.js';
 import { openDb } from './db/client.js';
@@ -8,8 +10,18 @@ import {
   createEmailService,
   createE2EEmailService,
 } from './services/email.js';
+import { loadPrompts } from './services/prompts.js';
 
 const env = loadEnv();
+
+const promptsDir = path.resolve(
+  path.dirname(fileURLToPath(import.meta.url)),
+  '..', '..', '..', 'prompts',
+);
+const prompts = (() => {
+  try { return loadPrompts(promptsDir); }
+  catch { console.warn('[api] prompts/ not found, chat disabled'); return undefined; }
+})();
 const handles = openDb(env.DATABASE_URL);
 const jwt = createJwtService({
   secret: env.AUTH_JWT_SECRET,
@@ -37,6 +49,8 @@ const app = buildApp({
   allowedEmails: env.AUTH_ALLOWED_EMAILS,
   publicBaseUrl: env.PUBLIC_BASE_URL,
   webDistRoot: process.env.WEB_DIST_ROOT,
+  prompts,
+  openaiApiKey: env.OPENAI_API_KEY,
 });
 
 serve({ fetch: app.fetch, port: env.PORT, hostname: '0.0.0.0' }, (info) => {

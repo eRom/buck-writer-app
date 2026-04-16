@@ -9,6 +9,11 @@ import {
   createSessionRoutes,
   type SessionRoutesDeps,
 } from './routes/sessions.js';
+import {
+  createChatRoute,
+  type ChatRouteDeps,
+} from './routes/chat.js';
+import type { Prompts } from './services/prompts.js';
 import { authGuard } from './middleware/auth.js';
 import { securityHeaders } from './middleware/security-headers.js';
 import { csrfMiddleware } from './middleware/csrf.js';
@@ -16,6 +21,8 @@ import { createRateLimiter, ipKey } from './middleware/rate-limit.js';
 import { users } from './db/schema.js';
 
 export interface AppDeps extends AuthRoutesDeps, SessionRoutesDeps {
+  prompts?: Prompts;
+  openaiApiKey?: string;
   /**
    * Absolute path to the built SPA (Vite dist/). If provided, Hono serves
    * it as static and falls back to index.html for non-/api paths. Leave
@@ -23,6 +30,9 @@ export interface AppDeps extends AuthRoutesDeps, SessionRoutesDeps {
    */
   webDistRoot?: string;
 }
+
+// Re-export ChatRouteDeps for consumers
+export type { ChatRouteDeps };
 
 export function buildApp(deps: AppDeps) {
   const app = new Hono<{ Variables: { userId: string } }>();
@@ -72,6 +82,17 @@ export function buildApp(deps: AppDeps) {
     '/api/sessions',
     createSessionRoutes({ db: deps.db, nowMs: deps.nowMs }),
   );
+
+  // Chat streaming route (protected, only if prompts + openaiApiKey provided)
+  if (deps.prompts && deps.openaiApiKey) {
+    app.use('/api/chat', authGuard({ db: deps.db, jwt: deps.jwt, nowMs: deps.nowMs }));
+    app.route('/api/chat', createChatRoute({
+      db: deps.db,
+      prompts: deps.prompts,
+      openaiApiKey: deps.openaiApiKey,
+      nowMs: deps.nowMs,
+    }));
+  }
 
   // E2E-only test helper: exposes the latest magic-link raw token written by
   // createE2EEmailService. Gated behind E2E=1 to prevent leakage.
