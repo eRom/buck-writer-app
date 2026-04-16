@@ -1,0 +1,23 @@
+import { createFileRoute } from '@tanstack/react-router';
+import { Button } from '@/components/ui/button';
+
+export const Route = createFileRoute('/')({
+  component: IndexPage,
+});
+
+function IndexPage() {
+  return (
+    <div className="flex min-h-svh p-6">
+      <div className="flex max-w-md min-w-0 flex-col gap-4 text-sm leading-loose">
+        <div>
+          <h1 className="font-medium">buck writer — M0 shell</h1>
+          <p>Tailwind v4.2 + preset b1Gdz9c4A ready.</p>
+          <Button className="mt-2">Button</Button>
+        </div>
+        <div className="font-mono text-xs text-muted-foreground">
+          (Press <kbd>d</kbd> to toggle dark mode)
+        </div>
+      </div>
+    </div>
+  );
+}

@@ -1,0 +1,50 @@
+{
+  "name": "@buck/web",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview",
+    "test": "vitest run",
+    "test:e2e": "playwright test",
+    "typecheck": "tsc --noEmit -p tsconfig.app.json",
+    "lint": "eslint src"
+  },
+  "dependencies": {
+    "@buck/shared": "workspace:*",
+    "@fontsource-variable/figtree": "^5.2.10",
+    "@tanstack/react-query": "^5.59.16",
+    "@tanstack/react-router": "^1.95.0",
+    "class-variance-authority": "^0.7.1",
+    "clsx": "^2.1.1",
+    "lucide-react": "^0.468.0",
+    "radix-ui": "^1.4.3",
+    "react": "^19.2.0",
+    "react-dom": "^19.2.0",
+    "shadcn": "^4.3.0",
+    "tailwind-merge": "^3.5.0",
+    "tw-animate-css": "^1.4.0",
+    "zod": "^3.23.8",
+    "zustand": "^5.0.0"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.48.2",
+    "@tailwindcss/vite": "^4.2.1",
+    "@tanstack/router-devtools": "^1.95.0",
+    "@tanstack/router-plugin": "^1.95.0",
+    "@testing-library/jest-dom": "^6.6.3",
+    "@testing-library/react": "^16.1.0",
+    "@testing-library/user-event": "^14.5.2",
+    "@types/node": "^22.10.0",
+    "@types/react": "^19.0.0",
+    "@types/react-dom": "^19.0.0",
+    "@vitejs/plugin-react": "^4.3.4",
+    "happy-dom": "^15.11.7",
+    "tailwindcss": "^4.2.1",
+    "typescript": "^5.6.3",
+    "vite": "^6.0.3",
+    "vitest": "^3.0.0"
+  }
+}
