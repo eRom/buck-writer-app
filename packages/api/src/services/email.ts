@@ -50,3 +50,23 @@ export function createEmailService(opts: EmailServiceOptions) {
 }
 
 export type EmailService = ReturnType<typeof createEmailService>;
+
+/**
+ * E2E-only stub: writes the raw magic-link token to a JSON file instead of
+ * hitting Resend. Used when E2E=1 so Playwright can read the token back.
+ * Never use in production.
+ */
+export function createE2EEmailService(tokenFilePath: string): EmailService {
+  return {
+    async sendMagicLink(params: MagicLinkParams): Promise<void> {
+      const fs = await import('node:fs/promises');
+      const url = new URL(params.magicUrl);
+      const rawToken = url.searchParams.get('token') ?? '';
+      await fs.writeFile(
+        tokenFilePath,
+        JSON.stringify({ email: params.to, rawToken }, null, 2),
+        'utf8',
+      );
+    },
+  };
+}

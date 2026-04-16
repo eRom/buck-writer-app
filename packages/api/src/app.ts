@@ -48,6 +48,43 @@ export function buildApp(deps: AppDeps) {
     },
   );
 
+  // E2E-only test helper: exposes the latest magic-link raw token written by
+  // createE2EEmailService. Gated behind E2E=1 to prevent leakage.
+  if (process.env.E2E === '1' && process.env.NODE_ENV !== 'production') {
+    app.get('/api/__e2e__/last-token', async (c) => {
+      const email = c.req.query('email');
+      if (!email) {
+        return c.json(
+          { error: { code: 'missing', message: 'email required' } },
+          400,
+        );
+      }
+      try {
+        const fs = await import('node:fs/promises');
+        const path = await import('node:path');
+        const file = path.resolve(
+          process.env.E2E_LAST_TOKEN_FILE ?? './data/e2e-last-token.json',
+        );
+        const raw = JSON.parse(await fs.readFile(file, 'utf8')) as {
+          email: string;
+          rawToken: string;
+        };
+        if (raw.email !== email) {
+          return c.json(
+            { error: { code: 'not_found', message: 'no token' } },
+            404,
+          );
+        }
+        return c.json({ rawToken: raw.rawToken });
+      } catch {
+        return c.json(
+          { error: { code: 'not_found', message: 'no token file' } },
+          404,
+        );
+      }
+    });
+  }
+
   // Static SPA + fallback (production only — activated when webDistRoot is set)
   if (deps.webDistRoot) {
     const root = deps.webDistRoot;

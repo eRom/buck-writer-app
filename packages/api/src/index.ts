@@ -4,22 +4,29 @@ import { buildApp } from './app.js';
 import { loadEnv } from './env.js';
 import { openDb } from './db/client.js';
 import { createJwtService } from './services/jwt.js';
-import { createEmailService } from './services/email.js';
+import {
+  createEmailService,
+  createE2EEmailService,
+} from './services/email.js';
 
 const env = loadEnv();
 const handles = openDb(env.DATABASE_URL);
-const resend = new Resend(env.RESEND_API_KEY);
 const jwt = createJwtService({
   secret: env.AUTH_JWT_SECRET,
   issuer: 'buck',
   audience: 'buck-web',
 });
-const email = createEmailService({
-  resendClient: resend as unknown as Parameters<
-    typeof createEmailService
-  >[0]['resendClient'],
-  fromAddress: env.RESEND_FROM,
-});
+const email =
+  process.env.E2E === '1'
+    ? createE2EEmailService(
+        process.env.E2E_LAST_TOKEN_FILE ?? './data/e2e-last-token.json',
+      )
+    : createEmailService({
+        resendClient: new Resend(env.RESEND_API_KEY) as unknown as Parameters<
+          typeof createEmailService
+        >[0]['resendClient'],
+        fromAddress: env.RESEND_FROM,
+      });
 
 const app = buildApp({
   db: handles,
