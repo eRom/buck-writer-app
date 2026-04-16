@@ -91,6 +91,7 @@ export const messages = sqliteTable(
       .references(() => chatSessions.id, { onDelete: 'cascade' }),
     role: text('role').notNull(),
     contentJson: text('content_json').notNull(),
+    model: text('model'),
     createdAt: integer('created_at').notNull(),
   },
   (t) => ({
