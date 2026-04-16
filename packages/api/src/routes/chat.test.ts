@@ -14,10 +14,10 @@ import { sha256Hex } from '../utils/crypto.js';
 import { users, sessionsAuth } from '../db/schema.js';
 
 vi.mock('ai', () => ({
-  streamText: vi.fn().mockImplementation(({ onFinish }: { onFinish?: (result: { text: string; usage: { promptTokens: number; completionTokens: number }; response: { modelId: string } }) => void }) => {
+  streamText: vi.fn().mockImplementation(({ onFinish }: { onFinish?: (result: { text: string; usage: { inputTokens: number; outputTokens: number }; response: { modelId: string } }) => void }) => {
     const result = {
       text: 'Hello! I am Buck.',
-      usage: { promptTokens: 10, completionTokens: 5 },
+      usage: { inputTokens: 10, outputTokens: 5 },
       response: { modelId: 'gpt-5.4-mini' },
     };
     if (onFinish) setTimeout(() => onFinish(result), 10);

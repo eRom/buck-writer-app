@@ -85,7 +85,11 @@ export function buildApp(deps: AppDeps) {
 
   // Chat streaming route (protected, only if prompts + openaiApiKey provided)
   if (deps.prompts && deps.openaiApiKey) {
-    app.use('/api/chat', authGuard({ db: deps.db, jwt: deps.jwt, nowMs: deps.nowMs }));
+    app.use(
+      '/api/chat',
+      authGuard({ db: deps.db, jwt: deps.jwt, nowMs: deps.nowMs }),
+      createRateLimiter({ windowMs: 60_000, max: 30, keyBy: ipKey }),
+    );
     app.route('/api/chat', createChatRoute({
       db: deps.db,
       prompts: deps.prompts,
