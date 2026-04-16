@@ -21,12 +21,14 @@ const email =
     ? createE2EEmailService(
         process.env.E2E_LAST_TOKEN_FILE ?? './data/e2e-last-token.json',
       )
-    : createEmailService({
-        resendClient: new Resend(env.RESEND_API_KEY) as unknown as Parameters<
-          typeof createEmailService
-        >[0]['resendClient'],
-        fromAddress: env.RESEND_FROM,
-      });
+    : env.RESEND_API_KEY && env.RESEND_FROM
+      ? createEmailService({
+          resendClient: new Resend(env.RESEND_API_KEY) as unknown as Parameters<
+            typeof createEmailService
+          >[0]['resendClient'],
+          fromAddress: env.RESEND_FROM,
+        })
+      : createE2EEmailService('./data/e2e-last-token.json');
 
 const app = buildApp({
   db: handles,

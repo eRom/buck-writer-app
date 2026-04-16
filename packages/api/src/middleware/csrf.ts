@@ -22,6 +22,7 @@ function parseCookies(
 }
 
 export function csrfMiddleware(): MiddlewareHandler {
+  const secure = process.env.NODE_ENV === 'production' ? '; Secure' : '';
   return async (c, next) => {
     const cookies = parseCookies(c.req.header('cookie'));
     const method = c.req.method.toUpperCase();
@@ -31,7 +32,7 @@ export function csrfMiddleware(): MiddlewareHandler {
         const fresh = randomToken();
         c.header(
           'Set-Cookie',
-          `${CSRF_COOKIE}=${fresh}; Path=/; SameSite=Lax; Secure; Max-Age=2592000`,
+          `${CSRF_COOKIE}=${fresh}; Path=/; SameSite=Lax${secure}; Max-Age=2592000`,
         );
       }
       return next();

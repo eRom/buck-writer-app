@@ -31,6 +31,13 @@ describe('env', () => {
     expect(() => loadEnv({ ...base, PUBLIC_BASE_URL: 'not a url' })).toThrow();
   });
 
+  it('loads without optional keys (RESEND, OPENAI, MCP_BIBLE)', () => {
+    const { RESEND_API_KEY, RESEND_FROM, OPENAI_API_KEY, MCP_BIBLE_URL, ...minimal } = base;
+    const env = loadEnv(minimal);
+    expect(env.RESEND_API_KEY).toBeUndefined();
+    expect(env.MCP_BIBLE_URL).toBeUndefined();
+  });
+
   it('normalises AUTH_ALLOWED_EMAILS to trimmed lowercase', () => {
     const env = loadEnv({ ...base, AUTH_ALLOWED_EMAILS: ' Alice@Example.com ,BOB@example.com' });
     expect(env.AUTH_ALLOWED_EMAILS).toEqual(['alice@example.com', 'bob@example.com']);

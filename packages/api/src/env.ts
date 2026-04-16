@@ -13,13 +13,13 @@ const Schema = z.object({
         .map((e) => e.trim().toLowerCase())
         .filter(Boolean),
     ),
-  RESEND_API_KEY: z.string().min(1),
-  RESEND_FROM: z.string().email(),
-  OPENAI_API_KEY: z.string().min(1),
-  PUBLIC_BASE_URL: z.string().url(),
+  RESEND_API_KEY: z.string().min(1).optional(),
+  RESEND_FROM: z.string().email().optional(),
+  OPENAI_API_KEY: z.string().min(1).optional(),
+  PUBLIC_BASE_URL: z.string().url().default('http://localhost:3000'),
   WORKSPACE_DIR: z.string().min(1),
   DATABASE_URL: z.string().min(1),
-  MCP_BIBLE_URL: z.string().url(),
+  MCP_BIBLE_URL: z.string().url().optional(),
   LOG_LEVEL: z.enum(['fatal', 'error', 'warn', 'info', 'debug', 'trace']).default('info'),
 });
 

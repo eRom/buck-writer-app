@@ -31,3 +31,7 @@ Le dossier `.cave/` contient la cartographie persistante du projet :
 - `gotchas.md` — pieges, bugs resolus, workarounds
 
 **Ne lis PAS ces fichiers au demarrage.** Lis-les a la demande, uniquement quand la question de l'utilisateur touche au domaine concerne (ex: question archi -> `architecture.md`, bug etrange -> `gotchas.md`). Pour une question triviale ou sans rapport avec le projet lui-meme, ne les lis pas du tout.
+
+## Skills
+- **playwright-cli** : Automate browser interactions, test web pages and work with Playwright tests.
+- **shadcn** : Manages shadcn components and projects — adding, searching, fixing, debugging, styling, and composing UI.
