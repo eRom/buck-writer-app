@@ -27,6 +27,7 @@ const app = buildApp({
   jwt,
   allowedEmails: env.AUTH_ALLOWED_EMAILS,
   publicBaseUrl: env.PUBLIC_BASE_URL,
+  webDistRoot: process.env.WEB_DIST_ROOT,
 });
 
 serve({ fetch: app.fetch, port: env.PORT, hostname: '0.0.0.0' }, (info) => {

@@ -1,0 +1,36 @@
+# syntax=docker/dockerfile:1.7
+
+# ── Stage 1: deps ───────────────────────────────────────────────
+FROM node:20-alpine AS deps
+WORKDIR /repo
+RUN corepack enable
+COPY pnpm-lock.yaml pnpm-workspace.yaml package.json ./
+COPY packages/shared/package.json packages/shared/
+COPY packages/api/package.json packages/api/
+COPY packages/web/package.json packages/web/
+RUN pnpm install --frozen-lockfile
+
+# ── Stage 2: build ──────────────────────────────────────────────
+FROM deps AS build
+COPY . .
+RUN pnpm --filter @buck/shared build \
+ && pnpm --filter @buck/web build \
+ && pnpm --filter @buck/api build
+
+# ── Stage 3: runtime ────────────────────────────────────────────
+FROM node:20-alpine AS runtime
+WORKDIR /app
+ENV NODE_ENV=production
+RUN apk add --no-cache sqlite
+COPY --from=build /repo/packages/api/dist /app/dist
+COPY --from=build /repo/packages/api/node_modules /app/node_modules
+COPY --from=build /repo/packages/api/migrations /app/migrations
+COPY --from=build /repo/packages/web/dist /app/web-dist
+COPY scripts/docker-entrypoint.sh /app/docker-entrypoint.sh
+RUN mkdir -p /app/data /app/workspace \
+ && chmod +x /app/docker-entrypoint.sh \
+ && chown -R node:node /app
+USER node
+EXPOSE 3000
+ENTRYPOINT ["/app/docker-entrypoint.sh"]
+CMD ["node", "dist/index.js"]

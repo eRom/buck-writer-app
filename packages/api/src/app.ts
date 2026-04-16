@@ -1,5 +1,6 @@
 import { Hono } from 'hono';
 import type { ContentfulStatusCode } from 'hono/utils/http-status';
+import { serveStatic } from '@hono/node-server/serve-static';
 import { eq } from 'drizzle-orm';
 import { healthRoute } from './routes/health.js';
 import { HttpError } from './utils/http-error.js';
@@ -9,7 +10,14 @@ import { securityHeaders } from './middleware/security-headers.js';
 import { csrfMiddleware } from './middleware/csrf.js';
 import { users } from './db/schema.js';
 
-export type AppDeps = AuthRoutesDeps;
+export interface AppDeps extends AuthRoutesDeps {
+  /**
+   * Absolute path to the built SPA (Vite dist/). If provided, Hono serves
+   * it as static and falls back to index.html for non-/api paths. Leave
+   * undefined in dev + tests (Vite dev server handles the SPA on :5173).
+   */
+  webDistRoot?: string;
+}
 
 export function buildApp(deps: AppDeps) {
   const app = new Hono<{ Variables: { userId: string } }>();
@@ -39,6 +47,24 @@ export function buildApp(deps: AppDeps) {
       return c.json({ userId: user.id, email: user.email });
     },
   );
+
+  // Static SPA + fallback (production only — activated when webDistRoot is set)
+  if (deps.webDistRoot) {
+    const root = deps.webDistRoot;
+    app.use('/assets/*', serveStatic({ root }));
+    app.use('/vite.svg', serveStatic({ root, path: 'vite.svg' }));
+    app.get('*', async (c) => {
+      if (c.req.path.startsWith('/api')) {
+        return c.json(
+          { error: { code: 'not_found', message: 'route not found' } },
+          404,
+        );
+      }
+      const fs = await import('node:fs/promises');
+      const html = await fs.readFile(`${root}/index.html`, 'utf8');
+      return c.html(html);
+    });
+  }
 
   app.onError((err, c) => {
     if (err instanceof HttpError) {

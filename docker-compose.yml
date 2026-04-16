@@ -1,0 +1,29 @@
+services:
+  buck-app:
+    image: buck-writer:local
+    build:
+      context: .
+      dockerfile: Dockerfile.app
+    container_name: buck-app
+    restart: unless-stopped
+    env_file: .env
+    environment:
+      - WEB_DIST_ROOT=/app/web-dist
+      - WORKSPACE_DIR=/app/workspace
+      - DATABASE_URL=file:/app/data/buck.db
+    volumes:
+      - ./data/db:/app/data
+      - ./data/workspace:/app/workspace
+    networks:
+      - caddy-public
+    healthcheck:
+      test:
+        - CMD-SHELL
+        - 'wget -q -O - http://localhost:3000/api/health || exit 1'
+      interval: 30s
+      timeout: 3s
+      retries: 3
+
+networks:
+  caddy-public:
+    external: true
