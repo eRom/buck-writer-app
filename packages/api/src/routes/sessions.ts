@@ -1,5 +1,5 @@
 import { Hono } from 'hono';
-import { eq, and, like, isNull, desc, asc, lte, gt } from 'drizzle-orm';
+import { eq, and, like, isNull, desc, asc, lt, gt } from 'drizzle-orm';
 import {
   CreateSessionInput,
   UpdateSessionInput,
@@ -54,7 +54,7 @@ export function createSessionRoutes(
     if (cursor) {
       const cursorMs = parseInt(cursor, 10);
       if (!isNaN(cursorMs)) {
-        conditions.push(lte(chatSessions.lastMessageAt, cursorMs));
+        conditions.push(lt(chatSessions.lastMessageAt, cursorMs));
       }
     }
 

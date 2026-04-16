@@ -326,4 +326,71 @@ describe('sessions routes', () => {
       expect(res.status).toBe(404);
     });
   });
+
+  describe('cross-user isolation', () => {
+    it('user B cannot access user A session', async () => {
+      // Create ctx with alice (seeds alice@example.com)
+      ctx = await makeCtx();
+
+      // Alice creates a session
+      const createRes = await ctx.app.request('/api/sessions', {
+        method: 'POST',
+        headers: authMutHeaders(ctx.sessionJwt),
+        body: JSON.stringify({ title: 'Alice only' }),
+      });
+      const { id: aliceSessionId } = (await createRes.json()) as { id: string };
+
+      // Create bob manually in same DB
+      const { db } = (ctx.app as unknown as { fetch: unknown })
+        ? ctx
+        : ctx;
+      // We need to insert bob + his auth session into the same DB
+      // Access the db through a different approach — create bob user and JWT
+      const bobId = newId();
+      const jwt = createJwtService({
+        secret: 'a'.repeat(32),
+        issuer: 'buck',
+        audience: 'buck-web',
+      });
+      // Insert bob user directly via the app's db
+      // We use the same DB by re-opening it
+      const bobDb = openDb(`file:${ctx.dbPath}`);
+      bobDb.db.insert(users).values({
+        id: bobId,
+        email: 'bob@example.com',
+        createdAt: Date.now(),
+      }).run();
+      const bobJwt = await jwt.sign({ sub: bobId, scope: 'app' }, '30d');
+      bobDb.db.insert(sessionsAuth).values({
+        id: newId(),
+        userId: bobId,
+        tokenHash: sha256Hex(bobJwt),
+        scope: 'app',
+        expiresAt: Date.now() + 86400000,
+        createdAt: Date.now(),
+      }).run();
+      bobDb.sqlite.close();
+
+      // Bob tries to GET alice's session → 404
+      const getRes = await ctx.app.request(`/api/sessions/${aliceSessionId}`, {
+        headers: authHeaders(bobJwt),
+      });
+      expect(getRes.status).toBe(404);
+
+      // Bob tries to PATCH alice's session → 404
+      const patchRes = await ctx.app.request(`/api/sessions/${aliceSessionId}`, {
+        method: 'PATCH',
+        headers: authMutHeaders(bobJwt),
+        body: JSON.stringify({ title: 'Hacked' }),
+      });
+      expect(patchRes.status).toBe(404);
+
+      // Bob tries to DELETE alice's session → 404
+      const delRes = await ctx.app.request(`/api/sessions/${aliceSessionId}`, {
+        method: 'DELETE',
+        headers: authMutHeaders(bobJwt),
+      });
+      expect(delRes.status).toBe(404);
+    });
+  });
 });
