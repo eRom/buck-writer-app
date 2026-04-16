@@ -7,6 +7,7 @@ describe('cn', () => {
   });
 
   it('filters falsy values', () => {
-    expect(cn('foo', false && 'bar', undefined, null, 'baz')).toBe('foo baz');
+    const maybe: string | false = false;
+    expect(cn('foo', maybe, undefined, null, 'baz')).toBe('foo baz');
   });
 });
