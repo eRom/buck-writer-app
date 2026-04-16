@@ -1,0 +1,11 @@
+node_modules
+dist
+build
+*.tsbuildinfo
+pnpm-lock.yaml
+packages/*/migrations
+packages/*/playwright-report
+packages/*/test-results
+docs
+.mcp.json
+CLAUDE.md
