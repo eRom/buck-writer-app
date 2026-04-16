@@ -34,3 +34,6 @@ test-results/
 # Python
 __pycache__/
 *.pyc
+
+# Claude Code local MCP config (not shared)
+.mcp.json
