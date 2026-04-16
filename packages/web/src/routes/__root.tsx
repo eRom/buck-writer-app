@@ -18,8 +18,15 @@ export const Route = createRootRouteWithContext<RouterCtx>()({
     ) {
       return;
     }
-    const me = await fetchMe();
-    if (!me) {
+    try {
+      const me = await fetchMe();
+      if (!me) {
+        throw redirect({ to: '/login' });
+      }
+    } catch (err) {
+      // Re-throw redirects as-is; network/server errors → redirect to login
+      // instead of showing a blank page (error boundary would be empty).
+      if (err instanceof Error && 'to' in err) throw err;
       throw redirect({ to: '/login' });
     }
   },

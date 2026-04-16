@@ -8,6 +8,7 @@ import { createAuthRoutes, type AuthRoutesDeps } from './routes/auth.js';
 import { authGuard } from './middleware/auth.js';
 import { securityHeaders } from './middleware/security-headers.js';
 import { csrfMiddleware } from './middleware/csrf.js';
+import { createRateLimiter, ipKey } from './middleware/rate-limit.js';
 import { users } from './db/schema.js';
 
 export interface AppDeps extends AuthRoutesDeps {
@@ -25,6 +26,12 @@ export function buildApp(deps: AppDeps) {
   app.use('*', csrfMiddleware());
 
   app.route('/api/health', healthRoute);
+
+  // Rate-limit auth endpoints (5 req/min per IP) to prevent magic-link spam
+  app.use(
+    '/api/auth/*',
+    createRateLimiter({ windowMs: 60_000, max: 5, keyBy: ipKey }),
+  );
   app.route('/api/auth', createAuthRoutes(deps));
 
   // Protected route: /api/auth/me (guarded individually to avoid swallowing 404s)

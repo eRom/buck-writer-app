@@ -53,6 +53,10 @@ export function createAuthRoutes(deps: AuthRoutesDeps): Hono {
       .where(eq(users.email, email))
       .get();
     if (!existing) {
+      // Whitelisted but not in DB (seed missed?) — same timing as unknown
+      if (unknownDelay > 0) {
+        await new Promise((r) => setTimeout(r, unknownDelay));
+      }
       return c.json({ sent: true });
     }
 

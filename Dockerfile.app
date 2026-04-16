@@ -16,14 +16,16 @@ COPY . .
 RUN pnpm --filter @buck/shared build \
  && pnpm --filter @buck/web build \
  && pnpm --filter @buck/api build
+# pnpm deploy creates a standalone /deploy dir with flat node_modules
+# (resolves all workspace: and hoisted deps — no MODULE_NOT_FOUND in runtime)
+RUN pnpm deploy --filter @buck/api --prod /deploy
 
 # ── Stage 3: runtime ────────────────────────────────────────────
 FROM node:20-alpine AS runtime
 WORKDIR /app
 ENV NODE_ENV=production
 RUN apk add --no-cache sqlite
-COPY --from=build /repo/packages/api/dist /app/dist
-COPY --from=build /repo/packages/api/node_modules /app/node_modules
+COPY --from=build /deploy /app
 COPY --from=build /repo/packages/api/migrations /app/migrations
 COPY --from=build /repo/packages/web/dist /app/web-dist
 COPY scripts/docker-entrypoint.sh /app/docker-entrypoint.sh
