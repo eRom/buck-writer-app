@@ -643,7 +643,7 @@ GET    /api/attachments/:id       stream download
 DELETE /api/attachments/:id
 
 # webdav (PROPFIND, GET, PUT, DELETE, MKCOL, MOVE, COPY)
-/webdav/*                         monté sur workspace/, auth via cookie OU basic auth webdav token
+/webdav/*                         monté sur workspace/, auth EXCLUSIVEMENT via HTTP Basic Auth
 
 # metrics
 GET    /api/metrics/current-month
@@ -662,6 +662,15 @@ GET    /api/mcp/servers/:id/tools
 # health
 GET    /api/health
 ```
+
+### Auth WebDAV — détails
+
+Les clients natifs (Finder macOS, Explorer Windows, apps mobiles Files/Documents) **ne gèrent pas de manière fiable les cookies JWT** ni les headers CSRF custom. L'accès `/webdav/*` utilise donc **exclusivement HTTP Basic Auth**, avec deux modes acceptés :
+
+1. **basicauth Caddy** (rideau externe) : suffit pour un accès simple avec les mêmes identifiants que pour le navigateur web
+2. **WebDAV token dédié** (recommandé) : généré via `POST /api/settings/webdav/token` (one-shot visible en réponse), utilisable en `Authorization: Basic base64(<email>:<token>)`. Ce token a un scope `webdav` (cf. table `sessions_auth.scope`), révocable indépendamment des sessions app, pas d'expiration par défaut.
+
+Les cookies JWT `buck_session` sont **ignorés** par le handler WebDAV. Les requêtes sans Basic Auth reçoivent un `401 + WWW-Authenticate: Basic realm="buck-webdav"`.
 
 ### Chat streaming SSE
 
@@ -1027,7 +1036,9 @@ IMAGE_TAG=<previous-sha> docker compose up -d
 
 ---
 
-## 12. Dockerfile (multi-stage)
+## 12. Dockerfile (multi-stage) + entrypoint migrations
+
+### Dockerfile
 
 ```dockerfile
 # Stage 1 — deps
@@ -1053,12 +1064,70 @@ WORKDIR /app
 ENV NODE_ENV=production
 COPY --from=build /repo/packages/api/dist /app/dist
 COPY --from=build /repo/packages/api/node_modules /app/node_modules
+COPY --from=build /repo/packages/api/migrations /app/migrations
 COPY --from=build /repo/packages/web/dist /app/web-dist
-RUN mkdir -p /app/data /app/workspace && chown -R node:node /app
+COPY scripts/docker-entrypoint.sh /app/docker-entrypoint.sh
+RUN mkdir -p /app/data /app/workspace \
+ && chmod +x /app/docker-entrypoint.sh \
+ && chown -R node:node /app
 USER node
 EXPOSE 3000
+ENTRYPOINT ["/app/docker-entrypoint.sh"]
 CMD ["node", "dist/index.js"]
 ```
+
+### `scripts/docker-entrypoint.sh`
+
+```sh
+#!/bin/sh
+set -e
+
+# 1. Applique les migrations Drizzle avant de démarrer
+#    (utilise l'API programmatique drizzle-orm/better-sqlite3/migrator,
+#     pas drizzle-kit qui est une devDep absente de l'image runtime)
+echo "[entrypoint] running database migrations..."
+node /app/dist/db/migrate.js
+
+# 2. Seed initial idempotent (MCP core 'bible', users whitelistés, user_settings defaults)
+echo "[entrypoint] running idempotent seed..."
+node /app/dist/db/seed.js
+
+# 3. Lance le process principal (commande CMD)
+echo "[entrypoint] starting app..."
+exec "$@"
+```
+
+### Module `packages/api/src/db/migrate.ts` (compilé en `dist/db/migrate.js`)
+
+```typescript
+import { drizzle } from 'drizzle-orm/better-sqlite3';
+import { migrate } from 'drizzle-orm/better-sqlite3/migrator';
+import Database from 'better-sqlite3';
+
+const url = process.env.DATABASE_URL!.replace(/^file:/, '');
+const sqlite = new Database(url);
+const db = drizzle(sqlite);
+
+migrate(db, { migrationsFolder: '/app/migrations' });
+sqlite.close();
+console.log('[migrate] done');
+```
+
+### Module `packages/api/src/db/seed.ts`
+
+Insère de manière idempotente (`INSERT OR IGNORE`) :
+- Un enregistrement `mcp_servers` pour `bible` (core=1, enabled=1, transport=http-streamable, config = `{ url: $MCP_BIBLE_URL/mcp }`)
+- Pour chaque email de `AUTH_ALLOWED_EMAILS` : ligne `users` + ligne `user_settings` avec défauts
+
+### Résultat au deploy
+
+Le `docker compose up -d` sur le VPS :
+1. pull la nouvelle image
+2. recrée le container, qui exécute `docker-entrypoint.sh` au démarrage
+3. migrations + seed s'appliquent automatiquement
+4. `exec node dist/index.js` démarre l'API
+
+**Rollback** : si une migration échoue, le container ne démarre pas, le healthcheck Caddy signale l'incident, on rollback vers l'image précédente (`IMAGE_TAG=<previous-sha> docker compose up -d`).
 
 Hono sert `/app/web-dist` via `serveStatic`.
 
