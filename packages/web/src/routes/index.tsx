@@ -2,6 +2,7 @@ import { createFileRoute } from '@tanstack/react-router';
 import { fetchMe, type MeResponse } from '@/lib/session';
 import { ChatLayout } from '@/components/chat/chat-layout';
 import { Sidebar } from '@/components/chat/sidebar';
+import { ChatArea } from '@/components/chat/chat-area';
 import { useState } from 'react';
 
 export const Route = createFileRoute('/')({
@@ -26,11 +27,10 @@ function Home() {
         />
       }
     >
-      <div className="flex flex-1 items-center justify-center text-muted-foreground">
-        {activeSessionId
-          ? `Session ${activeSessionId} (chat a venir)`
-          : 'Selectionne ou cree une conversation pour commencer.'}
-      </div>
+      <ChatArea
+        sessionId={activeSessionId}
+        onSessionCreated={setActiveSessionId}
+      />
     </ChatLayout>
   );
 }
