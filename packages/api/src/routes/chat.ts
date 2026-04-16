@@ -2,7 +2,7 @@ import { Hono } from 'hono';
 import { eq, and, isNull } from 'drizzle-orm';
 import { streamText, generateText } from 'ai';
 import { createOpenAI } from '@ai-sdk/openai';
-import { newId, ChatRequestInput, costOf } from '@buck/shared';
+import { newId, costOf } from '@buck/shared';
 import type { DbHandles } from '../db/client.js';
 import type { Prompts } from '../services/prompts.js';
 import { chatSessions, messages, usageEvents, userSettings } from '../db/schema.js';
@@ -26,33 +26,35 @@ export function createChatRoute(
     const userId = c.get('userId');
     const raw = await c.req.json().catch(() => ({}));
 
-    // Extract messages separately from the ChatRequestInput schema
-    const { messages: userMessages, ...rest } = raw as {
-      messages?: unknown[];
-      [key: string]: unknown;
-    };
-
-    // Validate messages
-    if (
-      !userMessages ||
-      !Array.isArray(userMessages) ||
-      userMessages.length === 0
-    ) {
+    // AI SDK v6 sends messages as { parts: [{ type: 'text', text }] }
+    // Convert to { role, content } format
+    const rawMessages = (raw as { messages?: unknown[] }).messages;
+    if (!Array.isArray(rawMessages) || rawMessages.length === 0) {
       return c.json(
         { error: { code: 'invalid_input', message: 'messages required' } },
         422,
       );
     }
 
-    // Parse ChatRequestInput (sessionId + model)
-    const parsed = ChatRequestInput.safeParse(rest);
-    if (!parsed.success) {
-      return c.json(
-        { error: { code: 'invalid_input', message: 'invalid body' } },
-        422,
-      );
-    }
-    const body = parsed.data;
+    const userMessages = rawMessages.map((m: unknown) => {
+      const msg = m as { role: string; content?: string; parts?: Array<{ type: string; text?: string }> };
+      const content = msg.content
+        ?? msg.parts
+            ?.filter((p) => p.type === 'text')
+            .map((p) => p.text ?? '')
+            .join('') ?? '';
+      return { role: msg.role, content };
+    });
+
+    // Parse sessionId + model from body (ignore unknown fields from AI SDK)
+    const body = {
+      sessionId: typeof (raw as Record<string, unknown>).sessionId === 'string'
+        ? (raw as Record<string, unknown>).sessionId as string
+        : undefined,
+      model: typeof (raw as Record<string, unknown>).model === 'string'
+        ? (raw as Record<string, unknown>).model as string
+        : undefined,
+    };
 
     const ts = now();
     let sessionId = body.sessionId;
@@ -234,17 +236,11 @@ export function createChatRoute(
     });
 
     const response = result.toTextStreamResponse();
-
     if (isNewSession) {
-      // We need to return the response with the x-session-id header
       const headers = new Headers(response.headers);
       headers.set('x-session-id', sessionId!);
-      return new Response(response.body, {
-        status: response.status,
-        headers,
-      });
+      return new Response(response.body, { status: response.status, headers });
     }
-
     return response;
   });
 

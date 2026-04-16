@@ -1,5 +1,5 @@
 import { useChat } from '@ai-sdk/react';
-import { DefaultChatTransport, type UIMessage } from 'ai';
+import { TextStreamChatTransport, type UIMessage } from 'ai';
 import { useEffect, useRef, useState, useCallback } from 'react';
 import { MessageBubble } from './message-bubble';
 import { ChatInput } from './chat-input';
@@ -12,14 +12,14 @@ interface ChatAreaProps {
 }
 
 export function ChatArea({ sessionId, onSessionCreated }: ChatAreaProps) {
-  const [model, setModel] = useState('gpt-4o-mini');
+  const [model, setModel] = useState('gpt-5.4-mini');
   const [input, setInput] = useState('');
   const scrollRef = useRef<HTMLDivElement>(null);
   const onSessionCreatedRef = useRef(onSessionCreated);
   onSessionCreatedRef.current = onSessionCreated;
 
   const { messages, sendMessage, stop, setMessages, status } = useChat({
-    transport: new DefaultChatTransport({
+    transport: new TextStreamChatTransport({
       api: '/api/chat',
       body: { sessionId, model },
       headers: {
