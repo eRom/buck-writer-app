@@ -2,7 +2,7 @@ import { Hono } from 'hono';
 import { eq, and, isNull } from 'drizzle-orm';
 import { streamText, generateText } from 'ai';
 import { createOpenAI } from '@ai-sdk/openai';
-import { newId, ChatRequestInput, MODELS, costOf } from '@buck/shared';
+import { newId, ChatRequestInput, costOf } from '@buck/shared';
 import type { DbHandles } from '../db/client.js';
 import type { Prompts } from '../services/prompts.js';
 import { chatSessions, messages, usageEvents, userSettings } from '../db/schema.js';

@@ -341,11 +341,6 @@ describe('sessions routes', () => {
       const { id: aliceSessionId } = (await createRes.json()) as { id: string };
 
       // Create bob manually in same DB
-      const { db } = (ctx.app as unknown as { fetch: unknown })
-        ? ctx
-        : ctx;
-      // We need to insert bob + his auth session into the same DB
-      // Access the db through a different approach — create bob user and JWT
       const bobId = newId();
       const jwt = createJwtService({
         secret: 'a'.repeat(32),

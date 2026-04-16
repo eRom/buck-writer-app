@@ -32,7 +32,7 @@ describe('env', () => {
   });
 
   it('loads without optional keys (RESEND, OPENAI, MCP_BIBLE)', () => {
-    const { RESEND_API_KEY, RESEND_FROM, OPENAI_API_KEY, MCP_BIBLE_URL, ...minimal } = base;
+    const { RESEND_API_KEY: _a, RESEND_FROM: _b, OPENAI_API_KEY: _c, MCP_BIBLE_URL: _d, ...minimal } = base;
     const env = loadEnv(minimal);
     expect(env.RESEND_API_KEY).toBeUndefined();
     expect(env.MCP_BIBLE_URL).toBeUndefined();

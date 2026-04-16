@@ -96,6 +96,8 @@ export default [
         HTMLElement: 'readonly',
         HTMLInputElement: 'readonly',
         HTMLButtonElement: 'readonly',
+        HTMLDivElement: 'readonly',
+        HTMLTextAreaElement: 'readonly',
         KeyboardEvent: 'readonly',
         StorageEvent: 'readonly',
         Event: 'readonly',
