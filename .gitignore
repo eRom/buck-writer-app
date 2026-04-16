@@ -1,0 +1,36 @@
+# Dependencies
+node_modules/
+.pnpm-store/
+
+# Build outputs
+dist/
+build/
+*.tsbuildinfo
+
+# Environment
+.env
+.env.local
+.env.*.local
+
+# Data (local dev)
+data/
+backups/
+
+# Logs
+*.log
+npm-debug.log*
+pnpm-debug.log*
+
+# IDE / OS
+.DS_Store
+.vscode/
+.idea/
+
+# Test outputs
+coverage/
+playwright-report/
+test-results/
+
+# Python
+__pycache__/
+*.pyc
