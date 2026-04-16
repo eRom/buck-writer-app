@@ -5,13 +5,17 @@ import { eq } from 'drizzle-orm';
 import { healthRoute } from './routes/health.js';
 import { HttpError } from './utils/http-error.js';
 import { createAuthRoutes, type AuthRoutesDeps } from './routes/auth.js';
+import {
+  createSessionRoutes,
+  type SessionRoutesDeps,
+} from './routes/sessions.js';
 import { authGuard } from './middleware/auth.js';
 import { securityHeaders } from './middleware/security-headers.js';
 import { csrfMiddleware } from './middleware/csrf.js';
 import { createRateLimiter, ipKey } from './middleware/rate-limit.js';
 import { users } from './db/schema.js';
 
-export interface AppDeps extends AuthRoutesDeps {
+export interface AppDeps extends AuthRoutesDeps, SessionRoutesDeps {
   /**
    * Absolute path to the built SPA (Vite dist/). If provided, Hono serves
    * it as static and falls back to index.html for non-/api paths. Leave
@@ -53,6 +57,20 @@ export function buildApp(deps: AppDeps) {
       }
       return c.json({ userId: user.id, email: user.email });
     },
+  );
+
+  // Sessions routes (protected)
+  app.use(
+    '/api/sessions/*',
+    authGuard({ db: deps.db, jwt: deps.jwt, nowMs: deps.nowMs }),
+  );
+  app.use(
+    '/api/sessions',
+    authGuard({ db: deps.db, jwt: deps.jwt, nowMs: deps.nowMs }),
+  );
+  app.route(
+    '/api/sessions',
+    createSessionRoutes({ db: deps.db, nowMs: deps.nowMs }),
   );
 
   // E2E-only test helper: exposes the latest magic-link raw token written by
