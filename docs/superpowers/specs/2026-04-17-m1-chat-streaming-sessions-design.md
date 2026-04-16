@@ -45,7 +45,7 @@ OpenAI API (streaming)
 
 ### Tables existantes (pas de changement)
 
-- `chatSessions` — `id`, `userId`, `title`, `model`, `reasoningEffort`, `archived`, `deletedAt`, `createdAt`, `updatedAt`, `lastMessageAt`
+- `chatSessions` — `id`, `userId`, `title`, `model` (modele par defaut de la session, surchargeable par message via l'API), `reasoningEffort`, `archived`, `deletedAt`, `createdAt`, `updatedAt`, `lastMessageAt`
 - `usageEvents` — `id`, `userId`, `sessionId`, `model`, `inputTokens`, `outputTokens`, `reasoningTokens`, `costUsd`, etc.
 - `userSettings` — `defaultModel`, `defaultReasoningEffort`, `monthlyCostLimitUsd`
 
@@ -58,6 +58,18 @@ Ajout colonne `model` (text, nullable) sur la table `messages` pour stocker le m
 - `user` : `{ "text": "..." }`
 - `assistant` : `{ "text": "..." }`
 - `system` : pas stocke en DB (injecte a la volee depuis les fichiers prompts)
+
+## Securite
+
+### CSRF
+
+Le middleware CSRF (Double Submit Cookie) existe deja dans M0 (`middleware/csrf.ts`). Toutes les routes mutatrices (POST, PATCH, DELETE) en beneficient automatiquement via le middleware global. Le cookie CSRF est set sur le premier GET, et le header `x-csrf-token` est exige sur les mutations. Le flag `Secure` est conditionnel (`NODE_ENV === 'production'`).
+
+La route `POST /api/chat` (streaming) passe egalement par le CSRF middleware — le client `apiFetch` envoie deja le header automatiquement.
+
+### Autorisation par ressource
+
+Chaque route manipulant une ressource par `:id` (GET, PATCH, DELETE sur `/api/sessions/:id`, GET `/api/sessions/:id/messages`) doit verifier que la ressource appartient a l'utilisateur authentifie. La requete SQL inclut systematiquement `WHERE userId = <current_user_id>`. Si la ressource n'existe pas ou n'appartient pas a l'utilisateur, retourner 404 (pas 403, pour ne pas reveler l'existence de la ressource).
 
 ## Routes API
 
@@ -105,6 +117,42 @@ Toutes protegees par `authGuard`, sauf indication contraire.
 - Query : `?limit=50&cursor=<createdAt>`
 - Cursor-based, tri par `createdAt ASC`
 - Retourne : `{ messages: [...], nextCursor?: string }`
+
+## Gestion des erreurs
+
+Toutes les routes API retournent le format existant M0 : `{ error: { code: string, message: string } }`.
+
+| Route | Cas d'erreur | Code HTTP | code |
+|-------|-------------|-----------|------|
+| POST /api/chat | sessionId invalide ou pas a l'utilisateur | 404 | `not_found` |
+| POST /api/chat | OPENAI_API_KEY absente | 503 | `service_unavailable` |
+| POST /api/chat | Erreur OpenAI (rate limit, timeout) | 502 | `upstream_error` |
+| GET /api/sessions/:id | Session inexistante ou pas a l'utilisateur | 404 | `not_found` |
+| PATCH /api/sessions/:id | Session inexistante ou pas a l'utilisateur | 404 | `not_found` |
+| DELETE /api/sessions/:id | Session inexistante ou pas a l'utilisateur | 404 | `not_found` |
+| GET /api/sessions/:id/messages | Session inexistante ou pas a l'utilisateur | 404 | `not_found` |
+| POST /api/sessions | Body invalide (zod) | 422 | `invalid_input` |
+| * | CSRF manquant/mismatch | 403 | `csrf_missing` / `csrf_mismatch` |
+| * | Non authentifie | 401 | `unauthorized` |
+
+Pour le streaming (`POST /api/chat`), si l'erreur survient apres le debut du stream, un chunk d'erreur est envoye dans le protocole AI SDK puis le stream est ferme.
+
+## Strategie de test
+
+### Tests unitaires (vitest)
+
+- **Routes sessions** : CRUD complet (create, list, get, patch, delete), verification autorisation par ressource (user A ne voit pas les sessions de user B), pagination cursor, recherche par titre
+- **Route chat** : mock du provider AI SDK, verification de la persistance messages + usageEvent en onFinish, verification injection prompts, selection modele (message > session > user)
+- **Composants web** : MessageBubble rendu markdown basique, ChatInput submit/newline, ModelSelector liste des modeles
+
+### Tests e2e (Playwright)
+
+- **Happy path chat** : login → nouveau chat → envoyer message → voir la reponse streamer → verifier session dans sidebar → renommer → supprimer
+- Necessite E2E=1 + mock ou vrai appel OpenAI (a definir selon cout — possibilite de mock AI SDK en e2e)
+
+### Objectif
+
+Maintenir la base existante (58 unit + 1 e2e) et ajouter ~15-20 tests unitaires pour les nouvelles routes + ~3-5 tests pour les composants web + 1 scenario e2e chat.
 
 ## Prompts
 
