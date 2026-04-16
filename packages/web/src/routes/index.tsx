@@ -1,23 +1,40 @@
-import { createFileRoute } from '@tanstack/react-router';
-import { Button } from '@/components/ui/button';
+import { createFileRoute, useLoaderData } from '@tanstack/react-router';
+import { apiFetch } from '@/lib/api';
+import { fetchMe, type MeResponse } from '@/lib/session';
 
 export const Route = createFileRoute('/')({
-  component: IndexPage,
+  loader: async (): Promise<MeResponse> => {
+    const me = await fetchMe();
+    if (!me) throw new Error('unauthenticated');
+    return me;
+  },
+  component: Home,
 });
 
-function IndexPage() {
+function Home() {
+  const me = useLoaderData({ from: '/' });
+
+  async function handleLogout(e: React.FormEvent) {
+    e.preventDefault();
+    try {
+      await apiFetch('/api/auth/logout', { method: 'POST' });
+    } finally {
+      window.location.assign('/login');
+    }
+  }
+
   return (
-    <div className="flex min-h-svh p-6">
-      <div className="flex max-w-md min-w-0 flex-col gap-4 text-sm leading-loose">
-        <div>
-          <h1 className="font-medium">buck writer — M0 shell</h1>
-          <p>Tailwind v4.2 + preset b1Gdz9c4A ready.</p>
-          <Button className="mt-2">Button</Button>
-        </div>
-        <div className="font-mono text-xs text-muted-foreground">
-          (Press <kbd>d</kbd> to toggle dark mode)
-        </div>
-      </div>
-    </div>
+    <main className="mx-auto min-h-screen max-w-3xl p-8">
+      <h1 className="mb-4 text-2xl font-semibold">buck writer — M0 shell</h1>
+      <p className="text-muted-foreground">Connecté en tant que {me.email}.</p>
+      <form onSubmit={handleLogout}>
+        <button
+          type="submit"
+          className="mt-6 rounded-md border border-border px-3 py-2"
+        >
+          Se déconnecter
+        </button>
+      </form>
+    </main>
   );
 }
