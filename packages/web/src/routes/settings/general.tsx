@@ -3,6 +3,7 @@ import { useState, useEffect } from 'react';
 import { fetchSettings, updateSettings } from '@/lib/settings';
 import { MODELS } from '@buck/shared';
 import { toast } from 'sonner';
+import { WebDavWizard } from '@/components/settings/webdav-wizard';
 
 export const Route = createFileRoute('/settings/general')({
   component: SettingsGeneral,
@@ -74,6 +75,8 @@ function SettingsGeneral() {
           </select>
         </div>
       </div>
+      <hr className="my-6 border-border" />
+      <WebDavWizard />
     </>
   );
 }

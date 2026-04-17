@@ -27,6 +27,11 @@ export function csrfMiddleware(): MiddlewareHandler {
     const cookies = parseCookies(c.req.header('cookie'));
     const method = c.req.method.toUpperCase();
 
+    // WebDAV clients cannot send CSRF tokens — bypass for /webdav/* paths
+    if (c.req.path.startsWith('/webdav')) {
+      return next();
+    }
+
     if (SAFE_METHODS.has(method)) {
       if (!cookies[CSRF_COOKIE]) {
         const fresh = randomToken();

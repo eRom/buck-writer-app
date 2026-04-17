@@ -5,6 +5,7 @@ import os from 'node:os';
 import { fileURLToPath } from 'node:url';
 import { Hono } from 'hono';
 import { createAuthRoutes } from './auth.js';
+import { authGuard } from '../middleware/auth.js';
 import { openDb } from '../db/client.js';
 import { runMigrations } from '../db/migrate.js';
 import { runSeed } from '../db/seed.js';
@@ -23,6 +24,7 @@ interface TestCtx {
   app: Hono;
   emailsSent: Array<{ to: string; magicUrl: string }>;
   mockEmail: { sendMagicLink: ReturnType<typeof vi.fn> };
+  jwt: ReturnType<typeof createJwtService>;
 }
 
 function makeApp(
@@ -49,7 +51,13 @@ function makeApp(
     issuer: 'buck',
     audience: 'buck-web',
   });
-  const app = new Hono();
+  const effectiveNowMs = nowMs ?? (() => 1_700_000_000_000);
+  const app = new Hono<{ Variables: { userId: string } }>();
+  // Mount authGuard on webdav-token before the auth routes (mirrors app.ts)
+  app.post(
+    '/api/auth/webdav-token',
+    authGuard({ db: handles, jwt, nowMs: effectiveNowMs }),
+  );
   app.route(
     '/api/auth',
     createAuthRoutes({
@@ -58,11 +66,11 @@ function makeApp(
       jwt,
       allowedEmails: allowed,
       publicBaseUrl: 'https://buck.example.com',
-      nowMs: nowMs ?? (() => 1_700_000_000_000),
+      nowMs: effectiveNowMs,
       unknownEmailDelayMs: 0,
     }),
   );
-  return { dbPath, app, emailsSent, mockEmail };
+  return { dbPath, app, emailsSent, mockEmail, jwt };
 }
 
 describe('auth routes', () => {
@@ -194,6 +202,51 @@ describe('auth routes', () => {
       const clearCookie = logoutRes.headers.get('set-cookie') ?? '';
       expect(clearCookie).toMatch(/buck_session=;/);
       expect(clearCookie).toMatch(/Max-Age=0/);
+    });
+  });
+
+  describe('POST /api/auth/webdav-token', () => {
+    async function getSessionCookie(testCtx: TestCtx): Promise<string> {
+      await testCtx.app.request('/api/auth/request', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ email: 'alice@example.com' }),
+      });
+      const url = new URL(testCtx.emailsSent[0]!.magicUrl);
+      const rawToken = url.searchParams.get('token')!;
+      const cbRes = await testCtx.app.request(
+        `/api/auth/callback?token=${rawToken}`,
+      );
+      const setCookie = cbRes.headers.get('set-cookie') ?? '';
+      const match = /buck_session=([^;]+)/.exec(setCookie)!;
+      return match[1]!;
+    }
+
+    it('generates a webdav-scoped JWT', async () => {
+      ctx = makeApp();
+      const sessionValue = await getSessionCookie(ctx);
+
+      const res = await ctx.app.request('/api/auth/webdav-token', {
+        method: 'POST',
+        headers: { cookie: `buck_session=${sessionValue}` },
+      });
+      expect(res.status).toBe(200);
+      const body = (await res.json()) as { token: string };
+      expect(body.token).toBeDefined();
+      expect(typeof body.token).toBe('string');
+
+      // Verify the token has scope=webdav
+      const payload = await ctx.jwt.verify(body.token);
+      expect(payload.scope).toBe('webdav');
+      expect(payload.sub).toBeDefined();
+    });
+
+    it('returns 401 without auth', async () => {
+      ctx = makeApp();
+      const res = await ctx.app.request('/api/auth/webdav-token', {
+        method: 'POST',
+      });
+      expect(res.status).toBe(401);
     });
   });
 });

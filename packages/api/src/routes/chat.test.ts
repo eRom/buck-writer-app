@@ -11,7 +11,7 @@ import { createJwtService } from '../services/jwt.js';
 import { loadPrompts } from '../services/prompts.js';
 import { newId } from '@buck/shared';
 import { sha256Hex } from '../utils/crypto.js';
-import { users, sessionsAuth } from '../db/schema.js';
+import { users, sessionsAuth, chatSessions } from '../db/schema.js';
 
 vi.mock('ai', () => ({
   streamText: vi.fn().mockImplementation(({ onFinish }: { onFinish?: (result: { text: string; usage: { inputTokens: number; outputTokens: number }; response: { modelId: string } }) => void }) => {
@@ -29,6 +29,7 @@ vi.mock('ai', () => ({
     };
   }),
   generateText: vi.fn().mockResolvedValue({ text: 'Test title' }),
+  tool: vi.fn().mockImplementation((config: unknown) => config),
 }));
 
 const here = path.dirname(fileURLToPath(import.meta.url));
@@ -62,6 +63,7 @@ interface TestCtx {
   app: ReturnType<typeof buildApp>;
   sessionJwt: string;
   userId: string;
+  db: ReturnType<typeof openDb>;
 }
 
 async function makeCtx(tsOverride?: number): Promise<TestCtx> {
@@ -118,7 +120,7 @@ async function makeCtx(tsOverride?: number): Promise<TestCtx> {
   };
 
   const app = buildApp(deps);
-  return { dbPath, promptsDir: promptsDirPath, app, sessionJwt, userId };
+  return { dbPath, promptsDir: promptsDirPath, app, sessionJwt, userId, db };
 }
 
 // Helper: authenticated headers for POST (includes CSRF)
@@ -210,6 +212,52 @@ describe('chat route', () => {
         }),
       });
       expect(res.status).toBe(404);
+    });
+  });
+
+  describe('POST /api/chat — with references', () => {
+    it('accepts references in request body without error', async () => {
+      ctx = await makeCtx();
+      const sessionId = newId();
+      ctx.db.db.insert(chatSessions).values({
+        id: sessionId, userId: ctx.userId, title: 'Test',
+        model: 'gpt-5.4-mini', reasoningEffort: 'low', archived: 0,
+        createdAt: Date.now(), updatedAt: Date.now(),
+      }).run();
+
+      const res = await ctx.app.request('/api/chat', {
+        method: 'POST',
+        headers: authMutHeaders(ctx.sessionJwt),
+        body: JSON.stringify({
+          sessionId,
+          messages: [{ role: 'user', content: 'What does this file say?' }],
+          references: [{ path: 'notes.md', content: '# My Notes\n\nHello' }],
+        }),
+      });
+      expect(res.status).toBe(200);
+    });
+  });
+
+  describe('POST /api/chat — with attachmentIds', () => {
+    it('accepts attachmentIds in request body without error', async () => {
+      ctx = await makeCtx();
+      const sessionId = newId();
+      ctx.db.db.insert(chatSessions).values({
+        id: sessionId, userId: ctx.userId, title: 'Test',
+        model: 'gpt-5.4-mini', reasoningEffort: 'low', archived: 0,
+        createdAt: Date.now(), updatedAt: Date.now(),
+      }).run();
+
+      const res = await ctx.app.request('/api/chat', {
+        method: 'POST',
+        headers: authMutHeaders(ctx.sessionJwt),
+        body: JSON.stringify({
+          sessionId,
+          messages: [{ role: 'user', content: 'Check this file' }],
+          attachmentIds: ['non-existent-id'],
+        }),
+      });
+      expect(res.status).toBe(200);
     });
   });
 });

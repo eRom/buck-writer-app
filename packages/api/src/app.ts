@@ -16,6 +16,9 @@ import {
 } from './routes/chat.js';
 import { createSettingsRoutes } from './routes/settings.js';
 import { createUsageRoutes } from './routes/usage.js';
+import { createWorkspaceRoutes } from './routes/workspace.js';
+import { createAttachmentRoutes } from './routes/attachments.js';
+import { createWebDAVRoutes } from './services/webdav.js';
 import type { Prompts } from './services/prompts.js';
 import { authGuard } from './middleware/auth.js';
 import { securityHeaders } from './middleware/security-headers.js';
@@ -28,6 +31,15 @@ import { sha256Hex } from './utils/crypto.js';
 export interface AppDeps extends AuthRoutesDeps, SessionRoutesDeps {
   prompts?: Prompts;
   openaiApiKey?: string;
+  /**
+   * Absolute path to the user workspace directory. When provided, workspace
+   * file-management routes are mounted at /api/workspace.
+   */
+  workspaceDir?: string;
+  /**
+   * Loaded workspace skills. Passed to the chat route for tool integration.
+   */
+  skills?: Map<string, import('./services/skills.js').Skill>;
   /**
    * Absolute path to the built SPA (Vite dist/). If provided, Hono serves
    * it as static and falls back to index.html for non-/api paths. Leave
@@ -67,6 +79,12 @@ export function buildApp(deps: AppDeps) {
     },
   );
 
+  // Protected route: /api/auth/webdav-token — mounted BEFORE rate limiter
+  app.post(
+    '/api/auth/webdav-token',
+    authGuard({ db: deps.db, jwt: deps.jwt, nowMs: deps.nowMs }),
+  );
+
   // Rate-limit auth mutation endpoints (5 req/min per IP) to prevent magic-link spam
   app.use(
     '/api/auth/*',
@@ -100,6 +118,8 @@ export function buildApp(deps: AppDeps) {
       db: deps.db,
       prompts: deps.prompts,
       openaiApiKey: deps.openaiApiKey,
+      workspaceDir: deps.workspaceDir,
+      skills: deps.skills,
       nowMs: deps.nowMs,
     }));
   }
@@ -111,6 +131,21 @@ export function buildApp(deps: AppDeps) {
   // Usage routes (protected)
   app.use('/api/usage/*', authGuard({ db: deps.db, jwt: deps.jwt, nowMs: deps.nowMs }));
   app.route('/api/usage', createUsageRoutes({ db: deps.db, nowMs: deps.nowMs }));
+
+  // Workspace routes (protected, only if workspaceDir provided)
+  if (deps.workspaceDir) {
+    app.use('/api/workspace/*', authGuard({ db: deps.db, jwt: deps.jwt, nowMs: deps.nowMs }));
+    app.use('/api/workspace', authGuard({ db: deps.db, jwt: deps.jwt, nowMs: deps.nowMs }));
+    app.route('/api/workspace', createWorkspaceRoutes({ db: deps.db, workspaceDir: deps.workspaceDir }));
+
+    // Attachment routes (protected, within workspace)
+    app.use('/api/attachments/*', authGuard({ db: deps.db, jwt: deps.jwt, nowMs: deps.nowMs }));
+    app.use('/api/attachments', authGuard({ db: deps.db, jwt: deps.jwt, nowMs: deps.nowMs }));
+    app.route('/api/attachments', createAttachmentRoutes({ db: deps.db, workspaceDir: deps.workspaceDir, nowMs: deps.nowMs }));
+
+    // WebDAV routes — own auth (Bearer/Basic JWT with scope=webdav), CSRF bypassed in csrf.ts
+    app.route('/webdav', createWebDAVRoutes({ workspaceDir: deps.workspaceDir, jwt: deps.jwt }));
+  }
 
   // E2E-only helpers. Gated behind E2E=1 to prevent leakage.
   if (process.env.E2E === '1' && process.env.NODE_ENV !== 'production') {
