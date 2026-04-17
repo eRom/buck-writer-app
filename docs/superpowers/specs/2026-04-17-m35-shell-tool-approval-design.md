@@ -96,7 +96,7 @@ shell_execute({
 - Timeout : 30 secondes (SIGKILL)
 - Max buffer : 100KB (stdout + stderr combinés)
 - CWD : `cwd` si fourni (validé dans workspaceDir), sinon workspaceDir
-- Environnement : hérité du process parent, pas de secrets injectés
+- Environnement : PATH verrouillé à `/usr/local/bin:/usr/bin:/bin`, pas de secrets injectés
 
 ### Résultat retourné au modèle
 
@@ -145,7 +145,7 @@ Dernière ligne de défense contre les hallucinations destructives du modèle. V
 
 - Fond sombre, font mono (style terminal)
 - **Header** : `$ commande` + badge exit code (vert si 0, rouge sinon)
-- **Body** : stdout en blanc, stderr en rouge/orange
+- **Body** : stdout en blanc, stderr en rouge/orange. Codes ANSI strippés (pas de lib de rendu couleur)
 - **Collapsible** si output > 10 lignes : affiche les 5 premières + "voir plus"
 - **Indicateurs** :
   - Si tronqué : "(output tronqué à 100KB)"
