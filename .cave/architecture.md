@@ -1,6 +1,6 @@
 # Architecture — Buck Writer
 
-> Derniere mise a jour : 2026-04-17
+> Derniere mise a jour : 2026-04-17 (M2 complete)
 
 ## Vue d'ensemble
 
@@ -40,7 +40,17 @@ buck-writer-app/
 
 ## Modules
 
-- **Auth** : magic link (Resend), JWT, session cookie, authGuard middleware
+- **Auth** : magic link (Resend), JWT, session cookie, authGuard middleware, dev-login bypass (E2E)
 - **Sessions** : CRUD complet, soft delete, recherche titre, pagination cursor
-- **Chat** : streaming OpenAI, persistence messages, usage tracking, titre auto-genere
-- **UI** : ChatLayout (sidebar collapsible), SessionList (groupee par date), ChatArea, MarkdownRenderer
+- **Chat** : streaming OpenAI, persistence messages, usage tracking, titre auto-genere, budget-guard middleware (429 si budget depasse)
+- **Settings** : GET/PATCH /api/settings (modele, effort, budget, reset day, hard stop)
+- **Usage** : GET /api/usage/current (total cout, % budget, alertes 80%/100%)
+- **Budget** : middleware budget-guard, alert triggers dans onFinish, provider limit catch (429 OpenAI → 502)
+- **UI** : ChatLayout (sidebar collapsible), SessionList (groupee par date), ChatArea, MarkdownRenderer, UserMenu (popover sidebar footer), Settings page (/settings avec 3 sections), BudgetBanner
+
+## DX
+
+- `.env.development` (versionne) override les chemins Docker pour le dev local
+- `loadDotenv()` custom dans `utils/find-up.ts` — remonte les dossiers parents, charge `.env.development` > `.env`
+- Auto-migrate + auto-seed au demarrage serveur (index.ts)
+- `GET /api/__e2e__/dev-login?email=...` — connexion instantanee sans magic link (E2E=1)

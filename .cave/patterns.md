@@ -1,6 +1,6 @@
 # Patterns et conventions — Buck Writer
 
-> Derniere mise a jour : 2026-04-17
+> Derniere mise a jour : 2026-04-17 (M2 complete)
 
 ## Architecture
 
@@ -24,6 +24,10 @@
 - **Auth** : JWT dans cookie `buck_session`, CSRF dans cookie `buck_csrf` + header `x-csrf-token`
 - **Streaming** : `streamText()` serveur → `toTextStreamResponse()` → fetch + ReadableStream client
 - **Soft delete** : `deletedAt` timestamp nullable, filtre `isNull(deletedAt)` partout
+- **Settings upsert** : `getOrCreateSettings(db, userId)` — insere defaults si pas de row, retourne toujours un row
+- **Budget guard** : middleware Hono avant chat, SUM(costUsd) sur la periode courante, 429 si depasse
+- **Alert triggers** : insert dans `alertTriggers` dans onFinish quand un seuil est franchi (idempotent)
+- **Env loading** : `loadDotenv()` custom, charge `.env.development` > `.env`, pas de dep externe
 
 ## Tests
 

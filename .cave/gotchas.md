@@ -1,6 +1,6 @@
 # Gotchas — Buck Writer
 
-> Derniere mise a jour : 2026-04-17
+> Derniere mise a jour : 2026-04-17 (M2 complete)
 
 ## AI SDK v6 — API cassantes
 
@@ -45,3 +45,33 @@
 - La route `__e2e__/last-token` est gatee par `E2E=1 && NODE_ENV !== 'production'`
 - Il faut seeder la DB e2e (sinon le user n'existe pas et `{"sent":true}` est retourne sans generer de token)
 - `tsx watch` avec des env inline perd les variables au reload → utiliser `env $(grep ...)` ou `tsx` sans watch
+
+## dotenv / loadDotenv
+
+- `dotenv` (npm) est CJS — tsup le bundle en ESM et crash avec `Dynamic require of "fs" is not supported`
+- **Solution** : `loadDotenv()` custom dans `utils/find-up.ts`, zero dep, parse KEY=VALUE, gere les quotes
+- Le `.env.development` est charge en premier (priorite), puis `.env` comble les vars manquantes
+- `loadDotenv()` ne surcharge PAS les vars deja dans `process.env`
+- Ne PAS mettre `loadDotenv()` au top-level de `migrate.ts`/`seed.ts` — ca cree des problemes d'ordre d'import quand importe par `index.ts`. Le mettre uniquement dans le bloc CLI (`if import.meta.url === ...`)
+
+## Budget guard / Usage
+
+- La requete SUM(costUsd) doit filtrer par `periodStart <= createdAt < periodEnd` (pas juste `>= periodStart`)
+- `getOrCreateSettings()` doit etre appele dans le budget-guard — sinon un user sans row settings bypass le hard stop
+- Les `alertTriggers` sont keys par `yearMonth` derive de `periodStart` (pas du mois courant)
+
+## Session implicite (premier message)
+
+- Quand le premier message cree une session implicite, le `x-session-id` header trigger un `useEffect[sessionId]` qui fetchMessages() → retourne vide (messages pas encore persistes)
+- **Fix** : `createdSessionRef` dans ChatArea pour skip le reload quand on vient de creer la session
+
+## Rate limiter auth
+
+- Le rate limiter sur `/api/auth/*` bloquait aussi `/api/auth/me` (appele a chaque navigation)
+- **Fix** : monter `/api/auth/me` AVANT le rate limiter dans app.ts
+
+## DATABASE_URL relatif
+
+- `DATABASE_URL=file:./data/buck.db` est relatif au cwd du process
+- tsx lance depuis `packages/api/` donc la DB est dans `packages/api/data/buck.db`
+- Le `.env.development` doit refléter ce cwd, pas la racine monorepo
