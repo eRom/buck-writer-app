@@ -1,3 +1,6 @@
+import { loadDotenv } from '../utils/find-up.js';
+loadDotenv();
+
 import Database from 'better-sqlite3';
 import { newId } from '@buck/shared';
 

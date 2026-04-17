@@ -1,4 +1,8 @@
 import { z } from 'zod';
+import { loadDotenv } from './utils/find-up.js';
+
+// Load .env from closest parent directory (works in worktrees, monorepo root, Docker)
+loadDotenv();
 
 const Schema = z.object({
   NODE_ENV: z.enum(['development', 'test', 'production']).default('development'),
