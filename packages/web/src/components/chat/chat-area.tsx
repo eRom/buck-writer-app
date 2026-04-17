@@ -5,6 +5,7 @@ import type { AttachmentResponse } from '@buck/shared';
 import { MessageBubble } from './message-bubble';
 import { ChatInput } from './chat-input';
 import type { PendingAttachment } from './attachment-preview';
+import { ApprovalBlock } from './approval-block';
 import { BudgetBanner } from './budget-banner';
 import { fetchMessages } from '@/lib/sessions';
 import { fetchUsageCurrent } from '@/lib/settings';
@@ -16,6 +17,20 @@ interface ChatMessage {
   id: string;
   role: 'user' | 'assistant';
   content: string;
+  toolMetas?: Array<{
+    toolCallId: string;
+    toolName: string;
+    args: Record<string, unknown>;
+    status: 'approved' | 'denied' | 'auto' | 'blocked';
+    result?: Record<string, unknown>;
+  }>;
+}
+
+interface PendingApproval {
+  toolCallId: string;
+  toolName: string;
+  args: Record<string, unknown>;
+  messageHistory: Array<{ role: string; content: string }>;
 }
 
 interface ChatAreaProps {
@@ -35,6 +50,7 @@ export function ChatArea({ sessionId, onSessionCreated }: ChatAreaProps) {
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [references, setReferences] = useState<Array<{ path: string; content: string }>>([]);
+  const [pendingApproval, setPendingApproval] = useState<PendingApproval | null>(null);
   const [budgetExceeded, setBudgetExceeded] = useState<{
     totalUsd: number;
     limitUsd: number;
@@ -94,6 +110,7 @@ export function ChatArea({ sessionId, onSessionCreated }: ChatAreaProps) {
             return m.contentJson;
           }
         })(),
+        toolMetas: m.toolMeta ? JSON.parse(m.toolMeta) : undefined,
       }));
       setMessages(loaded);
     });
@@ -228,6 +245,24 @@ export function ChatArea({ sessionId, onSessionCreated }: ChatAreaProps) {
         );
       }
 
+      // Check if the response contains a tool requiring approval
+      // When a tool returns requires_approval, the model typically mentions it
+      try {
+        const approvalMatch = accumulated.match(/"status"\s*:\s*"requires_approval".*?"toolName"\s*:\s*"([^"]+)".*?"args"\s*:\s*(\{[^}]+\})/s);
+        if (approvalMatch) {
+          const toolName = approvalMatch[1]!;
+          const args = JSON.parse(approvalMatch[2]!) as Record<string, unknown>;
+          setPendingApproval({
+            toolCallId: `call_${Date.now()}`,
+            toolName,
+            args,
+            messageHistory: allMessages,
+          });
+        }
+      } catch {
+        // Parsing error — not an approval response
+      }
+
       // Check usage after message completes
       try {
         const usageData = await fetchUsageCurrent();
@@ -265,6 +300,66 @@ export function ChatArea({ sessionId, onSessionCreated }: ChatAreaProps) {
     abortRef.current?.abort();
   }, []);
 
+  const handleApproval = useCallback(async (approved: boolean) => {
+    if (!pendingApproval) return;
+    const { toolName, args, messageHistory } = pendingApproval;
+    setPendingApproval(null);
+    setIsLoading(true);
+
+    const assistantId = localId();
+    setMessages((prev) => [...prev, { id: assistantId, role: 'assistant', content: '' }]);
+
+    try {
+      const controller = new AbortController();
+      abortRef.current = controller;
+
+      const res = await fetch('/api/chat', {
+        method: 'POST',
+        headers: {
+          'content-type': 'application/json',
+          [CSRF_HEADER]: readCsrfCookie(),
+        },
+        credentials: 'include',
+        signal: controller.signal,
+        body: JSON.stringify({
+          sessionId: sessionIdRef.current,
+          model,
+          messages: messageHistory,
+          toolApproval: {
+            toolCallId: pendingApproval.toolCallId,
+            toolName,
+            args,
+            approved,
+          },
+        }),
+      });
+
+      if (!res.ok) throw new Error(`API error ${res.status}`);
+
+      const reader = res.body?.getReader();
+      if (!reader) throw new Error('No response body');
+
+      const decoder = new TextDecoder();
+      let accumulated = '';
+
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        accumulated += decoder.decode(value, { stream: true });
+        const current = accumulated;
+        setMessages((prev) =>
+          prev.map((m) => (m.id === assistantId ? { ...m, content: current } : m)),
+        );
+      }
+    } catch (err) {
+      if ((err as Error).name === 'AbortError') return;
+      console.error('[chat] approval resume error:', err);
+    } finally {
+      setIsLoading(false);
+      abortRef.current = null;
+    }
+  }, [pendingApproval, model]);
+
   return (
     <>
       {budgetExceeded && (
@@ -286,6 +381,7 @@ export function ChatArea({ sessionId, onSessionCreated }: ChatAreaProps) {
               key={m.id}
               role={m.role}
               content={m.content}
+              toolMetas={m.toolMetas}
             />
           ))}
           {isLoading && messages[messages.length - 1]?.role !== 'assistant' && (
@@ -297,6 +393,18 @@ export function ChatArea({ sessionId, onSessionCreated }: ChatAreaProps) {
           )}
         </div>
       </div>
+
+      {pendingApproval && (
+        <div className="mx-auto max-w-3xl px-4 pb-2">
+          <ApprovalBlock
+            toolName={pendingApproval.toolName}
+            args={pendingApproval.args}
+            onApprove={() => handleApproval(true)}
+            onDeny={() => handleApproval(false)}
+            status="pending"
+          />
+        </div>
+      )}
 
       <ChatInput
         value={input}
