@@ -1,7 +1,9 @@
-import { useRef, type KeyboardEvent, type DragEvent, type ClipboardEvent } from 'react';
+import { useRef, useState, type KeyboardEvent, type DragEvent, type ClipboardEvent } from 'react';
 import { ALLOWED_MIME_TYPES } from '@buck/shared';
+import type { FileEntry } from '@buck/shared';
 import { ModelSelector } from './model-selector';
 import { AttachmentPreview, type PendingAttachment } from './attachment-preview';
+import { AtReference } from './at-reference';
 
 interface ChatInputProps {
   value: string;
@@ -14,6 +16,8 @@ interface ChatInputProps {
   disabled?: boolean;
   pendingAttachments: PendingAttachment[];
   onAttachmentsChange: (attachments: PendingAttachment[]) => void;
+  workspaceEntries?: FileEntry[];
+  onReferenceSelect?: (path: string) => void;
 }
 
 const ACCEPT = ALLOWED_MIME_TYPES.join(',');
@@ -36,11 +40,18 @@ export function ChatInput({
   disabled,
   pendingAttachments,
   onAttachmentsChange,
+  workspaceEntries,
+  onReferenceSelect,
 }: ChatInputProps) {
   const ref = useRef<HTMLTextAreaElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const [atQuery, setAtQuery] = useState<string | null>(null);
 
   function handleKeyDown(e: KeyboardEvent<HTMLTextAreaElement>) {
+    // When @reference dropdown is open, let it handle navigation keys
+    if (atQuery !== null && ['ArrowDown', 'ArrowUp', 'Enter', 'Escape'].includes(e.key)) {
+      return;
+    }
     if (e.key === 'Enter' && !e.shiftKey) {
       e.preventDefault();
       if (!isLoading && (value.trim() || pendingAttachments.length > 0)) onSubmit();
@@ -85,11 +96,50 @@ export function ChatInput({
     onAttachmentsChange(updated);
   }
 
+  function handleChange(newValue: string) {
+    onChange(newValue);
+
+    // Detect @reference
+    const cursorPos = ref.current?.selectionStart ?? newValue.length;
+    const textBeforeCursor = newValue.slice(0, cursorPos);
+    const atMatch = textBeforeCursor.match(/@([^\s]*)$/);
+
+    if (atMatch) {
+      setAtQuery(atMatch[1]!);
+    } else {
+      setAtQuery(null);
+    }
+  }
+
+  function handleReferenceSelect(filePath: string) {
+    // Replace @query with @filepath in the input
+    const cursorPos = ref.current?.selectionStart ?? value.length;
+    const textBeforeCursor = value.slice(0, cursorPos);
+    const atMatch = textBeforeCursor.match(/@([^\s]*)$/);
+
+    if (atMatch) {
+      const before = textBeforeCursor.slice(0, atMatch.index!);
+      const after = value.slice(cursorPos);
+      onChange(`${before}@${filePath} ${after}`);
+    }
+
+    setAtQuery(null);
+    onReferenceSelect?.(filePath);
+  }
+
   return (
     <div className={`border-t border-border p-3${disabled ? ' opacity-50' : ''}`}>
       <div className="mx-auto max-w-3xl">
         <AttachmentPreview attachments={pendingAttachments} onRemove={handleRemove} />
-        <div className="flex items-end gap-2" onDrop={handleDrop} onDragOver={handleDragOver}>
+        <div className="relative flex items-end gap-2" onDrop={handleDrop} onDragOver={handleDragOver}>
+          {atQuery !== null && workspaceEntries && (
+            <AtReference
+              query={atQuery}
+              entries={workspaceEntries}
+              onSelect={handleReferenceSelect}
+              onClose={() => setAtQuery(null)}
+            />
+          )}
           <input
             ref={fileInputRef}
             type="file"
@@ -110,7 +160,7 @@ export function ChatInput({
           <textarea
             ref={ref}
             value={value}
-            onChange={(e) => onChange(e.target.value)}
+            onChange={(e) => handleChange(e.target.value)}
             onKeyDown={handleKeyDown}
             onPaste={handlePaste}
             placeholder="Ecris ton message..."

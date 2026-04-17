@@ -1,11 +1,15 @@
 import { useEffect, useRef, useState, useCallback } from 'react';
+import { useQuery } from '@tanstack/react-query';
 import { toast } from 'sonner';
+import type { AttachmentResponse } from '@buck/shared';
 import { MessageBubble } from './message-bubble';
 import { ChatInput } from './chat-input';
 import type { PendingAttachment } from './attachment-preview';
 import { BudgetBanner } from './budget-banner';
 import { fetchMessages } from '@/lib/sessions';
 import { fetchUsageCurrent } from '@/lib/settings';
+import { fetchWorkspaceTree } from '@/lib/workspace';
+import { uploadAttachments } from '@/lib/attachments';
 import { readCsrfCookie, CSRF_HEADER } from '@/lib/csrf';
 
 interface ChatMessage {
@@ -30,6 +34,7 @@ export function ChatArea({ sessionId, onSessionCreated }: ChatAreaProps) {
   const [pendingAttachments, setPendingAttachments] = useState<PendingAttachment[]>([]);
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [isLoading, setIsLoading] = useState(false);
+  const [references, setReferences] = useState<Array<{ path: string; content: string }>>([]);
   const [budgetExceeded, setBudgetExceeded] = useState<{
     totalUsd: number;
     limitUsd: number;
@@ -42,6 +47,28 @@ export function ChatArea({ sessionId, onSessionCreated }: ChatAreaProps) {
   const alert80ShownRef = useRef(false);
   // Track sessions created in this component to skip reload
   const createdSessionRef = useRef<string | null>(null);
+
+  // Workspace tree for @reference autocomplete
+  const { data: wsTree } = useQuery({
+    queryKey: ['workspace-tree'],
+    queryFn: fetchWorkspaceTree,
+    refetchInterval: 30_000,
+  });
+
+  // Handle @reference selection — fetch file content
+  const handleReferenceSelect = useCallback(async (filePath: string) => {
+    try {
+      const res = await fetch(`/api/workspace/file?path=${encodeURIComponent(filePath)}`, {
+        credentials: 'include',
+      });
+      if (res.ok) {
+        const content = await res.text();
+        setReferences((prev) => [...prev, { path: filePath, content }]);
+      }
+    } catch {
+      // Ignore fetch errors
+    }
+  }, []);
 
   // Load existing messages when switching sessions
   useEffect(() => {
@@ -112,6 +139,21 @@ export function ChatArea({ sessionId, onSessionCreated }: ChatAreaProps) {
     // Add empty assistant message for streaming
     setMessages((prev) => [...prev, { id: assistantId, role: 'assistant', content: '' }]);
 
+    // Upload pending attachments
+    let uploadedAttachments: AttachmentResponse[] = [];
+    if (pendingAttachments.length > 0) {
+      try {
+        uploadedAttachments = await uploadAttachments(pendingAttachments.map((a) => a.file));
+      } catch (err) {
+        console.error('[chat] attachment upload failed:', err);
+      }
+      setPendingAttachments([]);
+    }
+
+    // Snapshot and clear references
+    const currentReferences = references.length > 0 ? [...references] : [];
+    setReferences([]);
+
     try {
       const controller = new AbortController();
       abortRef.current = controller;
@@ -128,6 +170,10 @@ export function ChatArea({ sessionId, onSessionCreated }: ChatAreaProps) {
           sessionId: sessionIdRef.current,
           model,
           messages: allMessages,
+          ...(uploadedAttachments.length > 0
+            ? { attachmentIds: uploadedAttachments.map((a) => a.id) }
+            : {}),
+          ...(currentReferences.length > 0 ? { references: currentReferences } : {}),
         }),
       });
 
@@ -213,7 +259,7 @@ export function ChatArea({ sessionId, onSessionCreated }: ChatAreaProps) {
       setIsLoading(false);
       abortRef.current = null;
     }
-  }, [input, isLoading, messages, model, onSessionCreated, budgetExceeded]);
+  }, [input, isLoading, messages, model, onSessionCreated, budgetExceeded, pendingAttachments, references]);
 
   const handleStop = useCallback(() => {
     abortRef.current?.abort();
@@ -263,6 +309,8 @@ export function ChatArea({ sessionId, onSessionCreated }: ChatAreaProps) {
         disabled={!!budgetExceeded}
         pendingAttachments={pendingAttachments}
         onAttachmentsChange={setPendingAttachments}
+        workspaceEntries={wsTree?.tree}
+        onReferenceSelect={handleReferenceSelect}
       />
     </>
   );
