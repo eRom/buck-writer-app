@@ -163,7 +163,7 @@ export function createChatRoute(
               cwd: resolvedCwd,
               timeout: SHELL_TIMEOUT_MS,
               maxBuffer: SHELL_MAX_BUFFER,
-              env: { ...process.env, PATH: SAFE_PATH },
+              env: { PATH: SAFE_PATH, HOME: '/tmp', TERM: 'dumb' },
             });
             return {
               stdout: stdout || '',
@@ -466,22 +466,36 @@ export function createChatRoute(
             .run();
         }
 
-        // Extract tool metadata from response steps
+        // Extract tool metadata from response steps (AI SDK v6 format)
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         const toolMetas: Array<Record<string, unknown>> = [];
         if (response?.messages) {
-          for (const msg of response.messages) {
-            // eslint-disable-next-line @typescript-eslint/no-explicit-any
-            const m = msg as any;
-            if (m.role === 'assistant' && Array.isArray(m.toolInvocations)) {
-              for (const inv of m.toolInvocations) {
-                toolMetas.push({
-                  toolCallId: inv.toolCallId,
-                  toolName: inv.toolName,
-                  args: inv.args,
-                  status: inv.result?.status ?? 'auto',
-                  result: inv.result,
-                });
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          const msgs = response.messages as any[];
+          for (let i = 0; i < msgs.length; i++) {
+            const m = msgs[i];
+            // AI SDK v6: assistant messages have content array with tool-call parts
+            if (m.role === 'assistant' && Array.isArray(m.content)) {
+              for (const part of m.content) {
+                if (part.type === 'tool-call') {
+                  // Find matching tool-result in the next message
+                  const nextMsg = msgs[i + 1];
+                  let toolResult: unknown = undefined;
+                  if (nextMsg?.role === 'tool' && Array.isArray(nextMsg.content)) {
+                    const resultPart = nextMsg.content.find(
+                      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+                      (p: any) => p.type === 'tool-result' && p.toolCallId === part.toolCallId,
+                    );
+                    if (resultPart) toolResult = resultPart.result;
+                  }
+                  toolMetas.push({
+                    toolCallId: part.toolCallId,
+                    toolName: part.toolName,
+                    args: part.args,
+                    status: (toolResult as Record<string, unknown>)?.status ?? 'auto',
+                    result: toolResult,
+                  });
+                }
               }
             }
           }

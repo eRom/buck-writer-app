@@ -2,6 +2,9 @@ const DESTRUCTIVE_PATTERNS: RegExp[] = [
   // rm targeting absolute system paths (NOT relative paths like workspace/...)
   /\brm\s+(-[a-zA-Z]*f[a-zA-Z]*\s+)?\/([^w\s]|$)/,
   /\brm\s+-rf\s+\/\*/,
+  /\brm\s+--no-preserve-root\b/,
+  // Remote code execution
+  /\b(curl|wget)\b.*\|\s*(sh|bash|zsh)\b/,
   // Disk format / wipe
   /\bmkfs\b/,
   /\bdd\s+.*of=\/dev\//,
