@@ -175,15 +175,16 @@ export const userSettings = sqliteTable('user_settings', {
   userId: text('user_id')
     .primaryKey()
     .references(() => users.id, { onDelete: 'cascade' }),
-  monthlyCostLimitUsd: real('monthly_cost_limit_usd').notNull().default(50),
+  monthlyCostLimitUsd: real('monthly_cost_limit_usd').notNull().default(20),
   alertThresholdsJson: text('alert_thresholds_json')
     .notNull()
-    .default('[50,80,95]'),
+    .default('[80,100]'),
   hardStop: integer('hard_stop').notNull().default(1),
   defaultModel: text('default_model').notNull().default('gpt-5.4-mini'),
   defaultReasoningEffort: text('default_reasoning_effort')
     .notNull()
     .default('low'),
+  billingResetDay: integer('billing_reset_day').notNull().default(1),
 });
 
 // ---------- mcp ----------
