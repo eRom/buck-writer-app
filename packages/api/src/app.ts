@@ -16,6 +16,7 @@ import {
 } from './routes/chat.js';
 import { createSettingsRoutes } from './routes/settings.js';
 import { createUsageRoutes } from './routes/usage.js';
+import { createWorkspaceRoutes } from './routes/workspace.js';
 import type { Prompts } from './services/prompts.js';
 import { authGuard } from './middleware/auth.js';
 import { securityHeaders } from './middleware/security-headers.js';
@@ -28,6 +29,11 @@ import { sha256Hex } from './utils/crypto.js';
 export interface AppDeps extends AuthRoutesDeps, SessionRoutesDeps {
   prompts?: Prompts;
   openaiApiKey?: string;
+  /**
+   * Absolute path to the user workspace directory. When provided, workspace
+   * file-management routes are mounted at /api/workspace.
+   */
+  workspaceDir?: string;
   /**
    * Absolute path to the built SPA (Vite dist/). If provided, Hono serves
    * it as static and falls back to index.html for non-/api paths. Leave
@@ -111,6 +117,13 @@ export function buildApp(deps: AppDeps) {
   // Usage routes (protected)
   app.use('/api/usage/*', authGuard({ db: deps.db, jwt: deps.jwt, nowMs: deps.nowMs }));
   app.route('/api/usage', createUsageRoutes({ db: deps.db, nowMs: deps.nowMs }));
+
+  // Workspace routes (protected, only if workspaceDir provided)
+  if (deps.workspaceDir) {
+    app.use('/api/workspace/*', authGuard({ db: deps.db, jwt: deps.jwt, nowMs: deps.nowMs }));
+    app.use('/api/workspace', authGuard({ db: deps.db, jwt: deps.jwt, nowMs: deps.nowMs }));
+    app.route('/api/workspace', createWorkspaceRoutes({ db: deps.db, workspaceDir: deps.workspaceDir }));
+  }
 
   // E2E-only helpers. Gated behind E2E=1 to prevent leakage.
   if (process.env.E2E === '1' && process.env.NODE_ENV !== 'production') {
