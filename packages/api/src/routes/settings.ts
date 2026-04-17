@@ -3,6 +3,7 @@ import { eq } from 'drizzle-orm';
 import { UpdateSettingsInput } from '@buck/shared';
 import type { DbHandles } from '../db/client.js';
 import { userSettings } from '../db/schema.js';
+import { getOrCreateSettings } from '../services/user-settings.js';
 
 export interface SettingsRouteDeps {
   db: DbHandles;
@@ -19,27 +20,6 @@ function formatSettings(row: UserSettingsRow) {
     hardStop: row.hardStop === 1,
     billingResetDay: row.billingResetDay,
   };
-}
-
-function getOrCreateSettings(db: DbHandles, userId: string): UserSettingsRow {
-  const existing = db.db
-    .select()
-    .from(userSettings)
-    .where(eq(userSettings.userId, userId))
-    .get();
-
-  if (existing) return existing;
-
-  db.db.insert(userSettings).values({ userId }).run();
-
-  const created = db.db
-    .select()
-    .from(userSettings)
-    .where(eq(userSettings.userId, userId))
-    .get();
-
-  if (!created) throw new Error('Failed to create user settings');
-  return created;
 }
 
 export function createSettingsRoutes(

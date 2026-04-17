@@ -1,9 +1,10 @@
 import type { Context, Next } from 'hono';
-import { eq, and, gte } from 'drizzle-orm';
+import { and, eq, gte, lt } from 'drizzle-orm';
 import { sql } from 'drizzle-orm';
 import { getBillingPeriod } from '@buck/shared';
 import type { DbHandles } from '../db/client.js';
-import { usageEvents, userSettings } from '../db/schema.js';
+import { usageEvents } from '../db/schema.js';
+import { getOrCreateSettings } from '../services/user-settings.js';
 
 export interface BudgetGuardDeps {
   db: DbHandles;
@@ -17,17 +18,7 @@ export function budgetGuard(deps: BudgetGuardDeps) {
     const userId = c.get('userId');
     const nowMs = now();
 
-    const settings = deps.db.db
-      .select()
-      .from(userSettings)
-      .where(eq(userSettings.userId, userId))
-      .get();
-
-    // No settings yet — use defaults, don't block
-    if (!settings) {
-      await next();
-      return;
-    }
+    const settings = getOrCreateSettings(deps.db, userId);
 
     // If hard stop disabled, pass through
     if (settings.hardStop === 0) {
@@ -44,6 +35,7 @@ export function budgetGuard(deps: BudgetGuardDeps) {
         and(
           eq(usageEvents.userId, userId),
           gte(usageEvents.createdAt, period.periodStart),
+          lt(usageEvents.createdAt, period.periodEnd),
         ),
       )
       .get();

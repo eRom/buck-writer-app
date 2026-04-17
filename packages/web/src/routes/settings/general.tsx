@@ -25,14 +25,26 @@ function SettingsGeneral() {
 
   async function handleModelChange(value: string) {
     setModel(value);
-    await updateSettings({ defaultModel: value });
-    toast.success('Modèle par défaut mis à jour');
+    try {
+      await updateSettings({ defaultModel: value });
+      toast.success('Modèle par défaut mis à jour');
+    } catch {
+      toast.error('Erreur lors de la mise à jour');
+      const s = await fetchSettings();
+      setModel(s.defaultModel);
+    }
   }
 
   async function handleEffortChange(value: string) {
     setEffort(value);
-    await updateSettings({ defaultReasoningEffort: value });
-    toast.success('Effort de raisonnement mis à jour');
+    try {
+      await updateSettings({ defaultReasoningEffort: value });
+      toast.success('Effort de raisonnement mis à jour');
+    } catch {
+      toast.error('Erreur lors de la mise à jour');
+      const s = await fetchSettings();
+      setEffort(s.defaultReasoningEffort);
+    }
   }
 
   if (loading) return <div className="text-muted-foreground">Chargement...</div>;

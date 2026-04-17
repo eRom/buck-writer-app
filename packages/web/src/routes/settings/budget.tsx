@@ -29,26 +29,39 @@ function SettingsBudget() {
       setLimitInput(String(settings?.monthlyCostLimitUsd ?? 20));
       return;
     }
-    const updated = await updateSettings({ monthlyCostLimitUsd: value });
-    setSettings(updated);
-    const u = await fetchUsageCurrent();
-    setUsage(u);
-    toast.success('Limite mise à jour');
+    try {
+      const updated = await updateSettings({ monthlyCostLimitUsd: value });
+      setSettings(updated);
+      const u = await fetchUsageCurrent();
+      setUsage(u);
+      toast.success('Limite mise à jour');
+    } catch {
+      toast.error('Erreur lors de la mise à jour');
+      setLimitInput(String(settings?.monthlyCostLimitUsd ?? 20));
+    }
   }
 
   async function handleResetDayChange(day: number) {
-    const updated = await updateSettings({ billingResetDay: day });
-    setSettings(updated);
-    const u = await fetchUsageCurrent();
-    setUsage(u);
-    toast.success('Jour de reset mis à jour');
+    try {
+      const updated = await updateSettings({ billingResetDay: day });
+      setSettings(updated);
+      const u = await fetchUsageCurrent();
+      setUsage(u);
+      toast.success('Jour de reset mis à jour');
+    } catch {
+      toast.error('Erreur lors de la mise à jour');
+    }
   }
 
   async function handleHardStopToggle() {
     if (!settings) return;
-    const updated = await updateSettings({ hardStop: !settings.hardStop });
-    setSettings(updated);
-    toast.success(updated.hardStop ? 'Hard stop activé' : 'Hard stop désactivé');
+    try {
+      const updated = await updateSettings({ hardStop: !settings.hardStop });
+      setSettings(updated);
+      toast.success(updated.hardStop ? 'Hard stop activé' : 'Hard stop désactivé');
+    } catch {
+      toast.error('Erreur lors de la mise à jour');
+    }
   }
 
   if (loading || !settings || !usage) {

@@ -1,36 +1,13 @@
 import { Hono } from 'hono';
-import { sql, eq, and, gte } from 'drizzle-orm';
+import { sql, eq, and, gte, lt } from 'drizzle-orm';
 import { getBillingPeriod } from '@buck/shared';
 import type { DbHandles } from '../db/client.js';
-import { usageEvents, userSettings, alertTriggers } from '../db/schema.js';
+import { usageEvents, alertTriggers } from '../db/schema.js';
+import { getOrCreateSettings } from '../services/user-settings.js';
 
 export interface UsageRouteDeps {
   db: DbHandles;
   nowMs?: () => number;
-}
-
-function getOrCreateSettings(
-  db: DbHandles,
-  userId: string,
-): typeof userSettings.$inferSelect {
-  const existing = db.db
-    .select()
-    .from(userSettings)
-    .where(eq(userSettings.userId, userId))
-    .get();
-
-  if (existing) return existing;
-
-  db.db.insert(userSettings).values({ userId }).run();
-
-  const created = db.db
-    .select()
-    .from(userSettings)
-    .where(eq(userSettings.userId, userId))
-    .get();
-
-  if (!created) throw new Error('Failed to create user settings');
-  return created;
 }
 
 export function createUsageRoutes(
@@ -53,6 +30,7 @@ export function createUsageRoutes(
         and(
           eq(usageEvents.userId, userId),
           gte(usageEvents.createdAt, period.periodStart),
+          lt(usageEvents.createdAt, period.periodEnd),
         ),
       )
       .get();

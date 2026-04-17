@@ -1,5 +1,5 @@
 import { Hono } from 'hono';
-import { eq, and, isNull, gte } from 'drizzle-orm';
+import { eq, and, isNull, gte, lt } from 'drizzle-orm';
 import { sql } from 'drizzle-orm';
 import { streamText, generateText } from 'ai';
 import { createOpenAI } from '@ai-sdk/openai';
@@ -224,6 +224,7 @@ export function createChatRoute(
               and(
                 eq(usageEvents.userId, userId),
                 gte(usageEvents.createdAt, period.periodStart),
+                lt(usageEvents.createdAt, period.periodEnd),
               ),
             )
             .get();

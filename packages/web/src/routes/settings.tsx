@@ -3,9 +3,12 @@ import { fetchMe } from '@/lib/session';
 import { ArrowLeft, Settings, Wallet, User } from 'lucide-react';
 
 export const Route = createFileRoute('/settings')({
-  beforeLoad: async () => {
+  beforeLoad: async ({ location }) => {
     const me = await fetchMe();
     if (!me) throw redirect({ to: '/login' });
+    if (location.pathname === '/settings' || location.pathname === '/settings/') {
+      throw redirect({ to: '/settings/general' });
+    }
     return { me };
   },
   component: SettingsLayout,

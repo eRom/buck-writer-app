@@ -37,9 +37,11 @@ export function ChatArea({ sessionId, onSessionCreated }: ChatAreaProps) {
   const abortRef = useRef<AbortController | null>(null);
   const sessionIdRef = useRef(sessionId);
   sessionIdRef.current = sessionId;
+  const alert80ShownRef = useRef(false);
 
   // Load existing messages when switching sessions
   useEffect(() => {
+    alert80ShownRef.current = false;
     if (!sessionId) {
       setMessages([]);
       return;
@@ -60,6 +62,18 @@ export function ChatArea({ sessionId, onSessionCreated }: ChatAreaProps) {
       setMessages(loaded);
     });
   }, [sessionId]);
+
+  // Clear budget banner when window regains focus (e.g. user updated limit in settings)
+  useEffect(() => {
+    if (!budgetExceeded) return;
+    function onFocus() {
+      fetchUsageCurrent().then((u) => {
+        if (u.percent < 100) setBudgetExceeded(null);
+      }).catch(() => {});
+    }
+    window.addEventListener('focus', onFocus);
+    return () => window.removeEventListener('focus', onFocus);
+  }, [budgetExceeded]);
 
   // Auto-scroll on new messages
   useEffect(() => {
@@ -162,7 +176,8 @@ export function ChatArea({ sessionId, onSessionCreated }: ChatAreaProps) {
         const usageData = await fetchUsageCurrent();
         if (usageData.percent >= 80 && usageData.percent < 100) {
           const alert80 = usageData.alerts.find((a) => a.percent === 80);
-          if (alert80?.triggeredAt) {
+          if (alert80?.triggeredAt && !alert80ShownRef.current) {
+            alert80ShownRef.current = true;
             toast.warning(`80% du budget mensuel consommé ($${usageData.totalUsd.toFixed(2)} / $${usageData.limitUsd.toFixed(2)})`);
           }
         }
