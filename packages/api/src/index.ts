@@ -15,6 +15,7 @@ import {
   createE2EEmailService,
 } from './services/email.js';
 import { loadPrompts } from './services/prompts.js';
+import { loadSkills, createSkillsWatcher } from './services/skills.js';
 
 
 const env = loadEnv();
@@ -57,6 +58,23 @@ const prompts = (() => {
   try { return loadPrompts(promptsDir); }
   catch { console.warn('[api] prompts/ not found, chat disabled'); return undefined; }
 })();
+// Load workspace skills (hot-reloaded via chokidar watcher)
+const skills = await loadSkills(env.WORKSPACE_DIR);
+console.warn(`[api] skills loaded (${skills.size})`);
+
+if (process.env.NODE_ENV !== 'test') {
+  const skillsWatcher = createSkillsWatcher(env.WORKSPACE_DIR, (reloaded) => {
+    skills.clear();
+    for (const [k, v] of reloaded) skills.set(k, v);
+    console.warn(`[api] skills reloaded (${skills.size})`);
+  });
+
+  // Graceful shutdown
+  const shutdown = () => { skillsWatcher.close().catch(() => {}); };
+  process.on('SIGINT', shutdown);
+  process.on('SIGTERM', shutdown);
+}
+
 const handles = openDb(env.DATABASE_URL);
 const jwt = createJwtService({
   secret: env.AUTH_JWT_SECRET,
@@ -86,6 +104,8 @@ const app = buildApp({
   webDistRoot: process.env.WEB_DIST_ROOT,
   prompts,
   openaiApiKey: env.OPENAI_API_KEY,
+  workspaceDir: env.WORKSPACE_DIR,
+  skills,
 });
 
 serve({ fetch: app.fetch, port: env.PORT, hostname: '0.0.0.0' }, (info) => {
