@@ -35,7 +35,7 @@ try {
   // Auto-seed if DB is empty (first run)
   const testDb = openDb(env.DATABASE_URL);
   const userCount = testDb.db.select().from(users).all().length;
-  testDb.close();
+  testDb.sqlite.close();
   if (userCount === 0) {
     runSeed({
       databaseUrl: env.DATABASE_URL,
