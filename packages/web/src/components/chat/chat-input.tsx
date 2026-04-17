@@ -9,6 +9,7 @@ interface ChatInputProps {
   isLoading: boolean;
   model: string;
   onModelChange: (model: string) => void;
+  disabled?: boolean;
 }
 
 export function ChatInput({
@@ -19,6 +20,7 @@ export function ChatInput({
   isLoading,
   model,
   onModelChange,
+  disabled,
 }: ChatInputProps) {
   const ref = useRef<HTMLTextAreaElement>(null);
 
@@ -30,9 +32,9 @@ export function ChatInput({
   }
 
   return (
-    <div className="border-t border-border p-3">
+    <div className={`border-t border-border p-3${disabled ? ' opacity-50' : ''}`}>
       <div className="mx-auto flex max-w-3xl items-end gap-2">
-        <ModelSelector value={model} onChange={onModelChange} disabled={isLoading} />
+        <ModelSelector value={model} onChange={onModelChange} disabled={isLoading || disabled} />
         <textarea
           ref={ref}
           value={value}
@@ -40,6 +42,7 @@ export function ChatInput({
           onKeyDown={handleKeyDown}
           placeholder="Ecris ton message..."
           rows={1}
+          disabled={disabled}
           className="flex-1 resize-none rounded-md border border-border bg-input px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-ring"
           style={{ maxHeight: '200px' }}
         />
@@ -53,7 +56,7 @@ export function ChatInput({
         ) : (
           <button
             onClick={onSubmit}
-            disabled={!value.trim()}
+            disabled={disabled || !value.trim()}
             className="rounded-md bg-primary px-3 py-2 text-sm text-primary-foreground disabled:opacity-50"
           >
             Envoyer
