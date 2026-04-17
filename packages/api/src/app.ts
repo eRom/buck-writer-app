@@ -2,6 +2,7 @@ import { Hono } from 'hono';
 import type { ContentfulStatusCode } from 'hono/utils/http-status';
 import { serveStatic } from '@hono/node-server/serve-static';
 import { eq } from 'drizzle-orm';
+import { newId } from '@buck/shared';
 import { healthRoute } from './routes/health.js';
 import { HttpError } from './utils/http-error.js';
 import { createAuthRoutes, type AuthRoutesDeps } from './routes/auth.js';
@@ -21,7 +22,8 @@ import { securityHeaders } from './middleware/security-headers.js';
 import { csrfMiddleware } from './middleware/csrf.js';
 import { createRateLimiter, ipKey } from './middleware/rate-limit.js';
 import { budgetGuard } from './middleware/budget-guard.js';
-import { users } from './db/schema.js';
+import { users, sessionsAuth } from './db/schema.js';
+import { sha256Hex } from './utils/crypto.js';
 
 export interface AppDeps extends AuthRoutesDeps, SessionRoutesDeps {
   prompts?: Prompts;
@@ -110,9 +112,33 @@ export function buildApp(deps: AppDeps) {
   app.use('/api/usage/*', authGuard({ db: deps.db, jwt: deps.jwt, nowMs: deps.nowMs }));
   app.route('/api/usage', createUsageRoutes({ db: deps.db, nowMs: deps.nowMs }));
 
-  // E2E-only test helper: exposes the latest magic-link raw token written by
-  // createE2EEmailService. Gated behind E2E=1 to prevent leakage.
+  // E2E-only helpers. Gated behind E2E=1 to prevent leakage.
   if (process.env.E2E === '1' && process.env.NODE_ENV !== 'production') {
+    const SESSION_TTL_SECONDS = 30 * 24 * 60 * 60;
+    const SESSION_TTL_MS = SESSION_TTL_SECONDS * 1000;
+
+    // Dev login: instant session, no magic link needed
+    // Usage: GET /api/__e2e__/dev-login?email=romain.ecarnot@gmail.com
+    app.get('/api/__e2e__/dev-login', async (c) => {
+      const email = c.req.query('email')?.toLowerCase();
+      if (!email) {
+        return c.json({ error: { code: 'missing', message: 'email required' } }, 400);
+      }
+      const user = deps.db.db.select().from(users).where(eq(users.email, email)).get();
+      if (!user) {
+        return c.json({ error: { code: 'not_found', message: 'user not found' } }, 404);
+      }
+      const ts = (deps.nowMs ?? Date.now)();
+      const sessionJwt = await deps.jwt.sign({ sub: user.id, scope: 'app' }, '30d');
+      deps.db.db.insert(sessionsAuth).values({
+        id: newId(), userId: user.id, tokenHash: sha256Hex(sessionJwt),
+        scope: 'app', userAgent: c.req.header('user-agent') ?? null,
+        expiresAt: ts + SESSION_TTL_MS, createdAt: ts,
+      }).run();
+      const cookie = `buck_session=${sessionJwt}; Path=/; HttpOnly; SameSite=Lax; Max-Age=${SESSION_TTL_SECONDS}`;
+      c.header('Set-Cookie', cookie);
+      return c.redirect('/');
+    });
     app.get('/api/__e2e__/last-token', async (c) => {
       const email = c.req.query('email');
       if (!email) {
