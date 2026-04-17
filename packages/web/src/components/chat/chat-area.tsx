@@ -2,6 +2,7 @@ import { useEffect, useRef, useState, useCallback } from 'react';
 import { toast } from 'sonner';
 import { MessageBubble } from './message-bubble';
 import { ChatInput } from './chat-input';
+import type { PendingAttachment } from './attachment-preview';
 import { BudgetBanner } from './budget-banner';
 import { fetchMessages } from '@/lib/sessions';
 import { fetchUsageCurrent } from '@/lib/settings';
@@ -26,6 +27,7 @@ function localId() {
 export function ChatArea({ sessionId, onSessionCreated }: ChatAreaProps) {
   const [model, setModel] = useState('gpt-5.4-mini');
   const [input, setInput] = useState('');
+  const [pendingAttachments, setPendingAttachments] = useState<PendingAttachment[]>([]);
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [budgetExceeded, setBudgetExceeded] = useState<{
@@ -259,6 +261,8 @@ export function ChatArea({ sessionId, onSessionCreated }: ChatAreaProps) {
         model={model}
         onModelChange={setModel}
         disabled={!!budgetExceeded}
+        pendingAttachments={pendingAttachments}
+        onAttachmentsChange={setPendingAttachments}
       />
     </>
   );

@@ -1,12 +1,15 @@
+import type { AttachmentResponse } from '@buck/shared';
 import { MarkdownRenderer } from './markdown-renderer';
+import { AttachmentDisplay } from './attachment-display';
 
 interface MessageBubbleProps {
   role: 'user' | 'assistant';
   content: string;
   model?: string | null;
+  attachments?: AttachmentResponse[];
 }
 
-export function MessageBubble({ role, content, model }: MessageBubbleProps) {
+export function MessageBubble({ role, content, model, attachments }: MessageBubbleProps) {
   const isUser = role === 'user';
 
   return (
@@ -18,6 +21,9 @@ export function MessageBubble({ role, content, model }: MessageBubbleProps) {
             : 'bg-muted text-foreground'
         }`}
       >
+        {attachments && attachments.length > 0 && (
+          <AttachmentDisplay attachments={attachments} />
+        )}
         {isUser ? (
           <p className="whitespace-pre-wrap text-sm">{content}</p>
         ) : (
