@@ -1,13 +1,13 @@
 C'est une demande d'un mec qui commence un livre (polar).
 Il voudrait être assisté par une IA
-C'est donc une "commande" (gratuit mais c'est une très bonne opportunité de me faire connaitre, en bien lol) 
+C'est donc une "commande" (gratuit mais c'est une très bonne opportunité de me faire connaitre, en bien lol)
 On va prendre son temps et fignoler ça ! (sécurité, tests, données)
 On reste en opensource avec des dépendences gratuites (Sauf IA)
 
 ## Projet
 
 - Assistant d'écrivain Live + Texte tournant sur OpenAI
-- OpenAI : 
+- OpenAI :
   - Model LLM : gpt-5.4, gpt-5.4-mini
   - Model Live : gpt-realtime-1.5
     - Voix : Toutes ID des voix OpenAI (Alloy, ...)
@@ -15,29 +15,31 @@ On reste en opensource avec des dépendences gratuites (Sauf IA)
 
 - Format : Type Web app car Desktop & Mobile ciblé
 
-- Deploy : 
+- Deploy :
   - Prod : Vercel + Cloudflare
   - Dev : Local sur Mac
 
-- Platform : 
+- Platform :
   - Windows / Mac (ciblé Windows, dev sur Mac) et Mobile
 
-- Mes Projets références : 
+- Mes Projets références :
   - Cruchot : /Users/recarnot/dev/claude-desktop-multi-llm
   - Trinity : /Users/recarnot/dev/trinity-lifeos-agent/voice-agent
   - Gerber : /Users/recarnot/dev/agent-brain
   - Fougasse : /Users/recarnot/dev/claude-desktop-mem
   - Bible (ecrivain) : /Users/recarnot/dev/barda-mcp-ecrivain-bible
 
-## Documentation 
+- ShadCN : Preset b1Gdz9c4A (https://ui.shadcn.com/create?preset=b1Gdz9c4A&template=vite-monorepo)
+
+## Documentation
 
 - https://developers.openai.com/api/reference/overview
 - OpenAI ChatKit ?
-- https://developers.openai.com/apps-sdk 
+- https://developers.openai.com/apps-sdk
 
 Il **faudra choisir** entre du code pure et app-sdk
 
-## Fonctionnalités 
+## Fonctionnalités
 
 - Inclure les fonctionnalités de :
  - /Users/recarnot/dev/barda-mcp-ecrivain-bible
