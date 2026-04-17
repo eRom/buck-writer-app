@@ -44,14 +44,7 @@ export function buildApp(deps: AppDeps) {
 
   app.route('/api/health', healthRoute);
 
-  // Rate-limit auth endpoints (5 req/min per IP) to prevent magic-link spam
-  app.use(
-    '/api/auth/*',
-    createRateLimiter({ windowMs: 60_000, max: 5, keyBy: ipKey }),
-  );
-  app.route('/api/auth', createAuthRoutes(deps));
-
-  // Protected route: /api/auth/me (guarded individually to avoid swallowing 404s)
+  // Protected route: /api/auth/me — mounted BEFORE rate limiter to avoid being throttled
   app.get(
     '/api/auth/me',
     authGuard({ db: deps.db, jwt: deps.jwt, nowMs: deps.nowMs }),
@@ -71,6 +64,13 @@ export function buildApp(deps: AppDeps) {
       return c.json({ userId: user.id, email: user.email });
     },
   );
+
+  // Rate-limit auth mutation endpoints (5 req/min per IP) to prevent magic-link spam
+  app.use(
+    '/api/auth/*',
+    createRateLimiter({ windowMs: 60_000, max: 5, keyBy: ipKey }),
+  );
+  app.route('/api/auth', createAuthRoutes(deps));
 
   // Sessions routes (protected)
   app.use(
