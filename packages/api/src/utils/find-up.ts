@@ -17,14 +17,11 @@ export function findUpSync(filename: string): string | undefined {
 }
 
 /**
- * Minimal .env loader — no external dependency.
- * Parses KEY=VALUE lines, ignores comments and empty lines.
+ * Parse a .env file into process.env.
  * Does NOT override existing process.env values.
  */
-export function loadDotenv(): void {
-  const envPath = findUpSync('.env');
-  if (!envPath) return;
-  const content = fs.readFileSync(envPath, 'utf8');
+function parseEnvFile(filePath: string): void {
+  const content = fs.readFileSync(filePath, 'utf8');
   for (const line of content.split('\n')) {
     const trimmed = line.trim();
     if (!trimmed || trimmed.startsWith('#')) continue;
@@ -32,7 +29,6 @@ export function loadDotenv(): void {
     if (eqIdx === -1) continue;
     const key = trimmed.slice(0, eqIdx).trim();
     let value = trimmed.slice(eqIdx + 1).trim();
-    // Strip surrounding quotes
     if ((value.startsWith('"') && value.endsWith('"')) ||
         (value.startsWith("'") && value.endsWith("'"))) {
       value = value.slice(1, -1);
@@ -41,4 +37,19 @@ export function loadDotenv(): void {
       process.env[key] = value;
     }
   }
+}
+
+/**
+ * Load env files with priority: .env.development (if not production) > .env
+ * Walks up from cwd to find them. No external dependency.
+ */
+export function loadDotenv(): void {
+  // .env.development first (higher priority, doesn't override process.env)
+  if (process.env.NODE_ENV !== 'production') {
+    const devPath = findUpSync('.env.development');
+    if (devPath) parseEnvFile(devPath);
+  }
+  // .env second (fills in remaining vars)
+  const envPath = findUpSync('.env');
+  if (envPath) parseEnvFile(envPath);
 }

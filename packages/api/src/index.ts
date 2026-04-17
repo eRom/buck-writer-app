@@ -1,10 +1,12 @@
 import { serve } from '@hono/node-server';
 import { Resend } from 'resend';
+import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { buildApp } from './app.js';
 import { loadEnv } from './env.js';
 import { openDb } from './db/client.js';
+import { runMigrations } from './db/migrate.js';
 import { createJwtService } from './services/jwt.js';
 import {
   createEmailService,
@@ -13,6 +15,24 @@ import {
 import { loadPrompts } from './services/prompts.js';
 
 const env = loadEnv();
+
+// Auto-create data dirs + run migrations in dev
+const dbFilePath = env.DATABASE_URL.replace(/^file:/, '');
+const dbDir = path.dirname(dbFilePath);
+if (!fs.existsSync(dbDir)) {
+  fs.mkdirSync(dbDir, { recursive: true });
+  console.warn(`[api] created ${dbDir}`);
+}
+try {
+  const here = path.dirname(fileURLToPath(import.meta.url));
+  runMigrations({
+    databaseUrl: env.DATABASE_URL,
+    migrationsFolder: path.resolve(here, '..', 'migrations'),
+  });
+  console.warn('[api] migrations applied');
+} catch (err) {
+  console.warn('[api] migration skipped:', (err as Error).message);
+}
 
 const promptsDir = path.resolve(
   path.dirname(fileURLToPath(import.meta.url)),
