@@ -6,6 +6,8 @@ import { z } from 'zod';
 import { createOpenAI } from '@ai-sdk/openai';
 import * as fsp from 'node:fs/promises';
 import * as pathModule from 'node:path';
+import { execFile } from 'node:child_process';
+import { promisify } from 'node:util';
 import { newId, costOf, getBillingPeriod } from '@buck/shared';
 import type { DbHandles } from '../db/client.js';
 import type { Prompts } from '../services/prompts.js';
@@ -13,6 +15,13 @@ import type { Skill } from '../services/skills.js';
 import { chatSessions, messages, usageEvents, userSettings, alertTriggers, attachments } from '../db/schema.js';
 import { assertSafePath } from '../utils/path-safe.js';
 import { isImage, isExtractable, extractText } from '../services/extractor.js';
+import { isDestructiveCommand } from '../lib/kill-switch.js';
+
+const execFileAsync = promisify(execFile);
+
+const SHELL_TIMEOUT_MS = 30_000;
+const SHELL_MAX_BUFFER = 100 * 1024; // 100KB
+const SAFE_PATH = '/usr/local/bin:/usr/bin:/bin';
 
 export interface ChatRouteDeps {
   db: DbHandles;
@@ -124,6 +133,114 @@ export function createChatRoute(
     };
   }
 
+  function buildShellTool(workspaceDir: string) {
+    return {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      shell_execute: tool({
+        description: 'Execute a shell command. The user will be asked for confirmation before execution.',
+        parameters: z.object({
+          command: z.string().describe('The shell command to execute'),
+          cwd: z.string().optional().describe('Working directory (relative to workspace, defaults to workspace root)'),
+        }),
+        execute: async ({ command, cwd }: { command: string; cwd?: string }) => {
+          // Kill switch — block destructive commands
+          if (isDestructiveCommand(command)) {
+            return { error: 'Commande bloquée : opération destructive détectée', status: 'blocked' as const };
+          }
+
+          // Resolve cwd
+          let resolvedCwd = workspaceDir;
+          if (cwd) {
+            try {
+              resolvedCwd = await assertSafePath(workspaceDir, cwd);
+            } catch {
+              return { error: `invalid cwd: ${cwd}` };
+            }
+          }
+
+          try {
+            const { stdout, stderr } = await execFileAsync('/bin/sh', ['-c', command], {
+              cwd: resolvedCwd,
+              timeout: SHELL_TIMEOUT_MS,
+              maxBuffer: SHELL_MAX_BUFFER,
+              env: { ...process.env, PATH: SAFE_PATH },
+            });
+            return {
+              stdout: stdout || '',
+              stderr: stderr || '',
+              exitCode: 0,
+              killed: false,
+              truncated: false,
+            };
+          } catch (err: unknown) {
+            const e = err as { killed?: boolean; code?: number; stdout?: string; stderr?: string; message?: string };
+            const truncated = e.message?.includes('maxBuffer') ?? false;
+            return {
+              stdout: e.stdout ?? '',
+              stderr: e.stderr ?? '',
+              exitCode: e.code ?? 1,
+              killed: e.killed ?? false,
+              truncated,
+            };
+          }
+        },
+      } as any),
+    };
+  }
+
+  const TOOLS_REQUIRING_APPROVAL = ['create_file', 'delete_file', 'shell_execute'];
+
+  function wrapToolsWithApproval(
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    tools: Record<string, any>,
+    approvedTool?: { toolName: string; approved: boolean } | null,
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  ): Record<string, any> {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const wrapped: Record<string, any> = {};
+    for (const [name, t] of Object.entries(tools)) {
+      if (!TOOLS_REQUIRING_APPROVAL.includes(name)) {
+        wrapped[name] = t;
+        continue;
+      }
+
+      // If this tool was just approved, use the original (will execute)
+      if (approvedTool?.toolName === name && approvedTool.approved) {
+        wrapped[name] = t;
+        continue;
+      }
+
+      // If this tool was denied, return a denial message
+      if (approvedTool?.toolName === name && !approvedTool.approved) {
+        wrapped[name] = tool({
+          description: t.description,
+          parameters: t.parameters,
+          execute: async (args: Record<string, unknown>) => ({
+            status: 'denied' as const,
+            message: "L'utilisateur a refusé l'exécution de cette commande.",
+            toolName: name,
+            args,
+          }),
+        } as any);
+        continue;
+      }
+
+      // Default: return requires_approval
+      wrapped[name] = tool({
+        description: t.description,
+        parameters: t.parameters,
+        execute: async (args: Record<string, unknown>) => {
+          // For shell_execute, run kill switch first
+          if (name === 'shell_execute' && typeof args.command === 'string' && isDestructiveCommand(args.command)) {
+            return { error: 'Commande bloquée : opération destructive détectée', status: 'blocked' as const };
+          }
+          return { status: 'requires_approval' as const, toolName: name, args };
+        },
+      } as any);
+    }
+    return wrapped;
+  }
+
   // POST / — streaming chat
   app.post('/', async (c) => {
     const userId = c.get('userId');
@@ -168,6 +285,16 @@ export function createChatRoute(
     const attachmentIds = Array.isArray((raw as Record<string, unknown>).attachmentIds)
       ? ((raw as Record<string, unknown>).attachmentIds as string[])
       : [];
+
+    // Parse tool approval (resume after user decision)
+    const toolApproval = (raw as Record<string, unknown>).toolApproval
+      ? {
+          toolCallId: String(((raw as Record<string, unknown>).toolApproval as Record<string, unknown>).toolCallId ?? ''),
+          toolName: String(((raw as Record<string, unknown>).toolApproval as Record<string, unknown>).toolName ?? ''),
+          args: ((raw as Record<string, unknown>).toolApproval as Record<string, unknown>).args as Record<string, unknown> ?? {},
+          approved: Boolean(((raw as Record<string, unknown>).toolApproval as Record<string, unknown>).approved),
+        }
+      : null;
 
     const ts = now();
     let sessionId = body.sessionId;
@@ -304,7 +431,9 @@ export function createChatRoute(
     // Build tools conditionally
     const fileTools = deps.workspaceDir ? buildFileTools(deps.workspaceDir) : {};
     const skillTools = deps.skills && deps.skills.size > 0 ? buildSkillTools(deps.skills) : {};
-    const tools = { ...fileTools, ...skillTools };
+    const shellTools = deps.workspaceDir ? buildShellTool(deps.workspaceDir) : {};
+    const rawTools = { ...fileTools, ...skillTools, ...shellTools };
+    const tools = wrapToolsWithApproval(rawTools, toolApproval);
     const hasTools = Object.keys(tools).length > 0;
 
     // Stream the response

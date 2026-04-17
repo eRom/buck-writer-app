@@ -260,4 +260,32 @@ describe('chat route', () => {
       expect(res.status).toBe(200);
     });
   });
+
+  describe('POST /api/chat — tool approval flow', () => {
+    it('passes toolApproval field through without error', async () => {
+      ctx = await makeCtx();
+      const sessionId = newId();
+      ctx.db.db.insert(chatSessions).values({
+        id: sessionId, userId: ctx.userId, title: 'Test',
+        model: 'gpt-5.4-mini', reasoningEffort: 'low', archived: 0,
+        createdAt: Date.now(), updatedAt: Date.now(),
+      }).run();
+
+      const res = await ctx.app.request('/api/chat', {
+        method: 'POST',
+        headers: authMutHeaders(ctx.sessionJwt),
+        body: JSON.stringify({
+          sessionId,
+          messages: [{ role: 'user', content: 'Run ls' }],
+          toolApproval: {
+            toolCallId: 'call_123',
+            toolName: 'shell_execute',
+            args: { command: 'ls -la' },
+            approved: true,
+          },
+        }),
+      });
+      expect(res.status).toBe(200);
+    });
+  });
 });
