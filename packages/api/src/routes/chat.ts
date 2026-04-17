@@ -1,11 +1,12 @@
 import { Hono } from 'hono';
-import { eq, and, isNull } from 'drizzle-orm';
+import { eq, and, isNull, gte } from 'drizzle-orm';
+import { sql } from 'drizzle-orm';
 import { streamText, generateText } from 'ai';
 import { createOpenAI } from '@ai-sdk/openai';
-import { newId, costOf } from '@buck/shared';
+import { newId, costOf, getBillingPeriod } from '@buck/shared';
 import type { DbHandles } from '../db/client.js';
 import type { Prompts } from '../services/prompts.js';
-import { chatSessions, messages, usageEvents, userSettings } from '../db/schema.js';
+import { chatSessions, messages, usageEvents, userSettings, alertTriggers } from '../db/schema.js';
 
 export interface ChatRouteDeps {
   db: DbHandles;
@@ -137,6 +138,7 @@ export function createChatRoute(
     const allMessages: any[] = [...systemMessages, ...typedUserMessages];
 
     // Stream the response
+    try {
     const result = streamText({
       model: openai(resolvedModel),
       messages: allMessages,
@@ -206,6 +208,62 @@ export function createChatRoute(
           .where(eq(chatSessions.id, sessionId!))
           .run();
 
+        // Check and insert alert triggers
+        const userSettingsRow = deps.db.db
+          .select()
+          .from(userSettings)
+          .where(eq(userSettings.userId, userId))
+          .get();
+
+        if (userSettingsRow) {
+          const period = getBillingPeriod(userSettingsRow.billingResetDay, finishTs);
+          const totalResult = deps.db.db
+            .select({ total: sql<number>`COALESCE(SUM(${usageEvents.costUsd}), 0)` })
+            .from(usageEvents)
+            .where(
+              and(
+                eq(usageEvents.userId, userId),
+                gte(usageEvents.createdAt, period.periodStart),
+              ),
+            )
+            .get();
+
+          const currentTotal = totalResult?.total ?? 0;
+          const limitUsd = userSettingsRow.monthlyCostLimitUsd;
+          const currentPercent = limitUsd > 0 ? (currentTotal / limitUsd) * 100 : 0;
+          const thresholds: number[] = JSON.parse(userSettingsRow.alertThresholdsJson);
+          const yearMonth = new Date(period.periodStart).toISOString().slice(0, 7);
+
+          for (const threshold of thresholds) {
+            if (currentPercent >= threshold) {
+              const existing = deps.db.db
+                .select()
+                .from(alertTriggers)
+                .where(
+                  and(
+                    eq(alertTriggers.userId, userId),
+                    eq(alertTriggers.yearMonth, yearMonth),
+                    eq(alertTriggers.thresholdPercent, threshold),
+                  ),
+                )
+                .get();
+
+              if (!existing) {
+                deps.db.db
+                  .insert(alertTriggers)
+                  .values({
+                    id: newId(),
+                    userId,
+                    yearMonth,
+                    thresholdPercent: threshold,
+                    triggeredAt: finishTs,
+                  })
+                  .run();
+              }
+            }
+          }
+        }
+
         // Auto-generate title for new sessions (fire-and-forget)
         if (isNewSession && lastUserMessage) {
           const firstMessage = lastUserMessage.content;
@@ -242,6 +300,22 @@ export function createChatRoute(
       return new Response(response.body, { status: response.status, headers });
     }
     return response;
+    } catch (err: unknown) {
+      const errMsg = err instanceof Error ? err.message : String(err);
+      if (errMsg.includes('429') || errMsg.includes('rate limit')) {
+        return c.json(
+          {
+            error: {
+              code: 'provider_rate_limit',
+              message: 'OpenAI rate limit reached',
+              link: 'https://platform.openai.com/settings/organization/limits',
+            },
+          },
+          502,
+        );
+      }
+      throw err;
+    }
   });
 
   return app;
