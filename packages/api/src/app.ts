@@ -13,11 +13,14 @@ import {
   createChatRoute,
   type ChatRouteDeps,
 } from './routes/chat.js';
+import { createSettingsRoutes } from './routes/settings.js';
+import { createUsageRoutes } from './routes/usage.js';
 import type { Prompts } from './services/prompts.js';
 import { authGuard } from './middleware/auth.js';
 import { securityHeaders } from './middleware/security-headers.js';
 import { csrfMiddleware } from './middleware/csrf.js';
 import { createRateLimiter, ipKey } from './middleware/rate-limit.js';
+import { budgetGuard } from './middleware/budget-guard.js';
 import { users } from './db/schema.js';
 
 export interface AppDeps extends AuthRoutesDeps, SessionRoutesDeps {
@@ -41,14 +44,7 @@ export function buildApp(deps: AppDeps) {
 
   app.route('/api/health', healthRoute);
 
-  // Rate-limit auth endpoints (5 req/min per IP) to prevent magic-link spam
-  app.use(
-    '/api/auth/*',
-    createRateLimiter({ windowMs: 60_000, max: 5, keyBy: ipKey }),
-  );
-  app.route('/api/auth', createAuthRoutes(deps));
-
-  // Protected route: /api/auth/me (guarded individually to avoid swallowing 404s)
+  // Protected route: /api/auth/me — mounted BEFORE rate limiter to avoid being throttled
   app.get(
     '/api/auth/me',
     authGuard({ db: deps.db, jwt: deps.jwt, nowMs: deps.nowMs }),
@@ -68,6 +64,13 @@ export function buildApp(deps: AppDeps) {
       return c.json({ userId: user.id, email: user.email });
     },
   );
+
+  // Rate-limit auth mutation endpoints (5 req/min per IP) to prevent magic-link spam
+  app.use(
+    '/api/auth/*',
+    createRateLimiter({ windowMs: 60_000, max: 5, keyBy: ipKey }),
+  );
+  app.route('/api/auth', createAuthRoutes(deps));
 
   // Sessions routes (protected)
   app.use(
@@ -89,6 +92,7 @@ export function buildApp(deps: AppDeps) {
       '/api/chat',
       authGuard({ db: deps.db, jwt: deps.jwt, nowMs: deps.nowMs }),
       createRateLimiter({ windowMs: 60_000, max: 30, keyBy: ipKey }),
+      budgetGuard({ db: deps.db, nowMs: deps.nowMs }),
     );
     app.route('/api/chat', createChatRoute({
       db: deps.db,
@@ -97,6 +101,14 @@ export function buildApp(deps: AppDeps) {
       nowMs: deps.nowMs,
     }));
   }
+
+  // Settings routes (protected)
+  app.use('/api/settings', authGuard({ db: deps.db, jwt: deps.jwt, nowMs: deps.nowMs }));
+  app.route('/api/settings', createSettingsRoutes({ db: deps.db }));
+
+  // Usage routes (protected)
+  app.use('/api/usage/*', authGuard({ db: deps.db, jwt: deps.jwt, nowMs: deps.nowMs }));
+  app.route('/api/usage', createUsageRoutes({ db: deps.db, nowMs: deps.nowMs }));
 
   // E2E-only test helper: exposes the latest magic-link raw token written by
   // createE2EEmailService. Gated behind E2E=1 to prevent leakage.

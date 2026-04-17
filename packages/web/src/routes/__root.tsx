@@ -4,6 +4,7 @@ import {
   redirect,
 } from '@tanstack/react-router';
 import type { QueryClient } from '@tanstack/react-query';
+import { Toaster } from 'sonner';
 import { fetchMe } from '@/lib/session';
 
 export interface RouterCtx {
@@ -30,5 +31,10 @@ export const Route = createRootRouteWithContext<RouterCtx>()({
       throw redirect({ to: '/login' });
     }
   },
-  component: () => <Outlet />,
+  component: () => (
+    <>
+      <Outlet />
+      <Toaster theme="dark" position="top-right" />
+    </>
+  ),
 });

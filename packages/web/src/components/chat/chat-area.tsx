@@ -1,7 +1,10 @@
 import { useEffect, useRef, useState, useCallback } from 'react';
+import { toast } from 'sonner';
 import { MessageBubble } from './message-bubble';
 import { ChatInput } from './chat-input';
+import { BudgetBanner } from './budget-banner';
 import { fetchMessages } from '@/lib/sessions';
+import { fetchUsageCurrent } from '@/lib/settings';
 import { readCsrfCookie, CSRF_HEADER } from '@/lib/csrf';
 
 interface ChatMessage {
@@ -25,13 +28,20 @@ export function ChatArea({ sessionId, onSessionCreated }: ChatAreaProps) {
   const [input, setInput] = useState('');
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [isLoading, setIsLoading] = useState(false);
+  const [budgetExceeded, setBudgetExceeded] = useState<{
+    totalUsd: number;
+    limitUsd: number;
+    resetDate: string;
+  } | null>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
   const abortRef = useRef<AbortController | null>(null);
   const sessionIdRef = useRef(sessionId);
   sessionIdRef.current = sessionId;
+  const alert80ShownRef = useRef(false);
 
   // Load existing messages when switching sessions
   useEffect(() => {
+    alert80ShownRef.current = false;
     if (!sessionId) {
       setMessages([]);
       return;
@@ -52,6 +62,18 @@ export function ChatArea({ sessionId, onSessionCreated }: ChatAreaProps) {
       setMessages(loaded);
     });
   }, [sessionId]);
+
+  // Clear budget banner when window regains focus (e.g. user updated limit in settings)
+  useEffect(() => {
+    if (!budgetExceeded) return;
+    function onFocus() {
+      fetchUsageCurrent().then((u) => {
+        if (u.percent < 100) setBudgetExceeded(null);
+      }).catch(() => {});
+    }
+    window.addEventListener('focus', onFocus);
+    return () => window.removeEventListener('focus', onFocus);
+  }, [budgetExceeded]);
 
   // Auto-scroll on new messages
   useEffect(() => {
@@ -107,8 +129,29 @@ export function ChatArea({ sessionId, onSessionCreated }: ChatAreaProps) {
       }
 
       if (!res.ok) {
-        const err = await res.text();
-        throw new Error(`API error ${res.status}: ${err}`);
+        const errBody = await res.json().catch(() => ({ error: {} })) as {
+          error: { code?: string; message?: string; usage?: { totalUsd: number; limitUsd: number; resetDate: string }; link?: string };
+        };
+
+        if (res.status === 429 && errBody.error.code === 'budget_exceeded' && errBody.error.usage) {
+          setBudgetExceeded(errBody.error.usage);
+          // Remove the empty assistant message and the user message we just added
+          setMessages((prev) => prev.slice(0, -2));
+          return;
+        }
+
+        if (res.status === 502 && errBody.error.code === 'provider_rate_limit') {
+          toast.error('Limite OpenAI atteinte', {
+            action: errBody.error.link
+              ? { label: 'Voir les limites', onClick: () => window.open(errBody.error.link, '_blank') }
+              : undefined,
+          });
+          // Remove empty assistant message
+          setMessages((prev) => prev.slice(0, -1));
+          return;
+        }
+
+        throw new Error(`API error ${res.status}: ${errBody.error.message ?? ''}`);
       }
 
       // Read the text stream
@@ -127,6 +170,23 @@ export function ChatArea({ sessionId, onSessionCreated }: ChatAreaProps) {
           prev.map((m) => (m.id === assistantId ? { ...m, content: current } : m)),
         );
       }
+
+      // Check usage after message completes
+      try {
+        const usageData = await fetchUsageCurrent();
+        if (usageData.percent >= 80 && usageData.percent < 100) {
+          const alert80 = usageData.alerts.find((a) => a.percent === 80);
+          if (alert80?.triggeredAt && !alert80ShownRef.current) {
+            alert80ShownRef.current = true;
+            toast.warning(`80% du budget mensuel consommé ($${usageData.totalUsd.toFixed(2)} / $${usageData.limitUsd.toFixed(2)})`);
+          }
+        }
+        if (budgetExceeded && usageData.percent < 100) {
+          setBudgetExceeded(null);
+        }
+      } catch {
+        // Usage fetch failure is non-critical
+      }
     } catch (err) {
       if ((err as Error).name === 'AbortError') return;
       // Remove empty assistant message on error
@@ -142,7 +202,7 @@ export function ChatArea({ sessionId, onSessionCreated }: ChatAreaProps) {
       setIsLoading(false);
       abortRef.current = null;
     }
-  }, [input, isLoading, messages, model, onSessionCreated]);
+  }, [input, isLoading, messages, model, onSessionCreated, budgetExceeded]);
 
   const handleStop = useCallback(() => {
     abortRef.current?.abort();
@@ -150,6 +210,13 @@ export function ChatArea({ sessionId, onSessionCreated }: ChatAreaProps) {
 
   return (
     <>
+      {budgetExceeded && (
+        <BudgetBanner
+          totalUsd={budgetExceeded.totalUsd}
+          limitUsd={budgetExceeded.limitUsd}
+          resetDate={budgetExceeded.resetDate}
+        />
+      )}
       <div ref={scrollRef} className="flex-1 overflow-y-auto">
         <div className="mx-auto max-w-3xl space-y-4 px-4 py-6">
           {messages.length === 0 && (
@@ -182,6 +249,7 @@ export function ChatArea({ sessionId, onSessionCreated }: ChatAreaProps) {
         isLoading={isLoading}
         model={model}
         onModelChange={setModel}
+        disabled={!!budgetExceeded}
       />
     </>
   );
