@@ -92,6 +92,7 @@ export const messages = sqliteTable(
     role: text('role').notNull(),
     contentJson: text('content_json').notNull(),
     model: text('model'),
+    toolMeta: text('tool_meta'),
     createdAt: integer('created_at').notNull(),
   },
   (t) => ({
