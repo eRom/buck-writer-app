@@ -149,7 +149,7 @@ export function createAttachmentRoutes(
       throw new HttpError(404, 'not_found', 'attachment file missing');
     }
 
-    return new Response(content, {
+    return new Response(new Uint8Array(content), {
       status: 200,
       headers: {
         'content-type': row.mimeType,

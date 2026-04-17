@@ -143,8 +143,9 @@ export function createAuthRoutes(deps: AuthRoutesDeps): Hono {
     return c.redirect('/');
   });
 
+  // WebDAV token — protected by authGuard (mounted in app.ts)
   app.post('/webdav-token', async (c) => {
-    const userId = c.get('userId') as string | undefined;
+    const userId = c.get('userId' as never) as string | undefined;
     if (!userId) {
       return c.json(
         { error: { code: 'unauthenticated', message: 'login required' } },
@@ -155,7 +156,7 @@ export function createAuthRoutes(deps: AuthRoutesDeps): Hono {
     const WEBDAV_TTL_SECONDS = 30 * 24 * 60 * 60;
     const WEBDAV_TTL_MS = WEBDAV_TTL_SECONDS * 1000;
 
-    const token = await deps.jwt.sign({ sub: userId, scope: 'webdav' }, '30d');
+    const token = await deps.jwt.sign({ sub: userId, scope: 'webdav' as const }, '30d');
     const tokenHash = sha256Hex(token);
     deps.db.db
       .insert(sessionsAuth)

@@ -13,16 +13,16 @@ export function parseSkillMd(content: string): Skill | null {
   const fmMatch = content.match(/^---\n([\s\S]*?)\n---\n?([\s\S]*)$/);
   if (!fmMatch) return null;
 
-  const frontmatter = fmMatch[1];
-  const body = fmMatch[2].trim();
+  const frontmatter = fmMatch[1]!;
+  const body = fmMatch[2]!.trim();
 
   const nameMatch = frontmatter.match(/^name:\s*(.+)$/m);
   const descMatch = frontmatter.match(/^description:\s*(.+)$/m);
 
   if (!nameMatch || !descMatch) return null;
 
-  const name = nameMatch[1].trim();
-  const description = descMatch[1].trim();
+  const name = nameMatch[1]!.trim();
+  const description = descMatch[1]!.trim();
 
   if (!name || !description) return null;
 

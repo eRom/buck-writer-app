@@ -32,10 +32,11 @@ export function createChatRoute(
 
   function buildFileTools(workspaceDir: string) {
     return {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
       read_file: tool({
         description: 'Read the content of a file in the workspace',
         parameters: z.object({ path: z.string() }),
-        execute: async ({ path: filePath }) => {
+        execute: async ({ path: filePath }: { path: string }) => {
           try {
             const absPath = await assertSafePath(workspaceDir, filePath);
             const stat = await fsp.stat(absPath);
@@ -48,11 +49,12 @@ export function createChatRoute(
             return { error: `file not found: ${filePath}` };
           }
         },
-      }),
+      } as any),
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
       list_directory: tool({
         description: 'List files and directories at a given path in the workspace',
         parameters: z.object({ path: z.string().optional().describe('Relative path, defaults to workspace root') }),
-        execute: async ({ path: dirPath }) => {
+        execute: async ({ path: dirPath }: { path?: string }) => {
           try {
             const absPath = dirPath
               ? await assertSafePath(workspaceDir, dirPath)
@@ -67,11 +69,12 @@ export function createChatRoute(
             return { error: `directory not found: ${dirPath ?? '/'}` };
           }
         },
-      }),
+      } as any),
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
       create_file: tool({
         description: 'Create or overwrite a file in the workspace',
         parameters: z.object({ path: z.string(), content: z.string() }),
-        execute: async ({ path: filePath, content }) => {
+        execute: async ({ path: filePath, content }: { path: string; content: string }) => {
           if (filePath.startsWith('prompts/') || filePath === 'prompts') {
             return { error: 'cannot write to prompts/ directory (reserved)' };
           }
@@ -84,11 +87,12 @@ export function createChatRoute(
             return { error: `failed to create file: ${filePath}` };
           }
         },
-      }),
+      } as any),
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
       delete_file: tool({
         description: 'Delete a file in the workspace. The user will be asked for confirmation in the chat UI before this executes.',
         parameters: z.object({ path: z.string() }),
-        execute: async ({ path: filePath }) => {
+        execute: async ({ path: filePath }: { path: string }) => {
           try {
             const absPath = await assertSafePath(workspaceDir, filePath);
             await fsp.rm(absPath, { recursive: true });
@@ -97,7 +101,7 @@ export function createChatRoute(
             return { error: `failed to delete: ${filePath}` };
           }
         },
-      }),
+      } as any),
     };
   }
 
@@ -107,15 +111,16 @@ export function createChatRoute(
       .join('; ');
 
     return {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
       activate_skill: tool({
         description: `Activate a skill to get its full instructions. Available skills: ${skillsList}`,
         parameters: z.object({ name: z.string() }),
-        execute: async ({ name }) => {
+        execute: async ({ name }: { name: string }) => {
           const skill = skills.get(name);
           if (!skill) return { error: `skill not found: ${name}` };
           return { name: skill.name, instructions: skill.body };
         },
-      }),
+      } as any),
     };
   }
 
@@ -256,7 +261,7 @@ export function createChatRoute(
       const refContent = references
         .map((r) => `--- File: ${r.path} ---\n${r.content}\n--- End ---`)
         .join('\n\n');
-      const lastUserIdx = typedUserMessages.findLastIndex((m) => m.role === 'user');
+      const lastUserIdx = typedUserMessages.reduce((acc, m, i) => (m.role === 'user' ? i : acc), -1);
       if (lastUserIdx >= 0) {
         typedUserMessages[lastUserIdx]!.content += `\n\n[Referenced files]\n${refContent}`;
       }
@@ -274,14 +279,14 @@ export function createChatRoute(
 
         if (isImage(att.mimeType)) {
           // For images, add as a note that an image was attached (vision requires special handling)
-          const lastUserIdx = typedUserMessages.findLastIndex((m) => m.role === 'user');
+          const lastUserIdx = typedUserMessages.reduce((acc, m, i) => (m.role === 'user' ? i : acc), -1);
           if (lastUserIdx >= 0) {
             typedUserMessages[lastUserIdx]!.content += `\n\n[Attached image: ${att.filename}]`;
           }
         } else if (isExtractable(att.mimeType)) {
           try {
             const text = await extractText(absPath, att.mimeType);
-            const lastUserIdx = typedUserMessages.findLastIndex((m) => m.role === 'user');
+            const lastUserIdx = typedUserMessages.reduce((acc, m, i) => (m.role === 'user' ? i : acc), -1);
             if (lastUserIdx >= 0) {
               typedUserMessages[lastUserIdx]!.content += `\n\n--- Attached: ${att.filename} ---\n${text}\n--- End ---`;
             }
