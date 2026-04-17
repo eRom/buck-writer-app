@@ -1,14 +1,16 @@
 import { useState, useEffect, useCallback } from 'react';
 import { fetchSessions, createSession, deleteSession, updateSession, type Session } from '@/lib/sessions';
 import { SessionList } from './session-list';
+import { UserMenu } from './user-menu';
 
 interface SidebarProps {
   activeSessionId?: string;
   onSelectSession: (id: string) => void;
   onNewSession: (id: string) => void;
+  userEmail: string;
 }
 
-export function Sidebar({ activeSessionId, onSelectSession, onNewSession }: SidebarProps) {
+export function Sidebar({ activeSessionId, onSelectSession, onNewSession, userEmail }: SidebarProps) {
   const [sessions, setSessions] = useState<Session[]>([]);
   const [search, setSearch] = useState('');
 
@@ -61,14 +63,17 @@ export function Sidebar({ activeSessionId, onSelectSession, onNewSession }: Side
           className="w-full rounded-md border border-border bg-input px-2 py-1 text-sm text-foreground placeholder:text-muted-foreground"
         />
       </div>
-      <SessionList
-        sessions={sessions}
-        activeId={activeSessionId}
-        onSelect={onSelectSession}
-        onRename={handleRename}
-        onDelete={handleDelete}
-        onArchive={handleArchive}
-      />
+      <div className="flex-1 overflow-y-auto">
+        <SessionList
+          sessions={sessions}
+          activeId={activeSessionId}
+          onSelect={onSelectSession}
+          onRename={handleRename}
+          onDelete={handleDelete}
+          onArchive={handleArchive}
+        />
+      </div>
+      <UserMenu email={userEmail} />
     </>
   );
 }

@@ -15,6 +15,7 @@ export const Route = createFileRoute('/')({
 });
 
 function Home() {
+  const me = Route.useLoaderData();
   const [activeSessionId, setActiveSessionId] = useState<string>();
 
   return (
@@ -24,6 +25,7 @@ function Home() {
           activeSessionId={activeSessionId}
           onSelectSession={setActiveSessionId}
           onNewSession={setActiveSessionId}
+          userEmail={me.email}
         />
       }
     >
