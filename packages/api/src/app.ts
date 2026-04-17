@@ -79,6 +79,12 @@ export function buildApp(deps: AppDeps) {
     },
   );
 
+  // Protected route: /api/auth/webdav-token — mounted BEFORE rate limiter
+  app.post(
+    '/api/auth/webdav-token',
+    authGuard({ db: deps.db, jwt: deps.jwt, nowMs: deps.nowMs }),
+  );
+
   // Rate-limit auth mutation endpoints (5 req/min per IP) to prevent magic-link spam
   app.use(
     '/api/auth/*',
