@@ -3,6 +3,7 @@ import { fetchMe, type MeResponse } from '@/lib/session';
 import { ChatLayout } from '@/components/chat/chat-layout';
 import { Sidebar } from '@/components/chat/sidebar';
 import { ChatArea } from '@/components/chat/chat-area';
+import { WorkspacePanel } from '@/components/workspace/workspace-panel';
 import { useState } from 'react';
 
 export const Route = createFileRoute('/')({
@@ -28,6 +29,7 @@ function Home() {
           userEmail={me.email}
         />
       }
+      rightPanel={<WorkspacePanel onInsertReference={() => {}} />}
     >
       <ChatArea
         sessionId={activeSessionId}
