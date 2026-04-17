@@ -1,6 +1,6 @@
 # Gotchas — Buck Writer
 
-> Derniere mise a jour : 2026-04-17 (M2 complete)
+> Derniere mise a jour : 2026-04-17 (M3 complete)
 
 ## AI SDK v6 — API cassantes
 
@@ -75,3 +75,31 @@
 - `DATABASE_URL=file:./data/buck.db` est relatif au cwd du process
 - tsx lance depuis `packages/api/` donc la DB est dans `packages/api/data/buck.db`
 - Le `.env.development` doit refléter ce cwd, pas la racine monorepo
+
+## AI SDK v6 — tool() overloads
+
+- `tool()` de AI SDK v6 a des overloads stricts sur les types de retour
+- Quand `execute` retourne une union (`{ ok: true } | { error: string }`), le type n'est pas assignable a `undefined` sur certains overloads
+- **Workaround** : `tool({ ...config } as any)` sur les tools avec retours conditionnels
+- Affecte : `read_file`, `list_directory`, `create_file`, `delete_file`, `activate_skill`
+
+## pdf-parse ESM
+
+- `pdf-parse` v2 a un export ESM mais le `.default` n'existe pas toujours
+- **Fix** : `const pdfParse = pdfParseModule.default ?? pdfParseModule` avec cast `as any`
+
+## ES2022 vs ES2023
+
+- `findLastIndex()` n'est pas disponible avec `lib: ES2022` (c'est ES2023)
+- **Fix** : utiliser `reduce()` pour simuler `findLastIndex`
+
+## WebDAV CSRF
+
+- Les clients WebDAV (Finder, Explorer) ne peuvent pas envoyer de token CSRF
+- Le CSRF middleware doit etre bypass pour les routes `/webdav/*`
+- Verifie dans `middleware/csrf.ts` : condition `c.req.path.startsWith('/webdav')` → skip
+
+## Worktree tests
+
+- Apres merge d'un worktree, `pnpm test` peut echouer si les deps ne sont pas installees sur main
+- Toujours faire `pnpm install` apres merge dans le repo principal

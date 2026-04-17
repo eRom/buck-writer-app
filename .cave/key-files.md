@@ -1,6 +1,6 @@
 # Fichiers cles — Buck Writer
 
-> Derniere mise a jour : 2026-04-17 (M2 complete)
+> Derniere mise a jour : 2026-04-17 (M3 complete)
 
 ## API (packages/api/src/)
 
@@ -15,6 +15,11 @@
 | `routes/health.ts` | GET /api/health |
 | `routes/settings.ts` | GET/PATCH /api/settings (budget, modele, effort) |
 | `routes/usage.ts` | GET /api/usage/current (cout total, %, alertes) |
+| `routes/workspace.ts` | REST CRUD workspace filesystem (tree, file, directory) |
+| `routes/attachments.ts` | Upload multipart + serve attachments par ID |
+| `services/webdav.ts` | WebDAV server Hono-native (PROPFIND, GET, PUT, MKCOL, DELETE, MOVE, COPY) |
+| `services/skills.ts` | Loader SKILL.md + hot-reload chokidar + parseSkillMd() |
+| `services/extractor.ts` | Extraction texte (PDF, DOCX, TXT, MD) |
 | `middleware/auth.ts` | authGuard — verifie JWT cookie + session DB |
 | `middleware/budget-guard.ts` | Bloque chat si budget depasse (429) |
 | `services/user-settings.ts` | getOrCreateSettings() — upsert helper |
@@ -43,13 +48,24 @@
 | `components/chat/session-list.tsx` | Liste groupee par date |
 | `components/chat/message-bubble.tsx` | Bulle user/assistant avec markdown |
 | `components/chat/markdown-renderer.tsx` | react-markdown + rehype-highlight + katex |
-| `components/chat/chat-input.tsx` | Textarea + Enter/Shift+Enter + bouton stop |
+| `components/chat/chat-input.tsx` | Textarea + clip/drag/paste attachments + @reference autocomplete |
+| `components/chat/attachment-preview.tsx` | Preview pending attachments dans l'input |
+| `components/chat/attachment-display.tsx` | Affichage attachments dans messages envoyes |
+| `components/chat/approval-block.tsx` | Bloc approval tool (Autoriser/Refuser) |
+| `components/chat/tool-call-display.tsx` | Indicateur appel outil (nom + args) |
+| `components/chat/at-reference.tsx` | Dropdown autocomplete @reference workspace |
+| `components/workspace/file-tree.tsx` | Arborescence navigable (panel + page) |
+| `components/workspace/workspace-panel.tsx` | Panel droit collapsible workspace |
+| `components/settings/webdav-wizard.tsx` | Token WebDAV + instructions connexion OS |
 | `components/chat/model-selector.tsx` | Dropdown modeles OpenAI |
 | `lib/api.ts` | apiFetch() — CSRF auto, error handling |
 | `lib/csrf.ts` | readCsrfCookie() |
 | `lib/sessions.ts` | Client API sessions (fetch, create, update, delete) |
 | `lib/session.ts` | fetchMe() — auth state |
 | `lib/settings.ts` | Client API settings + usage (fetch, update) |
+| `lib/workspace.ts` | Client API workspace (tree, CRUD) |
+| `lib/attachments.ts` | Client API attachments (upload multipart) |
+| `routes/workspace.tsx` | Page /workspace — file browser complet |
 | `routes/settings.tsx` | Layout page /settings (nav laterale + Outlet) |
 | `routes/settings/general.tsx` | Modele par defaut, reasoning effort |
 | `routes/settings/budget.tsx` | Progress bar, limite, reset day, hard stop, alertes |
@@ -67,6 +83,7 @@
 | `models/ids.ts` | newId() (UUIDv4), isUuid() |
 | `billing/period.ts` | getBillingPeriod(resetDay, nowMs) — calcul periode facturation |
 | `schemas/settings.ts` | Zod schemas settings + usage response |
+| `schemas/workspace.ts` | Zod schemas workspace, attachments, tools, skills |
 
 ## Config
 
