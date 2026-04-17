@@ -135,7 +135,6 @@ export function createChatRoute(
 
   function buildShellTool(workspaceDir: string) {
     return {
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
       shell_execute: tool({
         description: 'Execute a shell command. The user will be asked for confirmation before execution.',
         parameters: z.object({
@@ -184,6 +183,7 @@ export function createChatRoute(
             };
           }
         },
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
       } as any),
     };
   }
@@ -212,6 +212,7 @@ export function createChatRoute(
 
       // If this tool was denied, return a denial message
       if (approvedTool?.toolName === name && !approvedTool.approved) {
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
         wrapped[name] = tool({
           description: t.description,
           parameters: t.parameters,
@@ -226,6 +227,7 @@ export function createChatRoute(
       }
 
       // Default: return requires_approval
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
       wrapped[name] = tool({
         description: t.description,
         parameters: t.parameters,
@@ -439,7 +441,7 @@ export function createChatRoute(
     // Stream the response
     try {
     const result = streamText({
-      model: openai(resolvedModel),
+      model: openai.chat(resolvedModel),
       messages: allMessages,
       ...(hasTools ? { tools, maxSteps: 5 } : {}),
       onFinish: async ({ text, usage, response }) => {
@@ -605,7 +607,7 @@ export function createChatRoute(
         if (isNewSession && lastUserMessage) {
           const firstMessage = lastUserMessage.content;
           generateText({
-            model: openai('gpt-5.4-nano'),
+            model: openai.chat('gpt-5.4-nano'),
             messages: [
               {
                 role: 'system',
