@@ -1,6 +1,3 @@
-import { loadDotenv } from '../utils/find-up.js';
-loadDotenv();
-
 import Database from 'better-sqlite3';
 import { drizzle } from 'drizzle-orm/better-sqlite3';
 import { migrate } from 'drizzle-orm/better-sqlite3/migrator';
@@ -34,6 +31,8 @@ export function runMigrations(opts: MigrateOptions): void {
 
 // CLI entry: `node dist/db/migrate.js`
 if (import.meta.url === `file://${process.argv[1]}`) {
+  const { loadDotenv } = await import('../utils/find-up.js');
+  loadDotenv();
   const url = process.env.DATABASE_URL;
   if (!url) {
     console.error('[migrate] DATABASE_URL is required');

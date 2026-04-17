@@ -1,6 +1,3 @@
-import { loadDotenv } from '../utils/find-up.js';
-loadDotenv();
-
 import Database from 'better-sqlite3';
 import { newId } from '@buck/shared';
 
@@ -55,6 +52,8 @@ export function runSeed(opts: SeedOptions): void {
 
 // CLI entry
 if (import.meta.url === `file://${process.argv[1]}`) {
+  const { loadDotenv } = await import('../utils/find-up.js');
+  loadDotenv();
   const url = process.env.DATABASE_URL;
   const emails = (process.env.AUTH_ALLOWED_EMAILS ?? '')
     .split(',')
