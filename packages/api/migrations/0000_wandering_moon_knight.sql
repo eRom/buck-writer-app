@@ -105,8 +105,8 @@ CREATE INDEX `usage_user_created_idx` ON `usage_events` (`user_id`,`created_at`)
 CREATE INDEX `usage_session_idx` ON `usage_events` (`session_id`);--> statement-breakpoint
 CREATE TABLE `user_settings` (
 	`user_id` text PRIMARY KEY NOT NULL,
-	`monthly_cost_limit_usd` real DEFAULT 50 NOT NULL,
-	`alert_thresholds_json` text DEFAULT '[50,80,95]' NOT NULL,
+	`monthly_cost_limit_usd` real DEFAULT 20 NOT NULL,
+	`alert_thresholds_json` text DEFAULT '[80,100]' NOT NULL,
 	`hard_stop` integer DEFAULT 1 NOT NULL,
 	`default_model` text DEFAULT 'gpt-5.4-mini' NOT NULL,
 	`default_reasoning_effort` text DEFAULT 'low' NOT NULL,

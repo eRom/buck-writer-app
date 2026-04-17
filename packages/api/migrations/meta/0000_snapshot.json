@@ -748,7 +748,7 @@
           "primaryKey": false,
           "notNull": true,
           "autoincrement": false,
-          "default": 50
+          "default": 20
         },
         "alert_thresholds_json": {
           "name": "alert_thresholds_json",
@@ -756,7 +756,7 @@
           "primaryKey": false,
           "notNull": true,
           "autoincrement": false,
-          "default": "'[50,80,95]'"
+          "default": "'[80,100]'"
         },
         "hard_stop": {
           "name": "hard_stop",
