@@ -14,6 +14,7 @@ import {
   type ChatRouteDeps,
 } from './routes/chat.js';
 import { createSettingsRoutes } from './routes/settings.js';
+import { createUsageRoutes } from './routes/usage.js';
 import type { Prompts } from './services/prompts.js';
 import { authGuard } from './middleware/auth.js';
 import { securityHeaders } from './middleware/security-headers.js';
@@ -102,6 +103,10 @@ export function buildApp(deps: AppDeps) {
   // Settings routes (protected)
   app.use('/api/settings', authGuard({ db: deps.db, jwt: deps.jwt, nowMs: deps.nowMs }));
   app.route('/api/settings', createSettingsRoutes({ db: deps.db }));
+
+  // Usage routes (protected)
+  app.use('/api/usage/*', authGuard({ db: deps.db, jwt: deps.jwt, nowMs: deps.nowMs }));
+  app.route('/api/usage', createUsageRoutes({ db: deps.db, nowMs: deps.nowMs }));
 
   // E2E-only test helper: exposes the latest magic-link raw token written by
   // createE2EEmailService. Gated behind E2E=1 to prevent leakage.
