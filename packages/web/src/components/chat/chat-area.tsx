@@ -38,12 +38,19 @@ export function ChatArea({ sessionId, onSessionCreated }: ChatAreaProps) {
   const sessionIdRef = useRef(sessionId);
   sessionIdRef.current = sessionId;
   const alert80ShownRef = useRef(false);
+  // Track sessions created in this component to skip reload
+  const createdSessionRef = useRef<string | null>(null);
 
   // Load existing messages when switching sessions
   useEffect(() => {
     alert80ShownRef.current = false;
     if (!sessionId) {
       setMessages([]);
+      return;
+    }
+    // Skip fetch if we just created this session (messages are already in local state)
+    if (createdSessionRef.current === sessionId) {
+      createdSessionRef.current = null;
       return;
     }
     fetchMessages(sessionId).then((res) => {
@@ -125,6 +132,8 @@ export function ChatArea({ sessionId, onSessionCreated }: ChatAreaProps) {
       // Check for new session
       const newSessionId = res.headers.get('x-session-id');
       if (newSessionId && onSessionCreated) {
+        createdSessionRef.current = newSessionId;
+        sessionIdRef.current = newSessionId;
         onSessionCreated(newSessionId);
       }
 
