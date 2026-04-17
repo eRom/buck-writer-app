@@ -17,6 +17,13 @@ interface ChatMessage {
   id: string;
   role: 'user' | 'assistant';
   content: string;
+  toolMetas?: Array<{
+    toolCallId: string;
+    toolName: string;
+    args: Record<string, unknown>;
+    status: 'approved' | 'denied' | 'auto' | 'blocked';
+    result?: Record<string, unknown>;
+  }>;
 }
 
 interface PendingApproval {
@@ -103,6 +110,7 @@ export function ChatArea({ sessionId, onSessionCreated }: ChatAreaProps) {
             return m.contentJson;
           }
         })(),
+        toolMetas: m.toolMeta ? JSON.parse(m.toolMeta) : undefined,
       }));
       setMessages(loaded);
     });
@@ -373,6 +381,7 @@ export function ChatArea({ sessionId, onSessionCreated }: ChatAreaProps) {
               key={m.id}
               role={m.role}
               content={m.content}
+              toolMetas={m.toolMetas}
             />
           ))}
           {isLoading && messages[messages.length - 1]?.role !== 'assistant' && (

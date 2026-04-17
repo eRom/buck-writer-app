@@ -47,6 +47,7 @@ export interface Message {
   role: string;
   contentJson: string;
   model: string | null;
+  toolMeta: string | null;
   createdAt: number;
 }
 
