@@ -16,7 +16,6 @@ const here = path.dirname(fileURLToPath(import.meta.url));
 const migrationsDir = path.resolve(here, '..', '..', 'migrations');
 
 const SESSION_TTL_MS = 30 * 24 * 60 * 60 * 1000;
-const CSRF_TOKEN = 'test-csrf-token-abc123';
 const FIXED_NOW = new Date('2026-04-17T12:00:00Z').getTime();
 
 function tmp() {

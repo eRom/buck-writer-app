@@ -187,7 +187,7 @@ export function ChatArea({ sessionId, onSessionCreated }: ChatAreaProps) {
       setIsLoading(false);
       abortRef.current = null;
     }
-  }, [input, isLoading, messages, model, onSessionCreated]);
+  }, [input, isLoading, messages, model, onSessionCreated, budgetExceeded]);
 
   const handleStop = useCallback(() => {
     abortRef.current?.abort();
