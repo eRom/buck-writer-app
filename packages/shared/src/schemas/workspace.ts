@@ -1,0 +1,98 @@
+import { z } from 'zod';
+
+// ---------- Workspace tree ----------
+
+export const FileEntryType = z.enum(['file', 'directory']);
+
+export const FileEntry: z.ZodType<{
+  name: string;
+  path: string;
+  type: 'file' | 'directory';
+  size?: number;
+  mimeType?: string;
+  children?: FileEntry[];
+}> = z.object({
+  name: z.string(),
+  path: z.string(),
+  type: FileEntryType,
+  size: z.number().optional(),
+  mimeType: z.string().optional(),
+  children: z.lazy(() => z.array(FileEntry)).optional(),
+});
+export type FileEntry = z.infer<typeof FileEntry>;
+
+export const WorkspaceTreeResponse = z.object({
+  tree: z.array(FileEntry),
+});
+export type WorkspaceTreeResponse = z.infer<typeof WorkspaceTreeResponse>;
+
+// ---------- Workspace file ops ----------
+
+export const CreateDirectoryInput = z.object({
+  path: z.string().min(1).max(500),
+});
+
+export const RenameInput = z.object({
+  newName: z.string().min(1).max(255),
+});
+
+// ---------- Attachments ----------
+
+export const ALLOWED_MIME_TYPES = [
+  'image/jpeg',
+  'image/png',
+  'image/gif',
+  'image/webp',
+  'text/plain',
+  'text/markdown',
+  'application/pdf',
+  'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+] as const;
+
+export const MAX_ATTACHMENT_SIZE = 20 * 1024 * 1024; // 20 MB
+export const MAX_ATTACHMENTS_PER_MESSAGE = 5;
+
+export const AttachmentResponse = z.object({
+  id: z.string(),
+  filename: z.string(),
+  mimeType: z.string(),
+  sizeBytes: z.number(),
+  path: z.string(),
+});
+export type AttachmentResponse = z.infer<typeof AttachmentResponse>;
+
+export const AttachmentsUploadResponse = z.object({
+  attachments: z.array(AttachmentResponse),
+});
+
+// ---------- Chat extensions ----------
+
+export const ChatReference = z.object({
+  path: z.string(),
+  content: z.string(),
+});
+export type ChatReference = z.infer<typeof ChatReference>;
+
+// ---------- Tool approval ----------
+
+export const ToolApprovalChunk = z.object({
+  type: z.literal('tool_approval'),
+  toolCallId: z.string(),
+  toolName: z.string(),
+  args: z.record(z.unknown()),
+});
+export type ToolApprovalChunk = z.infer<typeof ToolApprovalChunk>;
+
+export const ToolApprovalDecision = z.object({
+  toolCallId: z.string(),
+  approved: z.boolean(),
+});
+export type ToolApprovalDecision = z.infer<typeof ToolApprovalDecision>;
+
+// ---------- Skills ----------
+
+export const SkillMeta = z.object({
+  name: z.string(),
+  description: z.string(),
+});
+export type SkillMeta = z.infer<typeof SkillMeta>;
