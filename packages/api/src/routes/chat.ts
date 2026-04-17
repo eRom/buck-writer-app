@@ -1,17 +1,25 @@
 import { Hono } from 'hono';
 import { eq, and, isNull, gte, lt } from 'drizzle-orm';
 import { sql } from 'drizzle-orm';
-import { streamText, generateText } from 'ai';
+import { streamText, generateText, tool } from 'ai';
+import { z } from 'zod';
 import { createOpenAI } from '@ai-sdk/openai';
+import * as fsp from 'node:fs/promises';
+import * as pathModule from 'node:path';
 import { newId, costOf, getBillingPeriod } from '@buck/shared';
 import type { DbHandles } from '../db/client.js';
 import type { Prompts } from '../services/prompts.js';
-import { chatSessions, messages, usageEvents, userSettings, alertTriggers } from '../db/schema.js';
+import type { Skill } from '../services/skills.js';
+import { chatSessions, messages, usageEvents, userSettings, alertTriggers, attachments } from '../db/schema.js';
+import { assertSafePath } from '../utils/path-safe.js';
+import { isImage, isExtractable, extractText } from '../services/extractor.js';
 
 export interface ChatRouteDeps {
   db: DbHandles;
   prompts: Prompts;
   openaiApiKey: string;
+  workspaceDir?: string;
+  skills?: Map<string, Skill>;
   nowMs?: () => number;
 }
 
@@ -21,6 +29,95 @@ export function createChatRoute(
   const now = deps.nowMs ?? Date.now;
   const app = new Hono<{ Variables: { userId: string } }>();
   const openai = createOpenAI({ apiKey: deps.openaiApiKey });
+
+  function buildFileTools(workspaceDir: string) {
+    return {
+      read_file: tool({
+        description: 'Read the content of a file in the workspace',
+        parameters: z.object({ path: z.string() }),
+        execute: async ({ path: filePath }) => {
+          try {
+            const absPath = await assertSafePath(workspaceDir, filePath);
+            const stat = await fsp.stat(absPath);
+            if (stat.isDirectory()) return { error: 'path is a directory, use list_directory instead' };
+            if (stat.size > 1024 * 1024) return { error: 'file too large (max 1MB for context)' };
+            const content = await fsp.readFile(absPath, 'utf8');
+            return { content, path: filePath };
+          } catch (err) {
+            if (err instanceof Error && 'status' in err) return { error: 'path outside workspace' };
+            return { error: `file not found: ${filePath}` };
+          }
+        },
+      }),
+      list_directory: tool({
+        description: 'List files and directories at a given path in the workspace',
+        parameters: z.object({ path: z.string().optional().describe('Relative path, defaults to workspace root') }),
+        execute: async ({ path: dirPath }) => {
+          try {
+            const absPath = dirPath
+              ? await assertSafePath(workspaceDir, dirPath)
+              : workspaceDir;
+            const entries = await fsp.readdir(absPath, { withFileTypes: true });
+            return {
+              entries: entries
+                .filter((e) => e.name !== '.attachments')
+                .map((e) => ({ name: e.name, type: e.isDirectory() ? 'directory' : 'file' })),
+            };
+          } catch {
+            return { error: `directory not found: ${dirPath ?? '/'}` };
+          }
+        },
+      }),
+      create_file: tool({
+        description: 'Create or overwrite a file in the workspace',
+        parameters: z.object({ path: z.string(), content: z.string() }),
+        execute: async ({ path: filePath, content }) => {
+          if (filePath.startsWith('prompts/') || filePath === 'prompts') {
+            return { error: 'cannot write to prompts/ directory (reserved)' };
+          }
+          try {
+            const absPath = await assertSafePath(workspaceDir, filePath);
+            await fsp.mkdir(pathModule.dirname(absPath), { recursive: true });
+            await fsp.writeFile(absPath, content, 'utf8');
+            return { ok: true, path: filePath };
+          } catch {
+            return { error: `failed to create file: ${filePath}` };
+          }
+        },
+      }),
+      delete_file: tool({
+        description: 'Delete a file in the workspace. The user will be asked for confirmation in the chat UI before this executes.',
+        parameters: z.object({ path: z.string() }),
+        execute: async ({ path: filePath }) => {
+          try {
+            const absPath = await assertSafePath(workspaceDir, filePath);
+            await fsp.rm(absPath, { recursive: true });
+            return { ok: true, deleted: filePath };
+          } catch {
+            return { error: `failed to delete: ${filePath}` };
+          }
+        },
+      }),
+    };
+  }
+
+  function buildSkillTools(skills: Map<string, Skill>) {
+    const skillsList = [...skills.values()]
+      .map((s) => `${s.name}: ${s.description}`)
+      .join('; ');
+
+    return {
+      activate_skill: tool({
+        description: `Activate a skill to get its full instructions. Available skills: ${skillsList}`,
+        parameters: z.object({ name: z.string() }),
+        execute: async ({ name }) => {
+          const skill = skills.get(name);
+          if (!skill) return { error: `skill not found: ${name}` };
+          return { name: skill.name, instructions: skill.body };
+        },
+      }),
+    };
+  }
 
   // POST / — streaming chat
   app.post('/', async (c) => {
@@ -56,6 +153,16 @@ export function createChatRoute(
         ? (raw as Record<string, unknown>).model as string
         : undefined,
     };
+
+    // Parse @references
+    const references = Array.isArray((raw as Record<string, unknown>).references)
+      ? ((raw as Record<string, unknown>).references as Array<{ path: string; content: string }>)
+      : [];
+
+    // Parse attachment IDs
+    const attachmentIds = Array.isArray((raw as Record<string, unknown>).attachmentIds)
+      ? ((raw as Record<string, unknown>).attachmentIds as string[])
+      : [];
 
     const ts = now();
     let sessionId = body.sessionId;
@@ -127,21 +234,80 @@ export function createChatRoute(
       systemMessages.push({ role: 'system', content: deps.prompts.rules });
     }
 
+    // Add skills summary to system messages
+    if (deps.skills && deps.skills.size > 0) {
+      const skillsList = [...deps.skills.values()]
+        .map((s) => `- **${s.name}**: ${s.description}`)
+        .join('\n');
+      systemMessages.push({
+        role: 'system',
+        content: `Available workspace skills (use activate_skill tool to load full instructions):\n${skillsList}`,
+      });
+    }
+
     // Validate and type cast user messages
     const typedUserMessages = userMessages as Array<{
       role: string;
       content: string;
     }>;
 
+    // Inject @references into the last user message
+    if (references.length > 0) {
+      const refContent = references
+        .map((r) => `--- File: ${r.path} ---\n${r.content}\n--- End ---`)
+        .join('\n\n');
+      const lastUserIdx = typedUserMessages.findLastIndex((m) => m.role === 'user');
+      if (lastUserIdx >= 0) {
+        typedUserMessages[lastUserIdx]!.content += `\n\n[Referenced files]\n${refContent}`;
+      }
+    }
+
+    // Load attachments and inject into context
+    if (attachmentIds.length > 0 && deps.workspaceDir) {
+      for (const attId of attachmentIds) {
+        const att = deps.db.db.select().from(attachments)
+          .where(and(eq(attachments.id, attId), eq(attachments.userId, userId)))
+          .get();
+        if (!att) continue;
+
+        const absPath = pathModule.join(deps.workspaceDir, att.path);
+
+        if (isImage(att.mimeType)) {
+          // For images, add as a note that an image was attached (vision requires special handling)
+          const lastUserIdx = typedUserMessages.findLastIndex((m) => m.role === 'user');
+          if (lastUserIdx >= 0) {
+            typedUserMessages[lastUserIdx]!.content += `\n\n[Attached image: ${att.filename}]`;
+          }
+        } else if (isExtractable(att.mimeType)) {
+          try {
+            const text = await extractText(absPath, att.mimeType);
+            const lastUserIdx = typedUserMessages.findLastIndex((m) => m.role === 'user');
+            if (lastUserIdx >= 0) {
+              typedUserMessages[lastUserIdx]!.content += `\n\n--- Attached: ${att.filename} ---\n${text}\n--- End ---`;
+            }
+          } catch {
+            // Extraction failed — skip silently
+          }
+        }
+      }
+    }
+
     // Build the full messages array — cast to any to avoid version-specific type gymnastics
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const allMessages: any[] = [...systemMessages, ...typedUserMessages];
+
+    // Build tools conditionally
+    const fileTools = deps.workspaceDir ? buildFileTools(deps.workspaceDir) : {};
+    const skillTools = deps.skills && deps.skills.size > 0 ? buildSkillTools(deps.skills) : {};
+    const tools = { ...fileTools, ...skillTools };
+    const hasTools = Object.keys(tools).length > 0;
 
     // Stream the response
     try {
     const result = streamText({
       model: openai(resolvedModel),
       messages: allMessages,
+      ...(hasTools ? { tools, maxSteps: 5 } : {}),
       onFinish: async ({ text, usage, response }) => {
         const finishTs = now();
         const finalModel = response?.modelId ?? resolvedModel;

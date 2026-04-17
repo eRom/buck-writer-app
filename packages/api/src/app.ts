@@ -36,6 +36,10 @@ export interface AppDeps extends AuthRoutesDeps, SessionRoutesDeps {
    */
   workspaceDir?: string;
   /**
+   * Loaded workspace skills. Passed to the chat route for tool integration.
+   */
+  skills?: Map<string, import('./services/skills.js').Skill>;
+  /**
    * Absolute path to the built SPA (Vite dist/). If provided, Hono serves
    * it as static and falls back to index.html for non-/api paths. Leave
    * undefined in dev + tests (Vite dev server handles the SPA on :5173).
@@ -107,6 +111,8 @@ export function buildApp(deps: AppDeps) {
       db: deps.db,
       prompts: deps.prompts,
       openaiApiKey: deps.openaiApiKey,
+      workspaceDir: deps.workspaceDir,
+      skills: deps.skills,
       nowMs: deps.nowMs,
     }));
   }
