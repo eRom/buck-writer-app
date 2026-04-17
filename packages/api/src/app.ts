@@ -17,6 +17,7 @@ import {
 import { createSettingsRoutes } from './routes/settings.js';
 import { createUsageRoutes } from './routes/usage.js';
 import { createWorkspaceRoutes } from './routes/workspace.js';
+import { createAttachmentRoutes } from './routes/attachments.js';
 import type { Prompts } from './services/prompts.js';
 import { authGuard } from './middleware/auth.js';
 import { securityHeaders } from './middleware/security-headers.js';
@@ -123,6 +124,11 @@ export function buildApp(deps: AppDeps) {
     app.use('/api/workspace/*', authGuard({ db: deps.db, jwt: deps.jwt, nowMs: deps.nowMs }));
     app.use('/api/workspace', authGuard({ db: deps.db, jwt: deps.jwt, nowMs: deps.nowMs }));
     app.route('/api/workspace', createWorkspaceRoutes({ db: deps.db, workspaceDir: deps.workspaceDir }));
+
+    // Attachment routes (protected, within workspace)
+    app.use('/api/attachments/*', authGuard({ db: deps.db, jwt: deps.jwt, nowMs: deps.nowMs }));
+    app.use('/api/attachments', authGuard({ db: deps.db, jwt: deps.jwt, nowMs: deps.nowMs }));
+    app.route('/api/attachments', createAttachmentRoutes({ db: deps.db, workspaceDir: deps.workspaceDir, nowMs: deps.nowMs }));
   }
 
   // E2E-only helpers. Gated behind E2E=1 to prevent leakage.
