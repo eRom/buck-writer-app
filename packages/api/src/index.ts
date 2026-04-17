@@ -7,6 +7,7 @@ import { buildApp } from './app.js';
 import { loadEnv } from './env.js';
 import { openDb } from './db/client.js';
 import { runMigrations } from './db/migrate.js';
+import { runSeed } from './db/seed.js';
 import { createJwtService } from './services/jwt.js';
 import {
   createEmailService,
@@ -30,6 +31,18 @@ try {
     migrationsFolder: path.resolve(here, '..', 'migrations'),
   });
   console.warn('[api] migrations applied');
+  // Auto-seed if DB is empty (first run)
+  const testDb = openDb(env.DATABASE_URL);
+  const userCount = testDb.db.select().from((await import('./db/schema.js')).users).all().length;
+  testDb.close();
+  if (userCount === 0) {
+    runSeed({
+      databaseUrl: env.DATABASE_URL,
+      allowedEmails: env.AUTH_ALLOWED_EMAILS,
+      mcpBibleUrl: process.env.MCP_BIBLE_URL ?? 'http://bible-mcp:7801',
+    });
+    console.warn('[api] seed applied (first run)');
+  }
 } catch (err) {
   console.warn('[api] migration skipped:', (err as Error).message);
 }
