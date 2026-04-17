@@ -8,6 +8,7 @@ import { loadEnv } from './env.js';
 import { openDb } from './db/client.js';
 import { runMigrations } from './db/migrate.js';
 import { runSeed } from './db/seed.js';
+import { users } from './db/schema.js';
 import { createJwtService } from './services/jwt.js';
 import {
   createEmailService,
@@ -33,7 +34,7 @@ try {
   console.warn('[api] migrations applied');
   // Auto-seed if DB is empty (first run)
   const testDb = openDb(env.DATABASE_URL);
-  const userCount = testDb.db.select().from((await import('./db/schema.js')).users).all().length;
+  const userCount = testDb.db.select().from(users).all().length;
   testDb.close();
   if (userCount === 0) {
     runSeed({
