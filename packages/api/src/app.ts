@@ -20,6 +20,7 @@ import { authGuard } from './middleware/auth.js';
 import { securityHeaders } from './middleware/security-headers.js';
 import { csrfMiddleware } from './middleware/csrf.js';
 import { createRateLimiter, ipKey } from './middleware/rate-limit.js';
+import { budgetGuard } from './middleware/budget-guard.js';
 import { users } from './db/schema.js';
 
 export interface AppDeps extends AuthRoutesDeps, SessionRoutesDeps {
@@ -91,6 +92,7 @@ export function buildApp(deps: AppDeps) {
       '/api/chat',
       authGuard({ db: deps.db, jwt: deps.jwt, nowMs: deps.nowMs }),
       createRateLimiter({ windowMs: 60_000, max: 30, keyBy: ipKey }),
+      budgetGuard({ db: deps.db, nowMs: deps.nowMs }),
     );
     app.route('/api/chat', createChatRoute({
       db: deps.db,
