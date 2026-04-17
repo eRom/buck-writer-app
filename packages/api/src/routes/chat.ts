@@ -466,6 +466,27 @@ export function createChatRoute(
             .run();
         }
 
+        // Extract tool metadata from response steps
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const toolMetas: Array<Record<string, unknown>> = [];
+        if (response?.messages) {
+          for (const msg of response.messages) {
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
+            const m = msg as any;
+            if (m.role === 'assistant' && Array.isArray(m.toolInvocations)) {
+              for (const inv of m.toolInvocations) {
+                toolMetas.push({
+                  toolCallId: inv.toolCallId,
+                  toolName: inv.toolName,
+                  args: inv.args,
+                  status: inv.result?.status ?? 'auto',
+                  result: inv.result,
+                });
+              }
+            }
+          }
+        }
+
         // Persist assistant message
         deps.db.db
           .insert(messages)
@@ -475,6 +496,7 @@ export function createChatRoute(
             role: 'assistant',
             contentJson: JSON.stringify({ text }),
             model: finalModel,
+            toolMeta: toolMetas.length > 0 ? JSON.stringify(toolMetas) : null,
             createdAt: finishTs,
           })
           .run();
