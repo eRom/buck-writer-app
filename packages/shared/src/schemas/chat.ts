@@ -14,6 +14,7 @@ export const UpdateSessionInput = z.object({
   archived: z.boolean().optional(),
   isFavorite: z.boolean().optional(),
   model: z.enum(MODELS).optional(),
+  reasoningEffort: z.enum(['low', 'medium', 'high']).optional(),
 });
 export type UpdateSessionInput = z.infer<typeof UpdateSessionInput>;
 

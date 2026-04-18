@@ -6,6 +6,7 @@ const baseSession: Session = {
   id: '1',
   title: 't',
   model: 'gpt-4',
+  reasoningEffort: 'medium',
   isFavorite: 0,
   archived: 0,
   createdAt: 0,
