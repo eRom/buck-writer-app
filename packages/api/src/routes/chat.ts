@@ -21,7 +21,10 @@ import type { McpClient } from '../services/mcp-client.js';
 import { buildToolDefinitions, buildToolHandlers } from './chat-tools.js';
 import type { ToolHandler } from './chat-tools.js';
 
-const TOOLS_REQUIRING_APPROVAL = ['create_file', 'delete_file', 'shell_execute'];
+// Tools asking the user for explicit approval on every call. shell_execute is
+// NOT in this list — destructive shell commands are blocked upstream by the
+// kill-switch, non-destructive ones (ls, date, pwd…) run without friction.
+const TOOLS_REQUIRING_APPROVAL = ['create_file', 'delete_file'];
 
 export interface ChatRouteDeps {
   db: DbHandles;

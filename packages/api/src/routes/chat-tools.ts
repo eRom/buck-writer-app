@@ -81,7 +81,7 @@ export function buildToolDefinitions(
         type: 'function',
         function: {
           name: 'shell_execute',
-          description: 'Execute a shell command. The user will be asked for confirmation before execution.',
+          description: 'Execute a shell command in the workspace. Destructive commands (rm, chmod, etc.) are blocked automatically; safe commands run without confirmation.',
           parameters: {
             type: 'object',
             properties: {
