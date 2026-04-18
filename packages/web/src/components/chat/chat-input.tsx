@@ -28,7 +28,7 @@ interface ChatInputProps {
 
 const ACCEPT = ALLOWED_MIME_TYPES.join(',');
 
-function filesToPending(files: FileList | File[]): PendingAttachment[] {
+function filesToPending(files: ArrayLike<File>): PendingAttachment[] {
   return Array.from(files).map((file) => ({
     file,
     preview: file.type.startsWith('image/') ? URL.createObjectURL(file) : undefined,
@@ -72,7 +72,7 @@ export function ChatInput({
     }
   }
 
-  function addFiles(files: FileList | File[]) {
+  function addFiles(files: ArrayLike<File>) {
     const pending = filesToPending(files);
     if (pending.length > 0) {
       onAttachmentsChange([...pendingAttachments, ...pending]);
