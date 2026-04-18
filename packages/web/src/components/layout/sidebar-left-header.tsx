@@ -1,5 +1,8 @@
-import { Search, PanelLeftClose, PanelLeft } from 'lucide-react';
+import { Search, PanelLeftClose, PanelLeft, SquarePen } from 'lucide-react';
+import { useMutation, useQueryClient } from '@tanstack/react-query';
+import { useNavigate } from '@tanstack/react-router';
 import { Input } from '@/components/ui/input';
+import { createSession } from '@/lib/sessions';
 
 interface Props {
   collapsed: boolean;
@@ -9,9 +12,27 @@ interface Props {
 }
 
 export function SidebarLeftHeader({ collapsed, onToggle, query, onQueryChange }: Props) {
+  const qc = useQueryClient();
+  const navigate = useNavigate();
+  const newSession = useMutation({
+    mutationFn: () => createSession(),
+    onSuccess: async (session) => {
+      await qc.invalidateQueries({ queryKey: ['sessions'] });
+      navigate({ to: '/', search: { session: session.id } });
+    },
+  });
+
   if (collapsed) {
     return (
-      <div className="flex h-10 items-center justify-center">
+      <div className="flex h-10 items-center justify-center gap-1">
+        <button
+          onClick={() => newSession.mutate()}
+          disabled={newSession.isPending}
+          aria-label="Nouvelle session"
+          className="hover-elevate rounded-md p-1.5 text-sidebar-foreground/70 hover:text-sidebar-foreground disabled:opacity-50"
+        >
+          <SquarePen className="size-4" />
+        </button>
         <button
           onClick={onToggle}
           aria-label="Deployer la sidebar"
@@ -33,6 +54,15 @@ export function SidebarLeftHeader({ collapsed, onToggle, query, onQueryChange }:
           className="h-8 pl-7 text-[13px]"
         />
       </div>
+      <button
+        onClick={() => newSession.mutate()}
+        disabled={newSession.isPending}
+        aria-label="Nouvelle session"
+        title="Nouvelle session"
+        className="hover-elevate rounded-md p-1.5 text-sidebar-foreground/70 hover:text-sidebar-foreground disabled:opacity-50"
+      >
+        <SquarePen className="size-4" />
+      </button>
       <button
         onClick={onToggle}
         aria-label="Replier la sidebar"
