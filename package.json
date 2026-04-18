@@ -9,6 +9,7 @@
   "packageManager": "pnpm@9.12.0",
   "scripts": {
     "dev": "pnpm run --parallel --filter './packages/*' dev",
+    "dev:bible": "pnpm run --parallel --filter '@buck/bible-mcp' --filter '@buck/bible-ui' dev",
     "build": "pnpm -r build",
     "test": "pnpm -r test",
     "test:e2e": "pnpm --filter @buck/web test:e2e",
