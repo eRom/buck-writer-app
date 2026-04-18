@@ -1,16 +1,52 @@
 # Gotchas — Buck Writer
 
-> Derniere mise a jour : 2026-04-17 (M3 complete)
+> Derniere mise a jour : 2026-04-18 (M4 complete)
 
-## AI SDK v6 — API cassantes
+## Migration OpenAI directe (plus d'AI SDK)
 
-- `toDataStreamResponse()` n'existe plus → utiliser `toTextStreamResponse()`
-- `DefaultChatTransport` attend le format UIMessageStream, pas du texte brut
-- `useChat` avec `TextStreamChatTransport` efface l'historique au 2e echange
-- **Solution** : hook custom fetch + ReadableStream (pas de useChat)
-- `append()` renomme en `sendMessage({ text })`, `isLoading` remplace par `status` enum
-- `message.content` remplace par `message.parts` (array de `{ type: 'text', text }`)
-- `usage.promptTokens` → `usage.inputTokens`, `completionTokens` → `outputTokens`
+- AI SDK v6 (`ai`, `@ai-sdk/openai`) supprime le 2026-04-18 — trop d'instabilites : `as any` partout, `z.toJSONSchema` sur Zod 4 inexistant en Zod 3, streaming text-only qui forcait une regex heuristique pour detecter les approvals
+- Remplace par fetch direct `https://api.openai.com/v1/chat/completions` dans `lib/openai.ts`
+- Approval flow devient deterministe : SSE finish_reason=`tool_calls` declenche l'event `tool_approval` typé, plus de parsing heuristique cote client
+
+## Env loading en dev
+
+- `tsx watch` ne lit que `.env` du cwd par defaut. Les packages tournent depuis `packages/<name>/` → le `.env` racine n'est PAS lu
+- **Solution** : scripts `dev` des packages api et bible-mcp utilisent `tsx watch --env-file=../../.env --env-file=../../.env.development ...`
+- Later `--env-file` override, donc secrets restent dans `.env` (gitignored) et overrides dev dans `.env.development` (versionne)
+- Meme gotcha s'applique a tout nouveau package qui a besoin de vars — pattern a reproduire
+
+## Bible MCP — JSON Schema OpenAI-compatible
+
+- L'upstream utilisait `z.toJSONSchema` (API Zod 4). Avec notre Zod 3 pinné, l'appel throw et fallback sur `{type: "object"}` — donc tous les tools arrivent a OpenAI sans `properties` → **400 "object schema missing properties"**
+- **Fix** : `zod-to-json-schema` (lib dediee) dans `bible-mcp/src/http.ts`, strip `$schema/$ref/definitions`, garantir `properties: {}` sur les objets vides
+
+## Bible MCP — startup race
+
+- `pnpm dev` lance api + bible-mcp en parallele. L'api arrive souvent au `listTools()` avant que bible-mcp ecoute
+- **Fix** : api fait 5 tentatives x 2s avant d'abandonner. `MCP_HEALTH_POLL_MS` (defaut 30s) pour le poll continu
+- Le `startPolling()` doit etre appele **avant** le premier `rpc`, sinon en cas d'echec initial le polling ne demarre jamais (bug attrape en live)
+
+## Bible MCP — embeddings dimensions
+
+- Upstream utilisait HuggingFace (384 ou 768 dims). Buck utilise OpenAI `text-embedding-3-large` (3072 dims)
+- Migration `0001_openai_embeddings.sql` drop+recreate la table `embeddings` + ajoute `embeddings_meta` (model, dim)
+- Une DB peuplee avant M4 a des vecteurs HF → `bible_search_semantic` plante. **Solution** : appeler `bible_reindex_embeddings` depuis le chat apres avoir remplace la DB
+
+## Bible MCP — DB peuplee
+
+- La DB par defaut du repo upstream (`barda-mcp-ecrivain-bible/data/bible.db`) est vide (que les tables FTS auto-creees)
+- La vraie DB Matrix de Romain vit dans `packages/mcp/data/bible.db` du repo upstream (440KB, 12 persos, 10 lieux, 19 events)
+
+## Approval flow — scope
+
+- Design intent : approval uniquement pour operations vraiment sensibles (`create_file`, `delete_file`). `shell_execute` NE fait PAS partie de `TOOLS_REQUIRING_APPROVAL` — le kill-switch bloque les destructives (`rm`, `chmod`, etc.) et les commandes safe (`ls`, `date`, `pwd`) s'executent sans friction
+
+## Prompts refactor
+
+- `prompts/USER.md` existait mais n'etait jamais injecte — code mort supprime
+- Les prompts vivent maintenant dans `$WORKSPACE_DIR/systems/` (live-editable, hot-reload chokidar)
+- Bootstrap : si `$WORKSPACE_DIR/systems/` est vide au demarrage, l'api copie les defaults de `packages/api/src/defaults/systems/` (embarques dans dist via tsup `onSuccess`)
+- `AppDeps.prompts` est un `PromptsRef = { current: Prompts }` — mutable wrapper pour que chokidar puisse swap sans redemarrer l'api
 
 ## Docker / Alpine
 
@@ -19,87 +55,63 @@
 
 ## Env / Zod
 
-- `RESEND_API_KEY`, `OPENAI_API_KEY`, `MCP_BIBLE_URL` sont optionnels (pas utilises avant M1+/M4+)
+- `RESEND_API_KEY`, `OPENAI_API_KEY`, `MCP_BIBLE_URL` sont optionnels dans env.ts (pas utilises avant M1+/M4+)
 - Si Resend n'est pas configure, l'API fallback sur le E2E email service (ecrit le token dans un fichier)
-- Le schema Zod `ChatRequestInput` est trop strict pour le body envoye par AI SDK v6 (champs extra `id`, `trigger`). Parsing manuel du body a la place.
 
 ## Tailwind v4
 
-- Les plugins s'importent avec `@plugin` pas `@import` dans le CSS : `@plugin "@tailwindcss/typography"`
-- `@tailwindcss/typography` v0.5.x fonctionne avec Tailwind v4 via `@plugin`
+- Les plugins s'importent avec `@plugin` pas `@import` : `@plugin "@tailwindcss/typography"`
 
 ## ESLint
 
-- Les types DOM (`HTMLDivElement`, `HTMLTextAreaElement`) doivent etre declares dans les globals browser du eslint.config.mjs
-- Pattern Zod `const Foo = z.object({...}); type Foo = z.infer<typeof Foo>` → `no-redeclare` off
+- Les types DOM (`HTMLDivElement`, etc.) doivent etre declares dans les globals browser du eslint.config.mjs
+- Pattern Zod `const Foo = z.object({...}); type Foo = z.infer<typeof Foo>` → `no-redeclare: off`
+- 12 erreurs pre-M4 pre-existantes dans le code (web/routes/workspace, services/webdav, etc.) — a traiter un jour, pas bloquant
 
 ## DB / Drizzle
 
-- Les migrations sont dans `packages/api/migrations/`, le journal est dans `meta/_journal.json`
-- Si une migration existe sur disque mais pas dans le journal, Drizzle ne la voit pas → editer `_journal.json`
-- `pnpm deploy --filter @buck/api --prod` cree un flat node_modules sans les devDependencies
+- Les migrations api sont dans `packages/api/migrations/`, le journal dans `meta/_journal.json`
+- Drizzle 0.36 exige `sqliteTable('x', cols, (t) => ({ key: ... }))` (objet), 0.45+ acceptait les arrays
+- `pnpm deploy --filter @buck/api --prod` cree un flat node_modules sans devDependencies
 
 ## E2E / Playwright
 
-- Le mode E2E (`E2E=1`) bypass Resend et ecrit le token magic-link dans `./data/e2e-last-token.json`
+- `E2E=1` bypass Resend et ecrit le token magic-link dans `./data/e2e-last-token.json`
 - La route `__e2e__/last-token` est gatee par `E2E=1 && NODE_ENV !== 'production'`
-- Il faut seeder la DB e2e (sinon le user n'existe pas et `{"sent":true}` est retourne sans generer de token)
-- `tsx watch` avec des env inline perd les variables au reload → utiliser `env $(grep ...)` ou `tsx` sans watch
-
-## dotenv / loadDotenv
-
-- `dotenv` (npm) est CJS — tsup le bundle en ESM et crash avec `Dynamic require of "fs" is not supported`
-- **Solution** : `loadDotenv()` custom dans `utils/find-up.ts`, zero dep, parse KEY=VALUE, gere les quotes
-- Le `.env.development` est charge en premier (priorite), puis `.env` comble les vars manquantes
-- `loadDotenv()` ne surcharge PAS les vars deja dans `process.env`
-- Ne PAS mettre `loadDotenv()` au top-level de `migrate.ts`/`seed.ts` — ca cree des problemes d'ordre d'import quand importe par `index.ts`. Le mettre uniquement dans le bloc CLI (`if import.meta.url === ...`)
 
 ## Budget guard / Usage
 
-- La requete SUM(costUsd) doit filtrer par `periodStart <= createdAt < periodEnd` (pas juste `>= periodStart`)
-- `getOrCreateSettings()` doit etre appele dans le budget-guard — sinon un user sans row settings bypass le hard stop
-- Les `alertTriggers` sont keys par `yearMonth` derive de `periodStart` (pas du mois courant)
+- SUM(costUsd) filtre par `periodStart <= createdAt < periodEnd` (pas juste `>= periodStart`)
+- `getOrCreateSettings()` appele dans budget-guard — sinon user sans row bypass hard stop
+- `alertTriggers` keys par `yearMonth` derive de `periodStart` (pas mois courant)
 
-## Session implicite (premier message)
+## Session implicite
 
-- Quand le premier message cree une session implicite, le `x-session-id` header trigger un `useEffect[sessionId]` qui fetchMessages() → retourne vide (messages pas encore persistes)
-- **Fix** : `createdSessionRef` dans ChatArea pour skip le reload quand on vient de creer la session
+- Premier message cree session implicite → `x-session-id` header trigger useEffect[sessionId] → fetchMessages() → vide
+- **Fix** : `createdSessionRef` dans ChatArea skip le reload
 
 ## Rate limiter auth
 
-- Le rate limiter sur `/api/auth/*` bloquait aussi `/api/auth/me` (appele a chaque navigation)
-- **Fix** : monter `/api/auth/me` AVANT le rate limiter dans app.ts
+- `/api/auth/me` doit etre monte AVANT le rate limiter (appele a chaque navigation)
 
 ## DATABASE_URL relatif
 
-- `DATABASE_URL=file:./data/buck.db` est relatif au cwd du process
-- tsx lance depuis `packages/api/` donc la DB est dans `packages/api/data/buck.db`
-- Le `.env.development` doit refléter ce cwd, pas la racine monorepo
-
-## AI SDK v6 — tool() overloads
-
-- `tool()` de AI SDK v6 a des overloads stricts sur les types de retour
-- Quand `execute` retourne une union (`{ ok: true } | { error: string }`), le type n'est pas assignable a `undefined` sur certains overloads
-- **Workaround** : `tool({ ...config } as any)` sur les tools avec retours conditionnels
-- Affecte : `read_file`, `list_directory`, `create_file`, `delete_file`, `activate_skill`
+- `DATABASE_URL=file:./data/buck.db` est relatif au cwd du process (packages/api)
+- En dev, `.env.development` utilise `../../data/buck.db` pour pointer sur la racine monorepo
 
 ## pdf-parse ESM
 
-- `pdf-parse` v2 a un export ESM mais le `.default` n'existe pas toujours
-- **Fix** : `const pdfParse = pdfParseModule.default ?? pdfParseModule` avec cast `as any`
+- v2 a un export ESM mais `.default` n'existe pas toujours → `const pdfParse = pdfParseModule.default ?? pdfParseModule`
 
 ## ES2022 vs ES2023
 
-- `findLastIndex()` n'est pas disponible avec `lib: ES2022` (c'est ES2023)
-- **Fix** : utiliser `reduce()` pour simuler `findLastIndex`
+- `findLastIndex()` n'existe pas en ES2022 → `reduce()` pour simuler
 
 ## WebDAV CSRF
 
-- Les clients WebDAV (Finder, Explorer) ne peuvent pas envoyer de token CSRF
-- Le CSRF middleware doit etre bypass pour les routes `/webdav/*`
-- Verifie dans `middleware/csrf.ts` : condition `c.req.path.startsWith('/webdav')` → skip
+- Clients WebDAV (Finder, Explorer) ne peuvent pas envoyer de token CSRF
+- `middleware/csrf.ts` : condition `c.req.path.startsWith('/webdav')` → skip
 
 ## Worktree tests
 
-- Apres merge d'un worktree, `pnpm test` peut echouer si les deps ne sont pas installees sur main
-- Toujours faire `pnpm install` apres merge dans le repo principal
+- Apres merge worktree, `pnpm install` requis sur main avant `pnpm test`
