@@ -1,0 +1,49 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 400 200">
+  <!-- Notes: papiers éparpillés, post-its, dossier -->
+  <g fill="#9CA3AF">
+    <!-- Dossier en arrière-plan -->
+    <path d="M250,60 h90 q8,0 8,8 v100 q0,8 -8,8 h-100 q-8,0 -8,-8 v-90 q0,-8 8,-8 h10 l8,-10z" opacity="0.6"/>
+    <path d="M248,72 h100" stroke="#9CA3AF" stroke-width="2" opacity="0.3"/>
+    <!-- Onglet du dossier -->
+    <path d="M250,60 l8,-10 h25 l5,10" fill="none" stroke="#9CA3AF" stroke-width="1.5" opacity="0.6"/>
+
+    <!-- Feuille 1 (grande, légèrement tournée) -->
+    <rect x="60" y="40" width="80" height="105" rx="3" transform="rotate(-8,100,92)"/>
+    <rect x="60" y="40" width="80" height="105" rx="3" transform="rotate(-8,100,92)" fill="none" stroke="#9CA3AF" stroke-width="1.5"/>
+    <!-- Lignes de texte -->
+    <line x1="72" y1="60" x2="125" y2="55" stroke="#9CA3AF" stroke-width="1.5" opacity="0.4"/>
+    <line x1="73" y1="72" x2="128" y2="67" stroke="#9CA3AF" stroke-width="1.5" opacity="0.4"/>
+    <line x1="74" y1="84" x2="120" y2="79" stroke="#9CA3AF" stroke-width="1.5" opacity="0.4"/>
+    <line x1="75" y1="96" x2="127" y2="91" stroke="#9CA3AF" stroke-width="1.5" opacity="0.4"/>
+    <line x1="76" y1="108" x2="115" y2="104" stroke="#9CA3AF" stroke-width="1.5" opacity="0.4"/>
+    <line x1="77" y1="120" x2="125" y2="116" stroke="#9CA3AF" stroke-width="1.5" opacity="0.4"/>
+
+    <!-- Feuille 2 (petite, autre angle) -->
+    <rect x="150" y="80" width="65" height="85" rx="3" transform="rotate(5,182,122)"/>
+    <rect x="150" y="80" width="65" height="85" rx="3" transform="rotate(5,182,122)" fill="none" stroke="#9CA3AF" stroke-width="1.5"/>
+    <line x1="160" y1="98" x2="200" y2="100" stroke="#9CA3AF" stroke-width="1.2" opacity="0.4"/>
+    <line x1="160" y1="109" x2="205" y2="111" stroke="#9CA3AF" stroke-width="1.2" opacity="0.4"/>
+    <line x1="160" y1="120" x2="195" y2="122" stroke="#9CA3AF" stroke-width="1.2" opacity="0.4"/>
+    <line x1="161" y1="131" x2="202" y2="133" stroke="#9CA3AF" stroke-width="1.2" opacity="0.4"/>
+
+    <!-- Post-it 1 -->
+    <rect x="270" y="90" width="45" height="45" rx="2" transform="rotate(3,292,112)" opacity="0.8"/>
+    <line x1="278" y1="102" x2="305" y2="103" stroke="#9CA3AF" stroke-width="1.2" opacity="0.4"/>
+    <line x1="278" y1="112" x2="308" y2="113" stroke="#9CA3AF" stroke-width="1.2" opacity="0.4"/>
+    <line x1="278" y1="122" x2="298" y2="123" stroke="#9CA3AF" stroke-width="1.2" opacity="0.4"/>
+    <!-- Coin replié -->
+    <path d="M312,90 l3,10 l-10,-3z" opacity="0.5"/>
+
+    <!-- Post-it 2 (plus petit, superposé) -->
+    <rect x="295" y="120" width="40" height="40" rx="2" transform="rotate(-5,315,140)" opacity="0.7"/>
+    <line x1="302" y1="132" x2="325" y2="131" stroke="#9CA3AF" stroke-width="1" opacity="0.35"/>
+    <line x1="302" y1="141" x2="328" y2="140" stroke="#9CA3AF" stroke-width="1" opacity="0.35"/>
+
+    <!-- Trombone -->
+    <path d="M135,50 l3,-15 q0,-5 5,-5 q5,0 5,5 l0,35 q0,4 -4,4 q-4,0 -4,-4 l0,-20" fill="none" stroke="#9CA3AF" stroke-width="2" opacity="0.6"/>
+
+    <!-- Punaise -->
+    <circle cx="182" cy="82" r="4" opacity="0.7"/>
+    <line x1="182" y1="86" x2="182" y2="92" stroke="#9CA3AF" stroke-width="1.5" opacity="0.5"/>
+  </g>
+</svg>

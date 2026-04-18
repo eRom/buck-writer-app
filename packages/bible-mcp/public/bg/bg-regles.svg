@@ -1,0 +1,52 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 400 200">
+  <!-- Regles: livre ouvert avec plume et codex -->
+  <g fill="#EC4899">
+    <!-- Livre ouvert - page gauche -->
+    <path d="M100,40 l-60,10 l5,120 l65,-12z"/>
+    <path d="M100,40 l-60,10 l5,120 l65,-12z" fill="none" stroke="#EC4899" stroke-width="2"/>
+    <!-- Lignes de texte page gauche -->
+    <line x1="52" y1="65" x2="90" y2="58" stroke="#EC4899" stroke-width="1.5" opacity="0.4"/>
+    <line x1="53" y1="78" x2="92" y2="71" stroke="#EC4899" stroke-width="1.5" opacity="0.4"/>
+    <line x1="54" y1="91" x2="93" y2="84" stroke="#EC4899" stroke-width="1.5" opacity="0.4"/>
+    <line x1="55" y1="104" x2="85" y2="98" stroke="#EC4899" stroke-width="1.5" opacity="0.4"/>
+    <line x1="56" y1="117" x2="94" y2="110" stroke="#EC4899" stroke-width="1.5" opacity="0.4"/>
+    <line x1="57" y1="130" x2="88" y2="124" stroke="#EC4899" stroke-width="1.5" opacity="0.4"/>
+
+    <!-- Livre ouvert - page droite -->
+    <path d="M100,40 l60,10 l-5,120 l-65,-12z"/>
+    <path d="M100,40 l60,10 l-5,120 l-65,-12z" fill="none" stroke="#EC4899" stroke-width="2"/>
+    <!-- Lignes de texte page droite -->
+    <line x1="110" y1="58" x2="148" y2="65" stroke="#EC4899" stroke-width="1.5" opacity="0.4"/>
+    <line x1="109" y1="71" x2="150" y2="78" stroke="#EC4899" stroke-width="1.5" opacity="0.4"/>
+    <line x1="108" y1="84" x2="148" y2="91" stroke="#EC4899" stroke-width="1.5" opacity="0.4"/>
+    <line x1="108" y1="97" x2="140" y2="103" stroke="#EC4899" stroke-width="1.5" opacity="0.4"/>
+    <line x1="107" y1="110" x2="148" y2="117" stroke="#EC4899" stroke-width="1.5" opacity="0.4"/>
+    <line x1="107" y1="123" x2="142" y2="129" stroke="#EC4899" stroke-width="1.5" opacity="0.4"/>
+
+    <!-- Reliure du livre -->
+    <line x1="100" y1="40" x2="100" y2="158" stroke="#EC4899" stroke-width="3"/>
+
+    <!-- Plume d'écriture -->
+    <path d="M230,30 q-20,40 -30,80 q-2,8 0,12" fill="none" stroke="#EC4899" stroke-width="2.5"/>
+    <path d="M230,30 q10,-5 15,-15 q-5,2 -8,5 q5,-8 3,-18 q-3,8 -8,12 q2,-10 -5,-15 q2,8 0,14 q-5,-5 -12,-8 q8,5 10,12z"/>
+    <!-- Pointe de la plume -->
+    <path d="M200,122 l-2,10 l4,-2z" opacity="0.8"/>
+
+    <!-- Deuxième livre/codex (empilé) -->
+    <rect x="260" y="90" width="80" height="100" rx="4"/>
+    <rect x="260" y="90" width="80" height="100" rx="4" fill="none" stroke="#EC4899" stroke-width="2"/>
+    <!-- Décoration couverture -->
+    <rect x="275" y="105" width="50" height="70" rx="2" fill="none" stroke="#EC4899" stroke-width="1.5" opacity="0.5"/>
+    <line x1="285" y1="120" x2="315" y2="120" stroke="#EC4899" stroke-width="1.5" opacity="0.4"/>
+    <line x1="285" y1="130" x2="315" y2="130" stroke="#EC4899" stroke-width="1.5" opacity="0.4"/>
+    <line x1="285" y1="140" x2="305" y2="140" stroke="#EC4899" stroke-width="1.5" opacity="0.4"/>
+    <!-- Reliure -->
+    <rect x="258" y="92" width="6" height="96" rx="2" opacity="0.8"/>
+
+    <!-- Petit parchemin roulé -->
+    <ellipse cx="360" cy="65" rx="6" ry="20"/>
+    <rect x="354" y="65" width="12" height="50" opacity="0.7"/>
+    <ellipse cx="360" cy="115" rx="6" ry="4" opacity="0.9"/>
+    <line x1="360" y1="75" x2="360" y2="105" stroke="#EC4899" stroke-width="0.8" opacity="0.4"/>
+  </g>
+</svg>

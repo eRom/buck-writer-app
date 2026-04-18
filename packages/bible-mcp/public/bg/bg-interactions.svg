@@ -1,0 +1,65 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 400 200">
+  <!-- Interactions: réseau de bulles de dialogue reliées -->
+  <g fill="#8B5CF6">
+    <!-- Lignes de connexion -->
+    <line x1="80" y1="60" x2="180" y2="45" stroke="#8B5CF6" stroke-width="1.5" opacity="0.4"/>
+    <line x1="80" y1="60" x2="120" y2="140" stroke="#8B5CF6" stroke-width="1.5" opacity="0.4"/>
+    <line x1="180" y1="45" x2="300" y2="70" stroke="#8B5CF6" stroke-width="1.5" opacity="0.4"/>
+    <line x1="180" y1="45" x2="200" y2="130" stroke="#8B5CF6" stroke-width="1.5" opacity="0.4"/>
+    <line x1="300" y1="70" x2="340" y2="150" stroke="#8B5CF6" stroke-width="1.5" opacity="0.4"/>
+    <line x1="300" y1="70" x2="200" y2="130" stroke="#8B5CF6" stroke-width="1.5" opacity="0.4"/>
+    <line x1="120" y1="140" x2="200" y2="130" stroke="#8B5CF6" stroke-width="1.5" opacity="0.4"/>
+    <line x1="200" y1="130" x2="340" y2="150" stroke="#8B5CF6" stroke-width="1.5" opacity="0.4"/>
+    <line x1="80" y1="60" x2="50" y2="140" stroke="#8B5CF6" stroke-width="1.5" opacity="0.3"/>
+    <line x1="300" y1="70" x2="370" y2="40" stroke="#8B5CF6" stroke-width="1.5" opacity="0.3"/>
+
+    <!-- Bulle 1 (haut-gauche) -->
+    <rect x="55" y="40" width="50" height="32" rx="8"/>
+    <path d="M75,72 l-5,10 l10,-3z"/>
+    <rect x="63" y="49" width="20" height="3" rx="1.5" opacity="0.5"/>
+    <rect x="63" y="56" width="30" height="3" rx="1.5" opacity="0.5"/>
+    <rect x="63" y="63" width="15" height="3" rx="1.5" opacity="0.5"/>
+
+    <!-- Bulle 2 (haut-centre) -->
+    <rect x="155" y="25" width="55" height="35" rx="8"/>
+    <path d="M180,60 l-3,9 l9,-3z"/>
+    <rect x="164" y="34" width="30" height="3" rx="1.5" opacity="0.5"/>
+    <rect x="164" y="41" width="36" height="3" rx="1.5" opacity="0.5"/>
+    <rect x="164" y="48" width="20" height="3" rx="1.5" opacity="0.5"/>
+
+    <!-- Bulle 3 (droite) -->
+    <rect x="272" y="50" width="55" height="35" rx="8"/>
+    <path d="M310,85 l3,9 l-9,-4z"/>
+    <rect x="281" y="59" width="35" height="3" rx="1.5" opacity="0.5"/>
+    <rect x="281" y="66" width="25" height="3" rx="1.5" opacity="0.5"/>
+    <rect x="281" y="73" width="30" height="3" rx="1.5" opacity="0.5"/>
+
+    <!-- Bulle 4 (bas-gauche) -->
+    <rect x="95" y="120" width="50" height="30" rx="8"/>
+    <path d="M115,150 l-4,8 l9,-3z"/>
+    <rect x="103" y="128" width="25" height="3" rx="1.5" opacity="0.5"/>
+    <rect x="103" y="135" width="32" height="3" rx="1.5" opacity="0.5"/>
+
+    <!-- Bulle 5 (bas-centre) -->
+    <rect x="175" y="112" width="52" height="32" rx="8"/>
+    <path d="M200,144 l-2,8 l8,-4z"/>
+    <rect x="183" y="121" width="28" height="3" rx="1.5" opacity="0.5"/>
+    <rect x="183" y="128" width="35" height="3" rx="1.5" opacity="0.5"/>
+    <rect x="183" y="135" width="18" height="3" rx="1.5" opacity="0.5"/>
+
+    <!-- Bulle 6 (bas-droite) -->
+    <rect x="315" y="130" width="48" height="32" rx="8"/>
+    <path d="M340,162 l-3,8 l9,-4z"/>
+    <rect x="323" y="139" width="30" height="3" rx="1.5" opacity="0.5"/>
+    <rect x="323" y="146" width="22" height="3" rx="1.5" opacity="0.5"/>
+
+    <!-- Petits noeuds aux intersections -->
+    <circle cx="50" cy="140" r="5" opacity="0.5"/>
+    <circle cx="370" cy="40" r="4" opacity="0.4"/>
+
+    <!-- Points décoratifs -->
+    <circle cx="30" cy="90" r="2" opacity="0.3"/>
+    <circle cx="380" cy="110" r="2" opacity="0.3"/>
+    <circle cx="250" cy="170" r="2" opacity="0.25"/>
+  </g>
+</svg>

@@ -1,0 +1,7 @@
+{
+  "name": "bible-ecrivain",
+  "description": "Bible d'ecrivain — base de connaissances d'un univers narratif",
+  "command": "npx",
+  "args": ["barda-ecrivain-bible"],
+  "transportType": "stdio"
+}
