@@ -1,9 +1,6 @@
 import { Hono } from 'hono';
 import { eq, and, isNull, gte, lt } from 'drizzle-orm';
 import { sql } from 'drizzle-orm';
-import { streamText, generateText, tool } from 'ai';
-import { z } from 'zod';
-import { createOpenAI } from '@ai-sdk/openai';
 import * as fsp from 'node:fs/promises';
 import * as pathModule from 'node:path';
 import { execFile } from 'node:child_process';
@@ -16,12 +13,24 @@ import { chatSessions, messages, usageEvents, userSettings, alertTriggers, attac
 import { assertSafePath } from '../utils/path-safe.js';
 import { isImage, isExtractable, extractText } from '../services/extractor.js';
 import { isDestructiveCommand } from '../lib/kill-switch.js';
+import {
+  streamChat,
+  chat,
+  parseSSEChunks,
+  accumulateToolCalls,
+  OpenAIError,
+} from '../lib/openai.js';
+import type { ChatMessage, ToolDefinition, ToolCall } from '../lib/openai.js';
 
 const execFileAsync = promisify(execFile);
 
 const SHELL_TIMEOUT_MS = 30_000;
 const SHELL_MAX_BUFFER = 100 * 1024; // 100KB
 const SAFE_PATH = '/usr/local/bin:/usr/bin:/bin';
+
+const TOOLS_REQUIRING_APPROVAL = ['create_file', 'delete_file', 'shell_execute'];
+
+type ToolHandler = (args: Record<string, unknown>) => Promise<unknown>;
 
 export interface ChatRouteDeps {
   db: DbHandles;
@@ -32,224 +41,214 @@ export interface ChatRouteDeps {
   nowMs?: () => number;
 }
 
+function buildToolDefinitions(
+  workspaceDir: string | undefined,
+  skills: Map<string, Skill> | undefined,
+): ToolDefinition[] {
+  const defs: ToolDefinition[] = [];
+  if (workspaceDir) {
+    defs.push(
+      {
+        type: 'function',
+        function: {
+          name: 'read_file',
+          description: 'Read the content of a file in the workspace',
+          parameters: {
+            type: 'object',
+            properties: { path: { type: 'string' } },
+            required: ['path'],
+          },
+        },
+      },
+      {
+        type: 'function',
+        function: {
+          name: 'list_directory',
+          description: 'List files and directories at a given path in the workspace',
+          parameters: {
+            type: 'object',
+            properties: {
+              path: { type: 'string', description: 'Relative path, defaults to workspace root' },
+            },
+          },
+        },
+      },
+      {
+        type: 'function',
+        function: {
+          name: 'create_file',
+          description: 'Create or overwrite a file in the workspace. The user will be asked for confirmation before execution.',
+          parameters: {
+            type: 'object',
+            properties: {
+              path: { type: 'string' },
+              content: { type: 'string' },
+            },
+            required: ['path', 'content'],
+          },
+        },
+      },
+      {
+        type: 'function',
+        function: {
+          name: 'delete_file',
+          description: 'Delete a file in the workspace. The user will be asked for confirmation before execution.',
+          parameters: {
+            type: 'object',
+            properties: { path: { type: 'string' } },
+            required: ['path'],
+          },
+        },
+      },
+      {
+        type: 'function',
+        function: {
+          name: 'shell_execute',
+          description: 'Execute a shell command. The user will be asked for confirmation before execution.',
+          parameters: {
+            type: 'object',
+            properties: {
+              command: { type: 'string', description: 'The shell command to execute' },
+              cwd: { type: 'string', description: 'Working directory (relative to workspace)' },
+            },
+            required: ['command'],
+          },
+        },
+      },
+    );
+  }
+  if (skills && skills.size > 0) {
+    const list = [...skills.values()].map((s) => `${s.name}: ${s.description}`).join('; ');
+    defs.push({
+      type: 'function',
+      function: {
+        name: 'activate_skill',
+        description: `Activate a skill to get its full instructions. Available skills: ${list}`,
+        parameters: {
+          type: 'object',
+          properties: { name: { type: 'string' } },
+          required: ['name'],
+        },
+      },
+    });
+  }
+  return defs;
+}
+
+function buildToolHandlers(
+  workspaceDir: string,
+  skills: Map<string, Skill> | undefined,
+): Record<string, ToolHandler> {
+  return {
+    read_file: async ({ path: filePath }) => {
+      try {
+        const absPath = await assertSafePath(workspaceDir, String(filePath));
+        const stat = await fsp.stat(absPath);
+        if (stat.isDirectory()) return { error: 'path is a directory, use list_directory instead' };
+        if (stat.size > 1024 * 1024) return { error: 'file too large (max 1MB for context)' };
+        const content = await fsp.readFile(absPath, 'utf8');
+        return { content, path: filePath };
+      } catch (err) {
+        if (err instanceof Error && 'status' in err) return { error: 'path outside workspace' };
+        return { error: `file not found: ${filePath}` };
+      }
+    },
+    list_directory: async ({ path: dirPath }) => {
+      try {
+        const absPath = dirPath
+          ? await assertSafePath(workspaceDir, String(dirPath))
+          : workspaceDir;
+        const entries = await fsp.readdir(absPath, { withFileTypes: true });
+        return {
+          entries: entries
+            .filter((e) => e.name !== '.attachments')
+            .map((e) => ({ name: e.name, type: e.isDirectory() ? 'directory' : 'file' })),
+        };
+      } catch {
+        return { error: `directory not found: ${dirPath ?? '/'}` };
+      }
+    },
+    create_file: async ({ path: filePath, content }) => {
+      const fp = String(filePath);
+      if (fp.startsWith('prompts/') || fp === 'prompts') {
+        return { error: 'cannot write to prompts/ directory (reserved)' };
+      }
+      try {
+        const absPath = await assertSafePath(workspaceDir, fp);
+        await fsp.mkdir(pathModule.dirname(absPath), { recursive: true });
+        await fsp.writeFile(absPath, String(content ?? ''), 'utf8');
+        return { ok: true, path: filePath };
+      } catch {
+        return { error: `failed to create file: ${filePath}` };
+      }
+    },
+    delete_file: async ({ path: filePath }) => {
+      try {
+        const absPath = await assertSafePath(workspaceDir, String(filePath));
+        await fsp.rm(absPath, { recursive: true });
+        return { ok: true, deleted: filePath };
+      } catch {
+        return { error: `failed to delete: ${filePath}` };
+      }
+    },
+    shell_execute: async ({ command, cwd }) => {
+      const cmd = String(command);
+      if (isDestructiveCommand(cmd)) {
+        return { error: 'Commande bloquée : opération destructive détectée', status: 'blocked' as const };
+      }
+      let resolvedCwd = workspaceDir;
+      if (cwd) {
+        try {
+          resolvedCwd = await assertSafePath(workspaceDir, String(cwd));
+        } catch {
+          return { error: `invalid cwd: ${cwd}` };
+        }
+      }
+      try {
+        const { stdout, stderr } = await execFileAsync('/bin/sh', ['-c', cmd], {
+          cwd: resolvedCwd,
+          timeout: SHELL_TIMEOUT_MS,
+          maxBuffer: SHELL_MAX_BUFFER,
+          env: { PATH: SAFE_PATH, HOME: '/tmp', TERM: 'dumb' },
+        });
+        return {
+          stdout: stdout || '',
+          stderr: stderr || '',
+          exitCode: 0,
+          killed: false,
+          truncated: false,
+        };
+      } catch (err: unknown) {
+        const e = err as { killed?: boolean; code?: number; stdout?: string; stderr?: string; message?: string };
+        const truncated = e.message?.includes('maxBuffer') ?? false;
+        return {
+          stdout: e.stdout ?? '',
+          stderr: e.stderr ?? '',
+          exitCode: e.code ?? 1,
+          killed: e.killed ?? false,
+          truncated,
+        };
+      }
+    },
+    activate_skill: async ({ name }) => {
+      const skill = skills?.get(String(name));
+      if (!skill) return { error: `skill not found: ${name}` };
+      return { name: skill.name, instructions: skill.body };
+    },
+  };
+}
+
 export function createChatRoute(
   deps: ChatRouteDeps,
 ): Hono<{ Variables: { userId: string } }> {
   const now = deps.nowMs ?? Date.now;
   const app = new Hono<{ Variables: { userId: string } }>();
-  const openai = createOpenAI({ apiKey: deps.openaiApiKey });
-
-  function buildFileTools(workspaceDir: string) {
-    return {
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      read_file: tool({
-        description: 'Read the content of a file in the workspace',
-        parameters: z.object({ path: z.string() }),
-        execute: async ({ path: filePath }: { path: string }) => {
-          try {
-            const absPath = await assertSafePath(workspaceDir, filePath);
-            const stat = await fsp.stat(absPath);
-            if (stat.isDirectory()) return { error: 'path is a directory, use list_directory instead' };
-            if (stat.size > 1024 * 1024) return { error: 'file too large (max 1MB for context)' };
-            const content = await fsp.readFile(absPath, 'utf8');
-            return { content, path: filePath };
-          } catch (err) {
-            if (err instanceof Error && 'status' in err) return { error: 'path outside workspace' };
-            return { error: `file not found: ${filePath}` };
-          }
-        },
-      } as any),
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      list_directory: tool({
-        description: 'List files and directories at a given path in the workspace',
-        parameters: z.object({ path: z.string().optional().describe('Relative path, defaults to workspace root') }),
-        execute: async ({ path: dirPath }: { path?: string }) => {
-          try {
-            const absPath = dirPath
-              ? await assertSafePath(workspaceDir, dirPath)
-              : workspaceDir;
-            const entries = await fsp.readdir(absPath, { withFileTypes: true });
-            return {
-              entries: entries
-                .filter((e) => e.name !== '.attachments')
-                .map((e) => ({ name: e.name, type: e.isDirectory() ? 'directory' : 'file' })),
-            };
-          } catch {
-            return { error: `directory not found: ${dirPath ?? '/'}` };
-          }
-        },
-      } as any),
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      create_file: tool({
-        description: 'Create or overwrite a file in the workspace',
-        parameters: z.object({ path: z.string(), content: z.string() }),
-        execute: async ({ path: filePath, content }: { path: string; content: string }) => {
-          if (filePath.startsWith('prompts/') || filePath === 'prompts') {
-            return { error: 'cannot write to prompts/ directory (reserved)' };
-          }
-          try {
-            const absPath = await assertSafePath(workspaceDir, filePath);
-            await fsp.mkdir(pathModule.dirname(absPath), { recursive: true });
-            await fsp.writeFile(absPath, content, 'utf8');
-            return { ok: true, path: filePath };
-          } catch {
-            return { error: `failed to create file: ${filePath}` };
-          }
-        },
-      } as any),
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      delete_file: tool({
-        description: 'Delete a file in the workspace. The user will be asked for confirmation in the chat UI before this executes.',
-        parameters: z.object({ path: z.string() }),
-        execute: async ({ path: filePath }: { path: string }) => {
-          try {
-            const absPath = await assertSafePath(workspaceDir, filePath);
-            await fsp.rm(absPath, { recursive: true });
-            return { ok: true, deleted: filePath };
-          } catch {
-            return { error: `failed to delete: ${filePath}` };
-          }
-        },
-      } as any),
-    };
-  }
-
-  function buildSkillTools(skills: Map<string, Skill>) {
-    const skillsList = [...skills.values()]
-      .map((s) => `${s.name}: ${s.description}`)
-      .join('; ');
-
-    return {
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      activate_skill: tool({
-        description: `Activate a skill to get its full instructions. Available skills: ${skillsList}`,
-        parameters: z.object({ name: z.string() }),
-        execute: async ({ name }: { name: string }) => {
-          const skill = skills.get(name);
-          if (!skill) return { error: `skill not found: ${name}` };
-          return { name: skill.name, instructions: skill.body };
-        },
-      } as any),
-    };
-  }
-
-  function buildShellTool(workspaceDir: string) {
-    return {
-      shell_execute: tool({
-        description: 'Execute a shell command. The user will be asked for confirmation before execution.',
-        parameters: z.object({
-          command: z.string().describe('The shell command to execute'),
-          cwd: z.string().optional().describe('Working directory (relative to workspace, defaults to workspace root)'),
-        }),
-        execute: async ({ command, cwd }: { command: string; cwd?: string }) => {
-          // Kill switch — block destructive commands
-          if (isDestructiveCommand(command)) {
-            return { error: 'Commande bloquée : opération destructive détectée', status: 'blocked' as const };
-          }
-
-          // Resolve cwd
-          let resolvedCwd = workspaceDir;
-          if (cwd) {
-            try {
-              resolvedCwd = await assertSafePath(workspaceDir, cwd);
-            } catch {
-              return { error: `invalid cwd: ${cwd}` };
-            }
-          }
-
-          try {
-            const { stdout, stderr } = await execFileAsync('/bin/sh', ['-c', command], {
-              cwd: resolvedCwd,
-              timeout: SHELL_TIMEOUT_MS,
-              maxBuffer: SHELL_MAX_BUFFER,
-              env: { PATH: SAFE_PATH, HOME: '/tmp', TERM: 'dumb' },
-            });
-            return {
-              stdout: stdout || '',
-              stderr: stderr || '',
-              exitCode: 0,
-              killed: false,
-              truncated: false,
-            };
-          } catch (err: unknown) {
-            const e = err as { killed?: boolean; code?: number; stdout?: string; stderr?: string; message?: string };
-            const truncated = e.message?.includes('maxBuffer') ?? false;
-            return {
-              stdout: e.stdout ?? '',
-              stderr: e.stderr ?? '',
-              exitCode: e.code ?? 1,
-              killed: e.killed ?? false,
-              truncated,
-            };
-          }
-        },
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      } as any),
-    };
-  }
-
-  const TOOLS_REQUIRING_APPROVAL = ['create_file', 'delete_file', 'shell_execute'];
-
-  function wrapToolsWithApproval(
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    tools: Record<string, any>,
-    approvedTool?: { toolName: string; approved: boolean } | null,
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  ): Record<string, any> {
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const wrapped: Record<string, any> = {};
-    for (const [name, t] of Object.entries(tools)) {
-      if (!TOOLS_REQUIRING_APPROVAL.includes(name)) {
-        wrapped[name] = t;
-        continue;
-      }
-
-      // If this tool was just approved, use the original (will execute)
-      if (approvedTool?.toolName === name && approvedTool.approved) {
-        wrapped[name] = t;
-        continue;
-      }
-
-      // If this tool was denied, return a denial message
-      if (approvedTool?.toolName === name && !approvedTool.approved) {
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        wrapped[name] = tool({
-          description: t.description,
-          parameters: t.parameters,
-          execute: async (args: Record<string, unknown>) => ({
-            status: 'denied' as const,
-            message: "L'utilisateur a refusé l'exécution de cette commande.",
-            toolName: name,
-            args,
-          }),
-        } as any);
-        continue;
-      }
-
-      // Default: return requires_approval
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      wrapped[name] = tool({
-        description: t.description,
-        parameters: t.parameters,
-        execute: async (args: Record<string, unknown>) => {
-          // For shell_execute, run kill switch first
-          if (name === 'shell_execute' && typeof args.command === 'string' && isDestructiveCommand(args.command)) {
-            return { error: 'Commande bloquée : opération destructive détectée', status: 'blocked' as const };
-          }
-          return { status: 'requires_approval' as const, toolName: name, args };
-        },
-      } as any);
-    }
-    return wrapped;
-  }
 
   // POST / — streaming chat
   app.post('/', async (c) => {
     const userId = c.get('userId');
     const raw = await c.req.json().catch(() => ({}));
 
-    // AI SDK v6 sends messages as { parts: [{ type: 'text', text }] }
-    // Convert to { role, content } format
     const rawMessages = (raw as { messages?: unknown[] }).messages;
     if (!Array.isArray(rawMessages) || rawMessages.length === 0) {
       return c.json(
@@ -268,7 +267,6 @@ export function createChatRoute(
       return { role: msg.role, content };
     });
 
-    // Parse sessionId + model from body (ignore unknown fields from AI SDK)
     const body = {
       sessionId: typeof (raw as Record<string, unknown>).sessionId === 'string'
         ? (raw as Record<string, unknown>).sessionId as string
@@ -278,17 +276,14 @@ export function createChatRoute(
         : undefined,
     };
 
-    // Parse @references
     const references = Array.isArray((raw as Record<string, unknown>).references)
       ? ((raw as Record<string, unknown>).references as Array<{ path: string; content: string }>)
       : [];
 
-    // Parse attachment IDs
     const attachmentIds = Array.isArray((raw as Record<string, unknown>).attachmentIds)
       ? ((raw as Record<string, unknown>).attachmentIds as string[])
       : [];
 
-    // Parse tool approval (resume after user decision)
     const toolApproval = (raw as Record<string, unknown>).toolApproval
       ? {
           toolCallId: String(((raw as Record<string, unknown>).toolApproval as Record<string, unknown>).toolCallId ?? ''),
@@ -304,7 +299,6 @@ export function createChatRoute(
     let sessionModel: string | undefined;
 
     if (sessionId) {
-      // Verify ownership
       const session = deps.db.db
         .select()
         .from(chatSessions)
@@ -325,7 +319,6 @@ export function createChatRoute(
       }
       sessionModel = session.model;
     } else {
-      // Create implicit session
       const newSessionId = newId();
       deps.db.db
         .insert(chatSessions)
@@ -344,7 +337,6 @@ export function createChatRoute(
       isNewSession = true;
     }
 
-    // Resolve model: body.model > session.model > userSettings.defaultModel > 'gpt-5.4-mini'
     let resolvedModel: string = 'gpt-5.4-mini';
     if (body.model) {
       resolvedModel = body.model;
@@ -362,13 +354,12 @@ export function createChatRoute(
     }
 
     // Build system messages
-    const systemMessages: Array<{ role: 'system'; content: string }> = [];
+    const systemMessages: ChatMessage[] = [];
     systemMessages.push({ role: 'system', content: deps.prompts.system });
     if (deps.prompts.rules.length > 0) {
       systemMessages.push({ role: 'system', content: deps.prompts.rules });
     }
 
-    // Add skills summary to system messages
     if (deps.skills && deps.skills.size > 0) {
       const skillsList = [...deps.skills.values()]
         .map((s) => `- **${s.name}**: ${s.description}`)
@@ -379,13 +370,12 @@ export function createChatRoute(
       });
     }
 
-    // Validate and type cast user messages
     const typedUserMessages = userMessages as Array<{
-      role: string;
+      role: 'user' | 'assistant' | 'system';
       content: string;
     }>;
 
-    // Inject @references into the last user message
+    // Inject @references into last user message
     if (references.length > 0) {
       const refContent = references
         .map((r) => `--- File: ${r.path} ---\n${r.content}\n--- End ---`)
@@ -396,7 +386,7 @@ export function createChatRoute(
       }
     }
 
-    // Load attachments and inject into context
+    // Load attachments
     if (attachmentIds.length > 0 && deps.workspaceDir) {
       for (const attId of attachmentIds) {
         const att = deps.db.db.select().from(attachments)
@@ -407,7 +397,6 @@ export function createChatRoute(
         const absPath = pathModule.join(deps.workspaceDir, att.path);
 
         if (isImage(att.mimeType)) {
-          // For images, add as a note that an image was attached (vision requires special handling)
           const lastUserIdx = typedUserMessages.reduce((acc, m, i) => (m.role === 'user' ? i : acc), -1);
           if (lastUserIdx >= 0) {
             typedUserMessages[lastUserIdx]!.content += `\n\n[Attached image: ${att.filename}]`;
@@ -420,241 +409,378 @@ export function createChatRoute(
               typedUserMessages[lastUserIdx]!.content += `\n\n--- Attached: ${att.filename} ---\n${text}\n--- End ---`;
             }
           } catch {
-            // Extraction failed — skip silently
+            // skip silently
           }
         }
       }
     }
 
-    // Build the full messages array — cast to any to avoid version-specific type gymnastics
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const allMessages: any[] = [...systemMessages, ...typedUserMessages];
+    // Full messages array
+    const llmMessages: ChatMessage[] = [
+      ...systemMessages,
+      ...typedUserMessages.map((m) => ({ role: m.role as ChatMessage['role'], content: m.content })),
+    ];
 
-    // Build tools conditionally
-    const fileTools = deps.workspaceDir ? buildFileTools(deps.workspaceDir) : {};
-    const skillTools = deps.skills && deps.skills.size > 0 ? buildSkillTools(deps.skills) : {};
-    const shellTools = deps.workspaceDir ? buildShellTool(deps.workspaceDir) : {};
-    const rawTools = { ...fileTools, ...skillTools, ...shellTools };
-    const tools = wrapToolsWithApproval(rawTools, toolApproval);
-    const hasTools = Object.keys(tools).length > 0;
+    const toolDefs = buildToolDefinitions(deps.workspaceDir, deps.skills);
+    const toolHandlers: Record<string, ToolHandler> = deps.workspaceDir
+      ? buildToolHandlers(deps.workspaceDir, deps.skills)
+      : {};
 
-    // Stream the response
-    try {
-    const result = streamText({
-      model: openai.chat(resolvedModel),
-      messages: allMessages,
-      ...(hasTools ? { tools, maxSteps: 5 } : {}),
-      onFinish: async ({ text, usage, response }) => {
-        const finishTs = now();
-        const finalModel = response?.modelId ?? resolvedModel;
+    // Resume after approval: replay the tool_call + inject result/denial
+    if (toolApproval) {
+      const tc: ToolCall = {
+        id: toolApproval.toolCallId,
+        type: 'function',
+        function: {
+          name: toolApproval.toolName,
+          arguments: JSON.stringify(toolApproval.args),
+        },
+      };
+      llmMessages.push({ role: 'assistant', content: null, tool_calls: [tc] });
 
-        // Find the last user message
-        const lastUserMessage = [...typedUserMessages]
-          .reverse()
-          .find((m) => m.role === 'user');
+      if (toolApproval.approved) {
+        const handler = toolHandlers[toolApproval.toolName];
+        const result = handler
+          ? await handler(toolApproval.args)
+          : { error: `unknown tool: ${toolApproval.toolName}` };
+        llmMessages.push({
+          role: 'tool',
+          tool_call_id: toolApproval.toolCallId,
+          content: JSON.stringify(result),
+        });
+      } else {
+        llmMessages.push({
+          role: 'tool',
+          tool_call_id: toolApproval.toolCallId,
+          content: JSON.stringify({
+            status: 'denied',
+            message: "L'utilisateur a refusé l'exécution.",
+            toolName: toolApproval.toolName,
+            args: toolApproval.args,
+          }),
+        });
+      }
+    }
 
-        // Persist user message
-        if (lastUserMessage) {
-          deps.db.db
-            .insert(messages)
-            .values({
-              id: newId(),
-              sessionId: sessionId!,
-              role: 'user',
-              contentJson: JSON.stringify({ text: lastUserMessage.content }),
-              model: null,
-              createdAt: finishTs - 1,
-            })
-            .run();
-        }
+    // Stream loop
+    const { readable, writable } = new TransformStream();
+    const writer = writable.getWriter();
+    const encoder = new TextEncoder();
 
-        // Extract tool metadata from response steps (AI SDK v6 format)
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        const toolMetas: Array<Record<string, unknown>> = [];
-        if (response?.messages) {
-          // eslint-disable-next-line @typescript-eslint/no-explicit-any
-          const msgs = response.messages as any[];
-          for (let i = 0; i < msgs.length; i++) {
-            const m = msgs[i];
-            // AI SDK v6: assistant messages have content array with tool-call parts
-            if (m.role === 'assistant' && Array.isArray(m.content)) {
-              for (const part of m.content) {
-                if (part.type === 'tool-call') {
-                  // Find matching tool-result in the next message
-                  const nextMsg = msgs[i + 1];
-                  let toolResult: unknown = undefined;
-                  if (nextMsg?.role === 'tool' && Array.isArray(nextMsg.content)) {
-                    const resultPart = nextMsg.content.find(
-                      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-                      (p: any) => p.type === 'tool-result' && p.toolCallId === part.toolCallId,
-                    );
-                    if (resultPart) toolResult = resultPart.result;
+    function sendEvent(type: string, data: unknown) {
+      void writer.write(encoder.encode(`event: ${type}\ndata: ${JSON.stringify(data)}\n\n`));
+    }
+
+    const finalSessionId = sessionId;
+    const runLoop = async () => {
+      let step = 0;
+      const maxSteps = 5;
+      let accumulatedText = '';
+      let totalUsage = { prompt_tokens: 0, completion_tokens: 0 };
+      const collectedToolMetas: Array<Record<string, unknown>> = [];
+      let pendingApproval = false;
+
+      try {
+        while (step < maxSteps) {
+          step++;
+          const res = await streamChat({
+            apiKey: deps.openaiApiKey,
+            model: resolvedModel,
+            messages: llmMessages,
+            tools: toolDefs.length > 0 ? toolDefs : undefined,
+          });
+
+          const reader = res.body!.getReader();
+          const decoder = new TextDecoder();
+          let buffer = '';
+          let finishReason: string = '';
+          const toolAcc = accumulateToolCalls();
+          let stepText = '';
+
+          while (true) {
+            const { done, value } = await reader.read();
+            if (done) break;
+            buffer += decoder.decode(value, { stream: true });
+            const lines = buffer.split('\n');
+            buffer = lines.pop()!;
+
+            for (const line of lines) {
+              const events = parseSSEChunks(line);
+              for (const event of events) {
+                if (event.type === 'content') {
+                  stepText += event.text;
+                  accumulatedText += event.text;
+                  sendEvent('content', { text: event.text });
+                } else if (event.type === 'tool_call_delta') {
+                  toolAcc.push(event);
+                } else if (event.type === 'done') {
+                  finishReason = event.finishReason;
+                  if (event.usage) {
+                    totalUsage.prompt_tokens += event.usage.prompt_tokens ?? 0;
+                    totalUsage.completion_tokens += event.usage.completion_tokens ?? 0;
                   }
-                  toolMetas.push({
-                    toolCallId: part.toolCallId,
-                    toolName: part.toolName,
-                    args: part.args,
-                    status: (toolResult as Record<string, unknown>)?.status ?? 'auto',
-                    result: toolResult,
-                  });
                 }
               }
             }
           }
+
+          if (finishReason === 'tool_calls') {
+            const toolCalls = toolAcc.finish();
+            toolAcc.clear();
+
+            llmMessages.push({
+              role: 'assistant',
+              content: stepText || null,
+              tool_calls: toolCalls,
+            });
+
+            let hitApproval = false;
+            for (const tc of toolCalls) {
+              let args: Record<string, unknown> = {};
+              try {
+                args = JSON.parse(tc.function.arguments || '{}');
+              } catch {
+                // ignore
+              }
+              const name = tc.function.name;
+
+              if (TOOLS_REQUIRING_APPROVAL.includes(name)) {
+                // Kill switch for shell_execute even in approval path
+                if (name === 'shell_execute' && typeof args.command === 'string' && isDestructiveCommand(args.command)) {
+                  const blocked = { error: 'Commande bloquée : opération destructive détectée', status: 'blocked' as const };
+                  llmMessages.push({
+                    role: 'tool',
+                    tool_call_id: tc.id,
+                    content: JSON.stringify(blocked),
+                  });
+                  collectedToolMetas.push({
+                    toolCallId: tc.id,
+                    toolName: name,
+                    args,
+                    status: 'blocked',
+                    result: blocked,
+                  });
+                  sendEvent('tool_result', { toolCallId: tc.id, toolName: name, result: blocked });
+                  continue;
+                }
+
+                sendEvent('tool_approval', {
+                  toolCallId: tc.id,
+                  toolName: name,
+                  args,
+                });
+                collectedToolMetas.push({
+                  toolCallId: tc.id,
+                  toolName: name,
+                  args,
+                  status: 'requires_approval',
+                  result: { status: 'requires_approval', toolName: name, args },
+                });
+                hitApproval = true;
+                pendingApproval = true;
+                break;
+              }
+
+              const handler = toolHandlers[name];
+              const result = handler
+                ? await handler(args)
+                : { error: `unknown tool: ${name}` };
+              llmMessages.push({
+                role: 'tool',
+                tool_call_id: tc.id,
+                content: JSON.stringify(result),
+              });
+              collectedToolMetas.push({
+                toolCallId: tc.id,
+                toolName: name,
+                args,
+                status: 'auto',
+                result,
+              });
+              sendEvent('tool_result', { toolCallId: tc.id, toolName: name, result });
+            }
+
+            if (hitApproval) break;
+            continue;
+          }
+
+          // stop or other terminal reason
+          break;
         }
 
-        // Persist assistant message
-        deps.db.db
-          .insert(messages)
-          .values({
-            id: newId(),
-            sessionId: sessionId!,
-            role: 'assistant',
-            contentJson: JSON.stringify({ text }),
-            model: finalModel,
-            toolMeta: toolMetas.length > 0 ? JSON.stringify(toolMetas) : null,
-            createdAt: finishTs,
-          })
-          .run();
+        sendEvent('done', { usage: totalUsage, pendingApproval });
+      } catch (err) {
+        if (err instanceof OpenAIError && err.status === 429) {
+          sendEvent('error', {
+            code: 'provider_rate_limit',
+            message: 'OpenAI rate limit reached',
+            link: 'https://platform.openai.com/settings/organization/limits',
+          });
+        } else {
+          sendEvent('error', { message: err instanceof Error ? err.message : 'Unknown error' });
+        }
+      } finally {
+        // Persist messages + usage
+        try {
+          const finishTs = now();
+          const lastUserMessage = [...typedUserMessages]
+            .reverse()
+            .find((m) => m.role === 'user');
 
-        // Persist usage event
-        const inputTokens = usage?.inputTokens ?? 0;
-        const outputTokens = usage?.outputTokens ?? 0;
-        const costUsd = costOf(finalModel, inputTokens, outputTokens);
+          if (lastUserMessage) {
+            deps.db.db
+              .insert(messages)
+              .values({
+                id: newId(),
+                sessionId: finalSessionId,
+                role: 'user',
+                contentJson: JSON.stringify({ text: lastUserMessage.content }),
+                model: null,
+                createdAt: finishTs - 1,
+              })
+              .run();
+          }
 
-        deps.db.db
-          .insert(usageEvents)
-          .values({
-            id: newId(),
-            userId,
-            sessionId: sessionId!,
-            createdAt: finishTs,
-            model: finalModel,
-            inputTokens,
-            outputTokens,
-            reasoningTokens: 0,
-            audioInputSeconds: 0,
-            audioOutputSeconds: 0,
-            costUsd,
-          })
-          .run();
+          deps.db.db
+            .insert(messages)
+            .values({
+              id: newId(),
+              sessionId: finalSessionId,
+              role: 'assistant',
+              contentJson: JSON.stringify({ text: accumulatedText }),
+              model: resolvedModel,
+              toolMeta: collectedToolMetas.length > 0 ? JSON.stringify(collectedToolMetas) : null,
+              createdAt: finishTs,
+            })
+            .run();
 
-        // Update session lastMessageAt
-        deps.db.db
-          .update(chatSessions)
-          .set({ lastMessageAt: finishTs, updatedAt: finishTs })
-          .where(eq(chatSessions.id, sessionId!))
-          .run();
+          const inputTokens = totalUsage.prompt_tokens;
+          const outputTokens = totalUsage.completion_tokens;
+          const costUsd = costOf(resolvedModel, inputTokens, outputTokens);
 
-        // Check and insert alert triggers
-        const userSettingsRow = deps.db.db
-          .select()
-          .from(userSettings)
-          .where(eq(userSettings.userId, userId))
-          .get();
+          deps.db.db
+            .insert(usageEvents)
+            .values({
+              id: newId(),
+              userId,
+              sessionId: finalSessionId,
+              createdAt: finishTs,
+              model: resolvedModel,
+              inputTokens,
+              outputTokens,
+              reasoningTokens: 0,
+              audioInputSeconds: 0,
+              audioOutputSeconds: 0,
+              costUsd,
+            })
+            .run();
 
-        if (userSettingsRow) {
-          const period = getBillingPeriod(userSettingsRow.billingResetDay, finishTs);
-          const totalResult = deps.db.db
-            .select({ total: sql<number>`COALESCE(SUM(${usageEvents.costUsd}), 0)` })
-            .from(usageEvents)
-            .where(
-              and(
-                eq(usageEvents.userId, userId),
-                gte(usageEvents.createdAt, period.periodStart),
-                lt(usageEvents.createdAt, period.periodEnd),
-              ),
-            )
+          deps.db.db
+            .update(chatSessions)
+            .set({ lastMessageAt: finishTs, updatedAt: finishTs })
+            .where(eq(chatSessions.id, finalSessionId))
+            .run();
+
+          // Alerts
+          const userSettingsRow = deps.db.db
+            .select()
+            .from(userSettings)
+            .where(eq(userSettings.userId, userId))
             .get();
 
-          const currentTotal = totalResult?.total ?? 0;
-          const limitUsd = userSettingsRow.monthlyCostLimitUsd;
-          const currentPercent = limitUsd > 0 ? (currentTotal / limitUsd) * 100 : 0;
-          const thresholds: number[] = JSON.parse(userSettingsRow.alertThresholdsJson);
-          const yearMonth = new Date(period.periodStart).toISOString().slice(0, 7);
+          if (userSettingsRow) {
+            const period = getBillingPeriod(userSettingsRow.billingResetDay, finishTs);
+            const totalResult = deps.db.db
+              .select({ total: sql<number>`COALESCE(SUM(${usageEvents.costUsd}), 0)` })
+              .from(usageEvents)
+              .where(
+                and(
+                  eq(usageEvents.userId, userId),
+                  gte(usageEvents.createdAt, period.periodStart),
+                  lt(usageEvents.createdAt, period.periodEnd),
+                ),
+              )
+              .get();
 
-          for (const threshold of thresholds) {
-            if (currentPercent >= threshold) {
-              const existing = deps.db.db
-                .select()
-                .from(alertTriggers)
-                .where(
-                  and(
-                    eq(alertTriggers.userId, userId),
-                    eq(alertTriggers.yearMonth, yearMonth),
-                    eq(alertTriggers.thresholdPercent, threshold),
-                  ),
-                )
-                .get();
+            const currentTotal = totalResult?.total ?? 0;
+            const limitUsd = userSettingsRow.monthlyCostLimitUsd;
+            const currentPercent = limitUsd > 0 ? (currentTotal / limitUsd) * 100 : 0;
+            const thresholds: number[] = JSON.parse(userSettingsRow.alertThresholdsJson);
+            const yearMonth = new Date(period.periodStart).toISOString().slice(0, 7);
 
-              if (!existing) {
-                deps.db.db
-                  .insert(alertTriggers)
-                  .values({
-                    id: newId(),
-                    userId,
-                    yearMonth,
-                    thresholdPercent: threshold,
-                    triggeredAt: finishTs,
-                  })
-                  .run();
+            for (const threshold of thresholds) {
+              if (currentPercent >= threshold) {
+                const existing = deps.db.db
+                  .select()
+                  .from(alertTriggers)
+                  .where(
+                    and(
+                      eq(alertTriggers.userId, userId),
+                      eq(alertTriggers.yearMonth, yearMonth),
+                      eq(alertTriggers.thresholdPercent, threshold),
+                    ),
+                  )
+                  .get();
+
+                if (!existing) {
+                  deps.db.db
+                    .insert(alertTriggers)
+                    .values({
+                      id: newId(),
+                      userId,
+                      yearMonth,
+                      thresholdPercent: threshold,
+                      triggeredAt: finishTs,
+                    })
+                    .run();
+                }
               }
             }
           }
-        }
 
-        // Auto-generate title for new sessions (fire-and-forget)
-        if (isNewSession && lastUserMessage) {
-          const firstMessage = lastUserMessage.content;
-          generateText({
-            model: openai.chat('gpt-5.4-nano'),
-            messages: [
-              {
-                role: 'system',
-                content:
-                  'Generate a short title (5-6 words max, in the language of the user message) for a chat. Return ONLY the title.',
-              },
-              { role: 'user', content: firstMessage },
-            ],
-            maxOutputTokens: 30,
-          })
-            .then(({ text: titleText }) => {
-              deps.db.db
-                .update(chatSessions)
-                .set({ title: titleText.trim(), updatedAt: now() })
-                .where(eq(chatSessions.id, sessionId!))
-                .run();
+          // Auto-title for new sessions
+          if (isNewSession && lastUserMessage) {
+            const firstMessage = lastUserMessage.content;
+            chat({
+              apiKey: deps.openaiApiKey,
+              model: 'gpt-5.4-nano',
+              messages: [
+                {
+                  role: 'system',
+                  content:
+                    'Generate a short title (5-6 words max, in the language of the user message) for a chat. Return ONLY the title.',
+                },
+                { role: 'user', content: firstMessage },
+              ],
+              maxTokens: 30,
             })
-            .catch((err: unknown) => {
-              console.warn('[api] title generation failed', err);
-            });
+              .then(({ text: titleText }) => {
+                deps.db.db
+                  .update(chatSessions)
+                  .set({ title: titleText.trim(), updatedAt: now() })
+                  .where(eq(chatSessions.id, finalSessionId))
+                  .run();
+              })
+              .catch((err: unknown) => {
+                console.warn('[api] title generation failed', err);
+              });
+          }
+        } catch (persistErr) {
+          console.warn('[api] persistence error', persistErr);
         }
-      },
-    });
 
-    const response = result.toTextStreamResponse();
-    if (isNewSession) {
-      const headers = new Headers(response.headers);
-      headers.set('x-session-id', sessionId!);
-      return new Response(response.body, { status: response.status, headers });
-    }
-    return response;
-    } catch (err: unknown) {
-      const errMsg = err instanceof Error ? err.message : String(err);
-      if (errMsg.includes('429') || errMsg.includes('rate limit')) {
-        return c.json(
-          {
-            error: {
-              code: 'provider_rate_limit',
-              message: 'OpenAI rate limit reached',
-              link: 'https://platform.openai.com/settings/organization/limits',
-            },
-          },
-          502,
-        );
+        await writer.close();
       }
-      throw err;
-    }
+    };
+
+    void runLoop();
+
+    const headers = new Headers({
+      'Content-Type': 'text/event-stream',
+      'Cache-Control': 'no-cache',
+    });
+    if (isNewSession) headers.set('x-session-id', sessionId);
+    return new Response(readable, { headers });
   });
 
   return app;
