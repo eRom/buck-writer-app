@@ -160,7 +160,14 @@ RETURNS TABLE (
     id UUID, content TEXT, memory_type TEXT, metadata JSONB,
     importance FLOAT, similarity FLOAT, created_at TIMESTAMPTZ
 )
-LANGUAGE sql STABLE AS $$
+LANGUAGE plpgsql STABLE AS $$
+BEGIN
+    IF filter_type IS NOT NULL AND filter_type NOT IN ('episodic','semantic','procedural') THEN
+        RAISE EXCEPTION 'invalid filter_type: %', filter_type
+          USING ERRCODE = '22023';
+    END IF;
+
+    RETURN QUERY
     SELECT m.id, m.content, m.memory_type, m.metadata, m.importance,
            1 - (m.embedding <=> query_embedding) AS similarity,
            m.created_at
@@ -170,6 +177,7 @@ LANGUAGE sql STABLE AS $$
       AND 1 - (m.embedding <=> query_embedding) > match_threshold
     ORDER BY m.embedding <=> query_embedding
     LIMIT match_count;
+END;
 $$;
 ```
 
@@ -329,15 +337,44 @@ Prompt de consolidation (esquisse, à affiner en impl) :
 
 Trigger : appel HTTP depuis `services/memory/state.ts` quand un set dépasse `token_budget`.
 
+**Authentification (obligatoire)** : l'endpoint est protégé par un header `Authorization: Bearer <EDGE_INVOKE_KEY>`. La fonction Edge valide le token au début de chaque invocation (comparaison à `Deno.env.get('EDGE_INVOKE_KEY')` qui est injecté depuis Supabase Vault). Toute requête sans Bearer valide → `401 Unauthorized`, pas d'appel LLM effectué. Côté Node, `state.ts` lit `EDGE_INVOKE_KEY` depuis l'env (le même secret est dupliqué côté Node pour l'invocation). Sans cette protection, un endpoint HTTP public qui invoque un LLM est exposé à abus financier (coût OpenAI arbitraire) et fuite de données (compaction malicieuse).
+
 Body : `{ user_id, key, current_value, token_budget }`.
-Processus : appel `gpt-4o-mini` avec prompt "summarize in ≤ `budget*0.6` tokens, keep actionable info".
 Retour : `{ compacted_value }`.
-Le Node fait l'UPDATE + insert `buck_memory_usage` (kind=`compaction`).
+Le Node fait l'UPDATE sur `buck_state` + insert `buck_memory_usage` (kind=`compaction`).
+
+**Prompt de compaction** (concret, pas esquissé) :
+
+```
+System:
+You are a context-compression assistant. Your task is to rewrite a JSON context
+value into a shorter form while preserving all actionable, entity-level
+information.
+
+Rules:
+- Target length: {{target_tokens}} tokens (aim for exactly this, never exceed).
+- Preserve: named entities (people, projects, files, dates, URLs), explicit
+  decisions, numeric values, in-progress items.
+- Drop: restatements, filler, meta-commentary, anything implied by context.
+- Output format: same JSON shape as input (if object) or same text form (if string).
+- Never invent facts. If you must shorten aggressively, prefer cutting detail
+  over inventing structure.
+
+User:
+Key: {{key}}
+Current value (over budget): {{current_value}}
+Token budget: {{token_budget}}
+Target: {{target_tokens}} (= 0.6 * token_budget)
+
+Return ONLY the compacted value, no commentary, no markdown fences.
+```
+
+Modèle : `gpt-4o-mini`. `response_format` : `{ type: 'text' }` (ou `json_object` si `current_value` est un objet — déterminé à l'appel).
 
 ### 8.3 Secrets (Supabase Vault)
 
 - `OPENAI_API_KEY` — accédée par les deux Edge Functions.
-- `EDGE_INVOKE_KEY` — utilisée par `pg_cron` pour appeler `consolidate-memory`.
+- `EDGE_INVOKE_KEY` — utilisée par `pg_cron` pour appeler `consolidate-memory`, **et** par `services/memory/state.ts` pour appeler `compact-state` (Bearer token obligatoire sur les deux endpoints). Aussi stockée côté Node dans `.env` sous le même nom.
 
 Créés une fois manuellement via l'UI Vault (`https://supabase.com/dashboard/project/zconxtmchptchlmeqstu/integrations/vault/overview`).
 
@@ -440,6 +477,7 @@ SUPABASE_SERVICE_ROLE_KEY=...
 BUCK_USER_ID=<uuid fixe>
 MEMORY_ENABLED=false
 OPENAI_EMBEDDING_MODEL=text-embedding-3-large
+EDGE_INVOKE_KEY=...   # shared with Supabase Vault, used by Node to call compact-state
 ```
 
 ## 15. Critères de succès (go/no-go M5)
