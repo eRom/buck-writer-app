@@ -31,7 +31,7 @@ export async function createSession(title?: string): Promise<Session> {
 
 export async function updateSession(
   id: string,
-  data: { title?: string; archived?: boolean; isFavorite?: boolean },
+  data: { title?: string; archived?: boolean; isFavorite?: boolean; model?: string },
 ): Promise<Session> {
   return apiFetch<Session>(`/api/sessions/${id}`, {
     method: 'PATCH',
