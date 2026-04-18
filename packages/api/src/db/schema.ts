@@ -70,6 +70,7 @@ export const chatSessions = sqliteTable(
     title: text('title').notNull(),
     model: text('model').notNull(),
     reasoningEffort: text('reasoning_effort').notNull(),
+    isFavorite: integer('is_favorite').notNull().default(0),
     archived: integer('archived').notNull().default(0),
     deletedAt: integer('deleted_at'),
     createdAt: integer('created_at').notNull(),
@@ -79,6 +80,7 @@ export const chatSessions = sqliteTable(
   (t) => ({
     userIdx: index('chat_sessions_user_idx').on(t.userId),
     updatedIdx: index('chat_sessions_updated_idx').on(t.updatedAt),
+    favoriteIdx: index('chat_sessions_favorite_idx').on(t.isFavorite),
   }),
 );
 
