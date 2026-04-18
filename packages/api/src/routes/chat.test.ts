@@ -282,6 +282,47 @@ describe('chat route', () => {
     });
   });
 
+  describe('POST /api/chat — memory', () => {
+    it('emits memory_status SSE event when memory context is degraded', async () => {
+      ctx = await makeCtx();
+      // Rebuild the app with a memory stub in degraded mode.
+      const memoryStub = {
+        enabled: true,
+        supabase: null,
+        buildContext: async () => ({ preferences: { lang: 'fr' }, activeContext: {}, degraded: true }),
+        remember: { remember: async () => ({ ok: true as const }), drain: async () => {}, bufferSize: () => 0, bufferSnapshot: () => [], __setClientForTest: () => {} },
+        recall: { recall: async () => [] },
+        state: { set: async () => {} },
+        syncUsage: async () => 0,
+        drainRetryBuffer: async () => {},
+      } as unknown as AppDeps['memory'];
+
+      const prompts = loadPrompts(ctx.promptsDir);
+      const appWithMemory = buildApp({
+        db: ctx.db,
+        email: { sendMagicLink: vi.fn(async () => {}) },
+        jwt: createJwtService({ secret: 'a'.repeat(32), issuer: 'buck', audience: 'buck-web' }),
+        allowedEmails: ['alice@example.com'],
+        publicBaseUrl: 'https://buck.example.com',
+        prompts: { current: prompts },
+        openaiApiKey: 'sk-test-fake-key',
+        memory: memoryStub,
+      });
+
+      const res = await appWithMemory.request('/api/chat', {
+        method: 'POST',
+        headers: authMutHeaders(ctx.sessionJwt),
+        body: JSON.stringify({
+          messages: [{ role: 'user', content: 'Hello!' }],
+        }),
+      });
+      expect(res.status).toBe(200);
+      const body = await res.text();
+      expect(body).toContain('event: memory_status');
+      expect(body).toContain('"degraded":true');
+    });
+  });
+
   describe('POST /api/chat — tool approval flow', () => {
     it('passes toolApproval field through without error', async () => {
       ctx = await makeCtx();

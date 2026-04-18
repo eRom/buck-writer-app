@@ -20,6 +20,9 @@ import type { ChatMessage, ToolCall } from '../lib/openai.js';
 import type { McpClient } from '../services/mcp-client.js';
 import { buildToolDefinitions, buildToolHandlers } from './chat-tools.js';
 import type { ToolHandler } from './chat-tools.js';
+import type { MemoryServices } from '../services/memory/bootstrap.js';
+import { recallTool, rememberTool } from '../services/memory/tools.js';
+import { buildSystemPromptWithMemory } from '../lib/prompts.js';
 
 // Tools asking the user for explicit approval on every call. shell_execute is
 // NOT in this list — destructive shell commands are blocked upstream by the
@@ -34,6 +37,8 @@ export interface ChatRouteDeps {
   skills?: Map<string, Skill>;
   mcpClient?: McpClient;
   nowMs?: () => number;
+  memory?: MemoryServices;
+  buckUserId?: string;
 }
 
 
@@ -152,9 +157,20 @@ export function createChatRoute(
       }
     }
 
+    // Build memory context (preferences + activeContext) — fail-soft.
+    const memoryUserId = deps.buckUserId ?? userId;
+    const memoryContext = deps.memory
+      ? await deps.memory.buildContext(memoryUserId)
+      : { preferences: {}, activeContext: {}, degraded: false };
+
     // Build system messages
     const systemMessages: ChatMessage[] = [];
-    systemMessages.push({ role: 'system', content: deps.prompts.current.system });
+    const baseSystem = buildSystemPromptWithMemory({
+      base: deps.prompts.current.system,
+      preferences: memoryContext.preferences,
+      activeContext: memoryContext.activeContext,
+    });
+    systemMessages.push({ role: 'system', content: baseSystem });
     if (deps.prompts.current.rules.length > 0) {
       systemMessages.push({ role: 'system', content: deps.prompts.current.rules });
     }
@@ -223,6 +239,15 @@ export function createChatRoute(
     const toolDefs = buildToolDefinitions(deps.workspaceDir, deps.skills, deps.mcpClient);
     const toolHandlers: Record<string, ToolHandler> = buildToolHandlers(deps.workspaceDir, deps.skills, deps.mcpClient);
 
+    // Memory tools (recall/remember) — only when memory is enabled.
+    if (deps.memory?.enabled) {
+      const rc = recallTool(deps.memory.recall);
+      const rm = rememberTool(deps.memory.remember);
+      toolDefs.push(rc.definition, rm.definition);
+      toolHandlers[rc.definition.function.name] = rc.handler;
+      toolHandlers[rm.definition.function.name] = rm.handler;
+    }
+
     // Resume after approval: replay the tool_call + inject result/denial
     if (toolApproval) {
       const tc: ToolCall = {
@@ -266,6 +291,11 @@ export function createChatRoute(
 
     function sendEvent(type: string, data: unknown) {
       void writer.write(encoder.encode(`event: ${type}\ndata: ${JSON.stringify(data)}\n\n`));
+    }
+
+    // Emit memory degraded signal before any OpenAI token streams.
+    if (memoryContext.degraded) {
+      sendEvent('memory_status', { degraded: true });
     }
 
     const finalSessionId = sessionId;
