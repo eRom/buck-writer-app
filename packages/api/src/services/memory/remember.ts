@@ -61,7 +61,8 @@ export function createRememberService(deps: RememberDeps) {
     try {
       const id = await persist(payload);
       return { ok: true, id };
-    } catch {
+    } catch (err) {
+      console.warn('[memory:remember] failed, buffering', err instanceof Error ? err.message : String(err));
       enqueue(payload);
       return { ok: true, deferred: true };
     }

@@ -141,11 +141,18 @@ const memory = bootstrapMemory({
   insertUsageEvent: async (r) => {
     const promptTokens = 'promptTokens' in r ? r.promptTokens : 0;
     const completionTokens = 'completionTokens' in r ? r.completionTokens : 0;
+    // Map memory userId (BUCK_USER_ID Supabase) → real SQLite user_id (FK constraint).
+    // Solo-per-instance: use the first/only user row.
+    const row = handles.db.select({ id: users.id }).from(users).limit(1).get();
+    if (!row) {
+      console.warn('[memory:usage] no SQLite user found, skipping usage_events insert');
+      return;
+    }
     handles.db
       .insert(usageEvents)
       .values({
         id: newId(),
-        userId: r.userId,
+        userId: row.id,
         sessionId: null,
         createdAt: Date.now(),
         model: r.model,
