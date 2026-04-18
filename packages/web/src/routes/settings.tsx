@@ -1,61 +1,37 @@
-import { createFileRoute, Outlet, Link, useMatchRoute, redirect } from '@tanstack/react-router';
+import { createFileRoute, redirect, Link } from '@tanstack/react-router';
+import { ArrowLeft } from 'lucide-react';
 import { fetchMe } from '@/lib/session';
-import { ArrowLeft, Settings, Wallet, User } from 'lucide-react';
+import { AccountSection } from '@/components/settings/account-section';
+import { GeneralSection } from '@/components/settings/general-section';
+import { BudgetSection } from '@/components/settings/budget-section';
 
 export const Route = createFileRoute('/settings')({
-  beforeLoad: async ({ location }) => {
+  beforeLoad: async () => {
     const me = await fetchMe();
     if (!me) throw redirect({ to: '/login' });
-    if (location.pathname === '/settings' || location.pathname === '/settings/') {
-      throw redirect({ to: '/settings/general' });
-    }
     return { me };
   },
-  component: SettingsLayout,
+  component: SettingsPage,
 });
 
-const navItems = [
-  { to: '/settings/general' as const, label: 'Général', icon: Settings },
-  { to: '/settings/budget' as const, label: 'Budget', icon: Wallet },
-  { to: '/settings/account' as const, label: 'Compte', icon: User },
-];
-
-function SettingsLayout() {
-  const matchRoute = useMatchRoute();
+function SettingsPage() {
+  const { me } = Route.useRouteContext();
 
   return (
-    <div className="flex h-screen bg-background text-foreground">
-      <aside className="flex w-52 shrink-0 flex-col border-r border-border bg-sidebar">
-        <div className="border-b border-border p-3">
+    <div className="min-h-screen bg-background text-foreground">
+      <header className="sticky top-0 z-10 border-b border-border bg-background/95 px-6 py-3 backdrop-blur-sm">
+        <div className="mx-auto flex max-w-3xl items-center justify-between">
           <Link to="/" className="flex items-center gap-2 text-sm text-muted-foreground hover:text-foreground">
-            <ArrowLeft className="h-4 w-4" />
-            Retour au chat
+            <ArrowLeft className="size-4" /> Retour au chat
           </Link>
+          <h1 className="text-sm font-semibold">Parametres</h1>
+          <span className="w-24" />
         </div>
-        <nav className="flex-1 space-y-1 p-2">
-          {navItems.map(({ to, label, icon: Icon }) => {
-            const isActive = matchRoute({ to });
-            return (
-              <Link
-                key={to}
-                to={to}
-                className={`flex items-center gap-2 rounded-md px-3 py-2 text-sm ${
-                  isActive
-                    ? 'bg-accent text-foreground'
-                    : 'text-muted-foreground hover:bg-accent/50 hover:text-foreground'
-                }`}
-              >
-                <Icon className="h-4 w-4" />
-                {label}
-              </Link>
-            );
-          })}
-        </nav>
-      </aside>
-      <main className="flex-1 overflow-y-auto">
-        <div className="mx-auto max-w-2xl px-8 py-8">
-          <Outlet />
-        </div>
+      </header>
+      <main className="mx-auto max-w-3xl space-y-6 px-6 py-8">
+        <AccountSection email={me.email} />
+        <GeneralSection />
+        <BudgetSection />
       </main>
     </div>
   );
