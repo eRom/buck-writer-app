@@ -19,6 +19,7 @@
   "dependencies": {
     "@buck/shared": "workspace:*",
     "@hono/node-server": "^1.13.5",
+    "@supabase/supabase-js": "^2.103.3",
     "better-sqlite3": "^11.5.0",
     "chokidar": "^5.0.0",
     "drizzle-orm": "^0.36.1",
