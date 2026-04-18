@@ -1,19 +1,19 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { Sliders } from 'lucide-react';
-import { MODELS, type ChatModel } from '@buck/shared';
+import { type ChatModel } from '@buck/shared';
 import { fetchSettings, updateSettings, fetchUsageCurrent } from '@/lib/settings';
 import { fetchSessions, updateSession, type SessionsResponse, type ReasoningEffort } from '@/lib/sessions';
+
+const MODEL_ORDER: Array<{ id: ChatModel; label: string; disabled?: boolean }> = [
+  { id: 'gpt-5.4-nano', label: 'GPT-5.4 Nano' },
+  { id: 'gpt-5.4-mini', label: 'GPT-5.4 Mini' },
+  { id: 'gpt-5.4', label: 'GPT-5.4' },
+  { id: 'gpt-5.4-pro', label: 'GPT-5.4 Pro', disabled: true },
+];
 
 interface Props {
   sessionId: string | null;
 }
-
-const MODEL_LABELS: Record<string, string> = {
-  'gpt-5.4': 'GPT-5.4',
-  'gpt-5.4-mini': 'GPT-5.4 Mini',
-  'gpt-5.4-pro': 'GPT-5.4 Pro',
-  'gpt-5.4-nano': 'GPT-5.4 Nano',
-};
 
 const EFFORTS: ReasoningEffort[] = ['low', 'medium', 'high'];
 const EFFORT_LABELS: Record<ReasoningEffort, string> = {
@@ -101,9 +101,10 @@ export function CardParametres({ sessionId }: Props) {
             disabled={modelMutation.isPending}
             className="bg-transparent font-mono text-[11px] text-foreground focus:outline-none"
           >
-            {MODELS.map((m) => (
-              <option key={m} value={m}>
-                {MODEL_LABELS[m] ?? m}
+            {MODEL_ORDER.map((m) => (
+              <option key={m.id} value={m.id} disabled={m.disabled}>
+                {m.label}
+                {m.disabled ? ' — bientôt' : ''}
               </option>
             ))}
           </select>
