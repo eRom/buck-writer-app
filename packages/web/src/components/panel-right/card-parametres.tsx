@@ -2,7 +2,12 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { Sliders } from 'lucide-react';
 import { type ChatModel } from '@buck/shared';
 import { fetchSettings, updateSettings, fetchUsageCurrent } from '@/lib/settings';
-import { fetchSessions, updateSession, type SessionsResponse, type ReasoningEffort } from '@/lib/sessions';
+import {
+  fetchSessions,
+  updateSession,
+  type SessionsResponse,
+  type ReasoningEffort,
+} from '@/lib/sessions';
 
 const MODEL_ORDER: Array<{ id: ChatModel; label: string; disabled?: boolean }> = [
   { id: 'gpt-5.4-nano', label: 'GPT-5.4 Nano' },
@@ -26,12 +31,17 @@ export function CardParametres({ sessionId }: Props) {
   const qc = useQueryClient();
   const { data: settings } = useQuery({ queryKey: ['settings'], queryFn: fetchSettings });
   const { data: usage } = useQuery({ queryKey: ['usage-current'], queryFn: fetchUsageCurrent });
-  const { data: sessionsData } = useQuery({ queryKey: ['sessions'], queryFn: () => fetchSessions() });
+  const { data: sessionsData } = useQuery({
+    queryKey: ['sessions'],
+    queryFn: () => fetchSessions(),
+  });
 
   const session = sessionsData?.sessions.find((s) => s.id === sessionId) ?? null;
   const model = session?.model ?? settings?.defaultModel ?? 'gpt-5.4-mini';
   const effort: ReasoningEffort =
-    session?.reasoningEffort ?? (settings?.defaultReasoningEffort as ReasoningEffort | undefined) ?? 'medium';
+    session?.reasoningEffort ??
+    (settings?.defaultReasoningEffort as ReasoningEffort | undefined) ??
+    'medium';
   const limit = settings?.monthlyCostLimitUsd ?? 0;
   const spent = usage?.totalUsd ?? 0;
   const percent = usage?.percent ?? 0;
@@ -49,7 +59,9 @@ export function CardParametres({ sessionId }: Props) {
         if (!value) return;
         qc.setQueryData<SessionsResponse>(key, {
           ...value,
-          sessions: value.sessions.map((s) => (s.id === session.id ? { ...s, model: nextModel } : s)),
+          sessions: value.sessions.map((s) =>
+            s.id === session.id ? { ...s, model: nextModel } : s,
+          ),
         });
       });
       return { prev };
@@ -104,7 +116,6 @@ export function CardParametres({ sessionId }: Props) {
             {MODEL_ORDER.map((m) => (
               <option key={m.id} value={m.id} disabled={m.disabled}>
                 {m.label}
-                {m.disabled ? ' — bientôt' : ''}
               </option>
             ))}
           </select>
