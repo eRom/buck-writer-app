@@ -111,12 +111,11 @@ export interface HttpServerOptions {
   uiDir?: string;
 }
 
-export function startHttpServer(
-  mcpServer: McpServer,
-  _dbPath: string,
-  options: HttpServerOptions,
-): void {
-  const { port, uiDir } = options;
+/**
+ * Crée et retourne une Express app configurée autour du MCP server.
+ * N'appelle pas app.listen() — utile pour les tests d'intégration (port dynamique).
+ */
+export function createHttpApp(mcpServer: McpServer, uiDir?: string): express.Express {
   const app = express();
 
   app.use(express.json());
@@ -226,6 +225,17 @@ export function startHttpServer(
     });
     console.error(`[http] UI statique servie depuis ${uiDir}`);
   }
+
+  return app;
+}
+
+export function startHttpServer(
+  mcpServer: McpServer,
+  _dbPath: string,
+  options: HttpServerOptions,
+): void {
+  const { port, uiDir } = options;
+  const app = createHttpApp(mcpServer, uiDir);
 
   app.listen(port, "127.0.0.1", () => {
     const url = `http://localhost:${port}`;
