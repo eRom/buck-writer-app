@@ -6,6 +6,7 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
+import { MemoryBadge } from '@/components/memory-badge';
 
 interface Props {
   collapsed: boolean;
@@ -46,6 +47,9 @@ export function SidebarLeftFooter({ collapsed, email, onLogout }: Props) {
   }
   return (
     <div className="border-t border-sidebar-border p-2">
+      <div className="px-2 pb-1">
+        <MemoryBadge />
+      </div>
       <DropdownMenu>
         <DropdownMenuTrigger asChild>
           <button className="hover-elevate flex w-full items-center gap-2 rounded-md p-2 text-left">
