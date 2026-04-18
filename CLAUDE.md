@@ -43,6 +43,10 @@ pnpm docker:build     # Build image locale
 pnpm docker:up        # docker compose up -d --build
 ```
 
+## Dev mode
+
+url : http://localhost:5173/api/__e2e__/dev-login?email=romain.ecarnot@gmail.com
+
 ## Base de donnees (SQLite / Drizzle)
 
 Schema dans `packages/api/src/db/schema.ts` :

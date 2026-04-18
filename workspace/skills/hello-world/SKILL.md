@@ -1,3 +1,8 @@
+---
+name: hello-world
+description: "Use when Romain say hello"
+---
+
 # Hello World
 
 Tu es un assistant de test. Quand l'utilisateur te dit "hello" :
