@@ -70,15 +70,28 @@ const promptsRef: PromptsRef = { current: promptsData };
 const skills = await loadSkills(env.WORKSPACE_DIR);
 console.warn(`[api] skills loaded (${skills.size})`);
 
-// Init bible MCP client — best-effort, non-blocking if unreachable
+// Init bible MCP client — best-effort, non-blocking if unreachable.
+// Retry up to 5 times with 2s backoff to win the startup race against
+// bible-mcp (which may still be booting in parallel under `pnpm dev`).
 const mcpClient = createMcpClient({
   url: process.env.MCP_BIBLE_URL ?? 'http://bible-mcp:7801',
+  healthPollMs: Number(process.env.MCP_HEALTH_POLL_MS ?? 30_000),
 });
-try {
-  await mcpClient.listTools();
-  console.warn(`[api] bible-mcp ok (${mcpClient.cachedTools().length} tools)`);
-} catch (err) {
-  console.warn('[api] bible-mcp unreachable, running in degraded mode:', (err as Error).message);
+{
+  const maxAttempts = 5;
+  for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+    try {
+      await mcpClient.listTools();
+      console.warn(`[api] bible-mcp ok (${mcpClient.cachedTools().length} tools)`);
+      break;
+    } catch (err) {
+      if (attempt === maxAttempts) {
+        console.warn('[api] bible-mcp unreachable, running in degraded mode:', (err as Error).message);
+      } else {
+        await new Promise((r) => setTimeout(r, 2000));
+      }
+    }
+  }
 }
 
 if (process.env.NODE_ENV !== 'test') {
