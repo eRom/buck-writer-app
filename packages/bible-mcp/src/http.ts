@@ -32,6 +32,7 @@ function schemaToJsonSchema(inputSchema: unknown): Record<string, unknown> {
 
   // inputSchema is already a ZodObject (wrapped by the SDK's objectFromShape)
   try {
+    // @ts-expect-error z.toJSONSchema — migrated in Task 3 (requires zod >=3.24)
     return z.toJSONSchema(inputSchema as z.ZodType) as Record<string, unknown>;
   } catch {
     return EMPTY_OBJECT_JSON_SCHEMA;

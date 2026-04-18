@@ -94,10 +94,10 @@ export const embeddings = sqliteTable(
     createdAt: integer("created_at").notNull(),
     updatedAt: integer("updated_at").notNull(),
   },
-  (table) => [
-    uniqueIndex("embeddings_entity_type_entity_id_unique").on(
+  (table) => ({
+    entityTypeEntityIdUnique: uniqueIndex("embeddings_entity_type_entity_id_unique").on(
       table.entityType,
       table.entityId,
     ),
-  ],
+  }),
 );

@@ -3,10 +3,6 @@ import { createTestDb, createToolRunner, parseResult } from "../setup.js";
 import type { DbInstance } from "../../src/db/index.js";
 import type { ToolRunner } from "../setup.js";
 
-vi.mock("@huggingface/transformers", () => ({
-  pipeline: vi.fn(),
-}));
-
 vi.mock("../../src/embeddings/index.js", async (importOriginal) => {
   const original = await importOriginal<typeof import("../../src/embeddings/index.js")>();
   return {

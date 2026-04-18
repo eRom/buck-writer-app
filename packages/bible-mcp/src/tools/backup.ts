@@ -102,7 +102,7 @@ export function registerBackupTools(server: McpServer, dbInstance: DbInstance, d
       try {
         testDb = new Database(resolvedBackup, { readonly: true });
         const result = testDb.pragma("integrity_check") as Array<{ integrity_check: string }>;
-        const ok = result.length === 1 && result[0].integrity_check === "ok";
+        const ok = result.length === 1 && result[0]?.integrity_check === "ok";
         if (!ok) {
           return {
             isError: true,

@@ -1,32 +1,38 @@
 import crypto from "node:crypto";
 import { v4 as uuidv4 } from "uuid";
 import type BetterSqlite3 from "better-sqlite3";
-import { getEmbeddingPipeline } from "./model.js";
+import { embedBatch } from "./openai.js";
 import type { EmbeddingRecord } from "./similarity.js";
 
+export { embedBatch, getEmbeddingDim, EMBEDDING_DIM } from "./openai.js";
+
+function getApiKey(): string {
+  const key = process.env.OPENAI_API_KEY;
+  if (!key) throw new Error("OPENAI_API_KEY environment variable is not set");
+  return key;
+}
+
 /**
- * Genere un embedding pour un passage de texte (document).
- * Prefixe "passage: " conformement au modele E5.
+ * Génère un embedding pour un passage de texte.
  */
 export async function generateEmbedding(text: string): Promise<Float32Array> {
-  const pipe = await getEmbeddingPipeline();
-  const output = await pipe("passage: " + text, { pooling: "mean", normalize: true });
-  return new Float32Array(output.data as Float32Array);
+  const apiKey = getApiKey();
+  const vectors = await embedBatch({ apiKey, texts: [text] });
+  const vec = vectors[0] ?? [];
+  return new Float32Array(vec);
 }
 
 /**
- * Genere un embedding pour une requete de recherche.
- * Prefixe "query: " conformement au modele E5.
+ * Génère un embedding pour une requête de recherche.
+ * (OpenAI ne nécessite pas de préfixe différent — même API)
  */
 export async function generateQueryEmbedding(text: string): Promise<Float32Array> {
-  const pipe = await getEmbeddingPipeline();
-  const output = await pipe("query: " + text, { pooling: "mean", normalize: true });
-  return new Float32Array(output.data as Float32Array);
+  return generateEmbedding(text);
 }
 
 /**
- * Indexe une entite : genere l'embedding et le stocke en DB.
- * Utilise content_hash pour eviter la re-indexation si le contenu n'a pas change.
+ * Indexe une entité : génère l'embedding et le stocke en DB.
+ * Utilise content_hash pour éviter la re-indexation si le contenu n'a pas changé.
  */
 export async function indexEntity(
   sqlite: BetterSqlite3.Database,
@@ -36,13 +42,12 @@ export async function indexEntity(
 ): Promise<void> {
   const contentHash = crypto.createHash("sha256").update(textContent).digest("hex");
 
-  // Verifier si l'embedding existe deja avec le meme hash
   const existing = sqlite
     .prepare("SELECT content_hash FROM embeddings WHERE entity_type = ? AND entity_id = ?")
     .get(entityType, entityId) as { content_hash: string } | undefined;
 
   if (existing && existing.content_hash === contentHash) {
-    return; // Contenu inchange, pas besoin de re-indexer
+    return;
   }
 
   const embedding = await generateEmbedding(textContent);
@@ -50,14 +55,12 @@ export async function indexEntity(
   const now = Date.now();
 
   if (existing) {
-    // Update
     sqlite
       .prepare(
         "UPDATE embeddings SET embedding = ?, content_hash = ?, updated_at = ? WHERE entity_type = ? AND entity_id = ?",
       )
       .run(embeddingBuffer, contentHash, now, entityType, entityId);
   } else {
-    // Insert
     const id = uuidv4();
     sqlite
       .prepare(
@@ -66,11 +69,11 @@ export async function indexEntity(
       .run(id, entityType, entityId, embeddingBuffer, contentHash, now, now);
   }
 
-  console.error(`[embeddings] Entite indexee : ${entityType}/${entityId}`);
+  console.error(`[embeddings] Entité indexée : ${entityType}/${entityId}`);
 }
 
 /**
- * Supprime l'embedding d'une entite.
+ * Supprime l'embedding d'une entité.
  */
 export function removeEntityEmbedding(
   sqlite: BetterSqlite3.Database,
@@ -81,8 +84,8 @@ export function removeEntityEmbedding(
 }
 
 /**
- * Charge tous les embeddings de la DB, optionnellement filtres par entity_type.
- * Deserialise les BLOBs en Float32Array.
+ * Charge tous les embeddings de la DB, optionnellement filtrés par entity_type.
+ * Désérialise les BLOBs en Float32Array.
  */
 export function loadAllEmbeddings(
   sqlite: BetterSqlite3.Database,

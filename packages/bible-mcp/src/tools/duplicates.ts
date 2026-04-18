@@ -101,8 +101,8 @@ export function registerDuplicateTools(server: McpServer, { sqlite, db }: DbInst
 
       for (let i = 0; i < allEmbeddings.length; i++) {
         for (let j = i + 1; j < allEmbeddings.length; j++) {
-          const a = allEmbeddings[i];
-          const b = allEmbeddings[j];
+          const a = allEmbeddings[i]!;
+          const b = allEmbeddings[j]!;
 
           const score = cosineSimilarity(a.embedding, b.embedding);
 

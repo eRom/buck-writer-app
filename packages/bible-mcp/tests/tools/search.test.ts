@@ -3,10 +3,6 @@ import { createTestDb, createToolRunner, parseResult } from "../setup.js";
 import type { DbInstance } from "../../src/db/index.js";
 import type { ToolRunner } from "../setup.js";
 
-vi.mock("@huggingface/transformers", () => ({
-  pipeline: vi.fn(),
-}));
-
 // Mock du module embeddings pour la recherche sémantique
 vi.mock("../../src/embeddings/index.js", () => ({
   generateQueryEmbedding: vi.fn(),
