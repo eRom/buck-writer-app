@@ -83,9 +83,14 @@ export default [
       'no-console': ['warn', { allow: ['warn', 'error'] }],
     },
   },
-  // Browser-specific globals for web package
+  // Browser-specific globals for web + bible-ui packages
   {
-    files: ['packages/web/**/*.ts', 'packages/web/**/*.tsx'],
+    files: [
+      'packages/web/**/*.ts',
+      'packages/web/**/*.tsx',
+      'packages/bible-ui/**/*.ts',
+      'packages/bible-ui/**/*.tsx',
+    ],
     languageOptions: {
       globals: {
         window: 'readonly',
