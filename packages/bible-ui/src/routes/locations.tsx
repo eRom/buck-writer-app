@@ -12,7 +12,8 @@ export const Route = createFileRoute('/locations')({ component: LocationsPage })
 
 function LocationsPage() {
   const navigate = useNavigate();
-  const { data, isLoading, error } = useMcpQuery<Location[]>('list_locations');
+  const { data: raw, isLoading, error } = useMcpQuery<{ results: Location[] }>('list_locations');
+  const data = raw?.results ?? [];
   const createMutation = useMcpMutation('create_location', ['list_locations']);
   const [sheetOpen, setSheetOpen] = useState(false);
 
@@ -28,7 +29,7 @@ function LocationsPage() {
         </Button>
       </header>
       <EntityList
-        entities={data ?? []}
+        entities={data}
         type="location"
         onSelect={(e) => navigate({ to: '/locations/$id', params: { id: e.id } })}
         emptyMessage="Aucun lieu. Créez le premier."

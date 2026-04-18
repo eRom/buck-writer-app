@@ -12,7 +12,8 @@ export const Route = createFileRoute('/characters')({ component: CharactersPage 
 
 function CharactersPage() {
   const navigate = useNavigate();
-  const { data, isLoading, error } = useMcpQuery<Character[]>('list_characters');
+  const { data: raw, isLoading, error } = useMcpQuery<{ characters: Character[] }>('list_characters');
+  const data = raw?.characters ?? [];
   const createMutation = useMcpMutation('create_character', ['list_characters']);
   const [sheetOpen, setSheetOpen] = useState(false);
 
@@ -28,7 +29,7 @@ function CharactersPage() {
         </Button>
       </header>
       <EntityList
-        entities={data ?? []}
+        entities={data}
         type="character"
         onSelect={(e) => navigate({ to: '/characters/$id', params: { id: e.id } })}
         emptyMessage="Aucun personnage. Créez le premier."

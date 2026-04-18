@@ -12,7 +12,8 @@ export const Route = createFileRoute('/world-rules')({ component: WorldRulesPage
 
 function WorldRulesPage() {
   const navigate = useNavigate();
-  const { data, isLoading, error } = useMcpQuery<WorldRule[]>('list_world_rules');
+  const { data: raw, isLoading, error } = useMcpQuery<{ worldRules: WorldRule[] }>('list_world_rules');
+  const data = raw?.worldRules ?? [];
   const createMutation = useMcpMutation('create_world_rule', ['list_world_rules']);
   const [sheetOpen, setSheetOpen] = useState(false);
 
@@ -28,7 +29,7 @@ function WorldRulesPage() {
         </Button>
       </header>
       <EntityList
-        entities={data ?? []}
+        entities={data}
         type="world-rule"
         onSelect={(e) => navigate({ to: '/world-rules/$id', params: { id: e.id } })}
         emptyMessage="Aucune règle. Créez la première."

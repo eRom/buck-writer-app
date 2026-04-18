@@ -12,7 +12,8 @@ export const Route = createFileRoute('/interactions')({ component: InteractionsP
 
 function InteractionsPage() {
   const navigate = useNavigate();
-  const { data, isLoading, error } = useMcpQuery<Interaction[]>('list_interactions');
+  const { data: raw, isLoading, error } = useMcpQuery<{ results: Interaction[] }>('list_interactions');
+  const data = raw?.results ?? [];
   const createMutation = useMcpMutation('create_interaction', ['list_interactions']);
   const [sheetOpen, setSheetOpen] = useState(false);
 
@@ -28,7 +29,7 @@ function InteractionsPage() {
         </Button>
       </header>
       <EntityList
-        entities={data ?? []}
+        entities={data}
         type="interaction"
         onSelect={(e) => navigate({ to: '/interactions/$id', params: { id: e.id } })}
         emptyMessage="Aucune interaction. Créez la première."

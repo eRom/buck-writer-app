@@ -12,7 +12,8 @@ export const Route = createFileRoute('/research')({ component: ResearchPage });
 
 function ResearchPage() {
   const navigate = useNavigate();
-  const { data, isLoading, error } = useMcpQuery<Research[]>('list_research');
+  const { data: raw, isLoading, error } = useMcpQuery<{ research: Research[] }>('list_research');
+  const data = raw?.research ?? [];
   const createMutation = useMcpMutation('create_research', ['list_research']);
   const [sheetOpen, setSheetOpen] = useState(false);
 
@@ -28,7 +29,7 @@ function ResearchPage() {
         </Button>
       </header>
       <EntityList
-        entities={data ?? []}
+        entities={data}
         type="research"
         onSelect={(e) => navigate({ to: '/research/$id', params: { id: e.id } })}
         emptyMessage="Aucune recherche. Créez la première."

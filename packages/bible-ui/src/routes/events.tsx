@@ -12,7 +12,8 @@ export const Route = createFileRoute('/events')({ component: EventsPage });
 
 function EventsPage() {
   const navigate = useNavigate();
-  const { data, isLoading, error } = useMcpQuery<Event[]>('list_events');
+  const { data: raw, isLoading, error } = useMcpQuery<{ events: Event[] }>('list_events');
+  const data = raw?.events ?? [];
   const createMutation = useMcpMutation('create_event', ['list_events']);
   const [sheetOpen, setSheetOpen] = useState(false);
 
@@ -28,7 +29,7 @@ function EventsPage() {
         </Button>
       </header>
       <EntityList
-        entities={data ?? []}
+        entities={data}
         type="event"
         onSelect={(e) => navigate({ to: '/events/$id', params: { id: e.id } })}
         emptyMessage="Aucun événement. Créez le premier."

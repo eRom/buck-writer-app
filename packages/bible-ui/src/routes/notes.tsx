@@ -12,7 +12,8 @@ export const Route = createFileRoute('/notes')({ component: NotesPage });
 
 function NotesPage() {
   const navigate = useNavigate();
-  const { data, isLoading, error } = useMcpQuery<Note[]>('list_notes');
+  const { data: raw, isLoading, error } = useMcpQuery<{ notes: Note[] }>('list_notes');
+  const data = raw?.notes ?? [];
   const createMutation = useMcpMutation('create_note', ['list_notes']);
   const [sheetOpen, setSheetOpen] = useState(false);
 
@@ -28,7 +29,7 @@ function NotesPage() {
         </Button>
       </header>
       <EntityList
-        entities={data ?? []}
+        entities={data}
         type="note"
         onSelect={(e) => navigate({ to: '/notes/$id', params: { id: e.id } })}
         emptyMessage="Aucune note. Créez la première."
