@@ -8,6 +8,7 @@ Référence : `docs/superpowers/plans/2026-04-18-m5-memory.md` — Task 23.
 - [x] Migrations Supabase appliquées : `buck_memories`, `buck_state`, `buck_memory_usage`, RPC `match_memories`, schedule `pg_cron`.
 - [x] Edge Functions `consolidate-memory` et `compact-state` déployées (retournent 401 sans bearer).
 - [x] Seed `buck_state` tier `static` exécuté (4 keys : `lang`, `tone`, `timezone`, `user_profile`).
+- [x] Smoke test vector stack : insert halfvec(3072) + `match_memories` round-trip similarity=1.0, validation enum `filter_type` lève `22023` (vérifié 2026-04-18 via MCP).
 
 ## Backend Buck
 
