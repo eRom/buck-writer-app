@@ -20,7 +20,7 @@ export function ChatShell({ sidebarLeft, main, panelRight }: Props) {
       </aside>
       <main className="flex min-w-0 flex-1 flex-col">{main}</main>
       <aside
-        className="shrink-0 border-l border-sidebar-border bg-sidebar transition-[width] duration-200 ease-out"
+        className="shrink-0 transition-[width] duration-200 ease-out"
         style={{ width: rightCollapsed ? 40 : 300 }}
       >
         {panelRight({ collapsed: rightCollapsed, onToggle: () => setRightCollapsed((v) => !v) })}

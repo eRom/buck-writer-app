@@ -1,8 +1,7 @@
-import { useRef, useState, type KeyboardEvent, type DragEvent, type ClipboardEvent } from 'react';
+import { useEffect, useRef, useState, type KeyboardEvent, type DragEvent, type ClipboardEvent } from 'react';
 import { Paperclip, ArrowUp, Square, X } from 'lucide-react';
 import { ALLOWED_MIME_TYPES } from '@buck/shared';
 import type { FileEntry } from '@buck/shared';
-import { ModelSelector } from './model-selector';
 import { AtReference } from './at-reference';
 import { cn } from '@/lib/utils';
 
@@ -17,8 +16,6 @@ interface ChatInputProps {
   onSubmit: () => void;
   onStop?: () => void;
   isLoading: boolean;
-  model: string;
-  onModelChange: (model: string) => void;
   disabled?: boolean;
   pendingAttachments: PendingAttachment[];
   onAttachmentsChange: (attachments: PendingAttachment[]) => void;
@@ -49,8 +46,6 @@ export function ChatInput({
   onSubmit,
   onStop,
   isLoading,
-  model,
-  onModelChange,
   disabled,
   pendingAttachments,
   onAttachmentsChange,
@@ -58,6 +53,14 @@ export function ChatInput({
   onReferenceSelect,
 }: ChatInputProps) {
   const textareaRef = useRef<HTMLTextAreaElement>(null);
+
+  useEffect(() => {
+    const el = textareaRef.current;
+    if (!el) return;
+    el.style.height = 'auto';
+    const maxH = Math.floor(window.innerHeight / 3);
+    el.style.height = `${Math.min(el.scrollHeight, maxH)}px`;
+  }, [value]);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [atQuery, setAtQuery] = useState<string | null>(null);
   const [focused, setFocused] = useState(false);
@@ -177,10 +180,9 @@ export function ChatInput({
             onFocus={() => setFocused(true)}
             onBlur={() => setFocused(false)}
             placeholder="Envoyer un message..."
-            rows={2}
+            rows={1}
             disabled={disabled}
-            className="block w-full resize-none bg-transparent px-3 pt-2.5 text-sm placeholder:text-muted-foreground focus:outline-none"
-            style={{ maxHeight: '200px' }}
+            className="block w-full resize-none overflow-y-auto bg-transparent px-3 pt-2.5 text-sm placeholder:text-muted-foreground focus:outline-none"
           />
           <div className="flex items-center justify-between gap-2 px-2 pb-2">
             <div className="flex items-center gap-1">
@@ -201,7 +203,6 @@ export function ChatInput({
               >
                 <Paperclip className="size-4" />
               </button>
-              <ModelSelector value={model} onChange={onModelChange} disabled={isLoading || disabled} />
             </div>
             {isLoading ? (
               <button

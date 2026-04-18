@@ -92,7 +92,7 @@ function toolOutputText(meta: ToolMeta): string | undefined {
 }
 
 export function ChatStream({ sessionId, onSessionCreated }: ChatStreamProps) {
-  const [model, setModel] = useState('gpt-5.4-mini');
+  const [model] = useState('gpt-5.4-mini');
   const [input, setInput] = useState('');
   const [pendingAttachments, setPendingAttachments] = useState<PendingAttachment[]>([]);
   const [messages, setMessages] = useState<ChatMessage[]>([]);
@@ -482,8 +482,6 @@ export function ChatStream({ sessionId, onSessionCreated }: ChatStreamProps) {
         onSubmit={handleSubmit}
         onStop={handleStop}
         isLoading={isLoading}
-        model={model}
-        onModelChange={setModel}
         disabled={budgetExceeded}
         pendingAttachments={pendingAttachments}
         onAttachmentsChange={setPendingAttachments}
