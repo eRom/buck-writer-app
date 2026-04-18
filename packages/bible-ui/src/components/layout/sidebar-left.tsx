@@ -38,7 +38,7 @@ export function SidebarLeft() {
           {NAV.map(({ to, label, icon: Icon }) => (
             <Link
               key={to}
-              // @ts-expect-error — routes créées dans les tasks suivantes
+              // @ts-expect-error — certaines routes (timeline/graph/search/import-export/backups) seront créées en Phase 6+
               to={to}
               className="flex items-center gap-2 rounded-md px-2 py-1.5 text-[13px] font-medium leading-tight text-sidebar-foreground/70 transition-colors hover:bg-sidebar-accent/50"
               activeProps={{
