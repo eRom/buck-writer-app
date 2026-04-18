@@ -14,6 +14,7 @@ import { fetchUsageCurrent } from '@/lib/settings';
 import { fetchWorkspaceTree } from '@/lib/workspace';
 import { uploadAttachments } from '@/lib/attachments';
 import { readCsrfCookie, CSRF_HEADER } from '@/lib/csrf';
+import { useMemoryStatus } from '@/stores/memory-status';
 
 interface ToolMeta {
   toolCallId: string;
@@ -200,6 +201,10 @@ export function ChatStream({ sessionId, onSessionCreated }: ChatStreamProps) {
     const currentReferences = references.length > 0 ? [...references] : [];
     setReferences([]);
 
+    // Reset memory degraded badge at stream start — it will be re-set by
+    // the SSE `memory_status` event if memory is still degraded.
+    useMemoryStatus.getState().setDegraded(false);
+
     try {
       const controller = new AbortController();
       abortRef.current = controller;
@@ -279,6 +284,8 @@ export function ChatStream({ sessionId, onSessionCreated }: ChatStreamProps) {
             setMessages((prev) =>
               prev.map((m) => (m.id === assistantId ? { ...m, content: current } : m)),
             );
+          } else if (event === 'memory_status') {
+            useMemoryStatus.getState().setDegraded(Boolean(parsed.degraded));
           } else if (event === 'tool_approval') {
             setPendingApproval({
               toolCallId: String(parsed.toolCallId ?? `call_${Date.now()}`),
@@ -393,6 +400,8 @@ export function ChatStream({ sessionId, onSessionCreated }: ChatStreamProps) {
               setMessages((prev) =>
                 prev.map((m) => (m.id === assistantId ? { ...m, content: current } : m)),
               );
+            } else if (event === 'memory_status') {
+              useMemoryStatus.getState().setDegraded(Boolean(parsed.degraded));
             } else if (event === 'tool_approval') {
               setPendingApproval({
                 toolCallId: String(parsed.toolCallId ?? `call_${Date.now()}`),

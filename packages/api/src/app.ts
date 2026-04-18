@@ -15,6 +15,7 @@ import {
   type ChatRouteDeps,
 } from './routes/chat.js';
 import type { McpClient } from './services/mcp-client.js';
+import type { MemoryServices } from './services/memory/bootstrap.js';
 import { createSettingsRoutes } from './routes/settings.js';
 import { createUsageRoutes } from './routes/usage.js';
 import { createMcpRoutes } from './routes/mcp.js';
@@ -53,6 +54,17 @@ export interface AppDeps extends AuthRoutesDeps, SessionRoutesDeps {
    * undefined in dev + tests (Vite dev server handles the SPA on :5173).
    */
   webDistRoot?: string;
+  /**
+   * Memory services (Supabase-backed long-term memory). When absent the chat
+   * route runs without preferences/activeContext injection and without
+   * recall/remember tools.
+   */
+  memory?: MemoryServices;
+  /**
+   * Canonical buck user id used as the memory partition. Falls back to the
+   * authenticated user id when omitted.
+   */
+  buckUserId?: string;
 }
 
 // Re-export ChatRouteDeps for consumers
@@ -129,6 +141,8 @@ export function buildApp(deps: AppDeps) {
       skills: deps.skills,
       mcpClient: deps.mcpClient,
       nowMs: deps.nowMs,
+      memory: deps.memory,
+      buckUserId: deps.buckUserId,
     }));
   }
 

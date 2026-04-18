@@ -17,6 +17,10 @@ import {
 import { loadPrompts, bootstrapPrompts, createPromptsWatcher, type PromptsRef } from './services/prompts.js';
 import { loadSkills, createSkillsWatcher } from './services/skills.js';
 import { createMcpClient } from './services/mcp-client.js';
+import { bootstrapMemory } from './services/memory/bootstrap.js';
+import { usageEvents, userSettings } from './db/schema.js';
+import { eq } from 'drizzle-orm';
+import { newId } from '@buck/shared';
 
 
 const env = loadEnv();
@@ -132,6 +136,61 @@ const email =
         })
       : createE2EEmailService('./data/e2e-last-token.json');
 
+const memory = bootstrapMemory({
+  env,
+  insertUsageEvent: async (r) => {
+    const promptTokens = 'promptTokens' in r ? r.promptTokens : 0;
+    const completionTokens = 'completionTokens' in r ? r.completionTokens : 0;
+    // Map memory userId (BUCK_USER_ID Supabase) → real SQLite user_id (FK constraint).
+    // Solo-per-instance: use the first/only user row.
+    const row = handles.db.select({ id: users.id }).from(users).limit(1).get();
+    if (!row) {
+      console.warn('[memory:usage] no SQLite user found, skipping usage_events insert');
+      return;
+    }
+    handles.db
+      .insert(usageEvents)
+      .values({
+        id: newId(),
+        userId: row.id,
+        sessionId: null,
+        createdAt: Date.now(),
+        model: r.model,
+        inputTokens: promptTokens,
+        outputTokens: completionTokens,
+        reasoningTokens: 0,
+        audioInputSeconds: 0,
+        audioOutputSeconds: 0,
+        costUsd: r.costUsd,
+      })
+      .run();
+  },
+  readUsageCursor: async () => {
+    if (!env.BUCK_USER_ID) return new Date(0);
+    const row = handles.db
+      .select({ cursor: userSettings.memoryUsageSyncCursor })
+      .from(userSettings)
+      .where(eq(userSettings.userId, env.BUCK_USER_ID))
+      .get();
+    return row?.cursor ?? new Date(0);
+  },
+  writeUsageCursor: async (d) => {
+    if (!env.BUCK_USER_ID) return;
+    handles.db
+      .update(userSettings)
+      .set({ memoryUsageSyncCursor: d })
+      .where(eq(userSettings.userId, env.BUCK_USER_ID))
+      .run();
+  },
+  tokenCounter: (s: string) => Math.ceil(s.length / 4),
+});
+
+if (memory.enabled && process.env.NODE_ENV !== 'test') {
+  setInterval(() => { memory.drainRetryBuffer().catch(() => {}); }, 30_000);
+  setInterval(() => { memory.syncUsage().catch(() => {}); }, 6 * 60 * 60 * 1000);
+  console.warn('[api] memory enabled (Supabase)');
+}
+
 const app = buildApp({
   db: handles,
   email,
@@ -144,6 +203,8 @@ const app = buildApp({
   workspaceDir: env.WORKSPACE_DIR,
   skills,
   mcpClient,
+  memory,
+  buckUserId: env.BUCK_USER_ID,
 });
 
 serve({ fetch: app.fetch, port: env.PORT, hostname: '0.0.0.0' }, (info) => {

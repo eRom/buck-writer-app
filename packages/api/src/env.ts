@@ -25,6 +25,13 @@ const Schema = z.object({
   DATABASE_URL: z.string().min(1),
   MCP_BIBLE_URL: z.string().url().optional(),
   LOG_LEVEL: z.enum(['fatal', 'error', 'warn', 'info', 'debug', 'trace']).default('info'),
+  // M5 Memory
+  SUPABASE_URL: z.string().url().optional(),
+  SUPABASE_SERVICE_ROLE_KEY: z.string().min(1).optional(),
+  BUCK_USER_ID: z.string().uuid().optional(),
+  MEMORY_ENABLED: z.coerce.boolean().default(false),
+  OPENAI_EMBEDDING_MODEL: z.string().default('text-embedding-3-large'),
+  EDGE_INVOKE_KEY: z.string().min(1).optional(),
 });
 
 export type Env = z.infer<typeof Schema>;

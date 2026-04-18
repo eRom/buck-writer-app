@@ -87,6 +87,7 @@ Voir `.env.example`. Variables critiques :
 - **M0** — Foundation : monorepo, auth magic-link, Docker, CI
 - **M1** — Chat OpenAI streaming + sessions CRUD
 - **M4** — MCP Bible integration + prompts live-editable (terminé 2026-04-18)
+- **M5** — Memory layer Supabase : `buck_memories` (vector search), `buck_state` (KV), tools `recall`/`remember`, Edge Functions consolidation+compaction, pg_cron nightly. Flag `MEMORY_ENABLED`.
 
 Specs et plans dans `docs/superpowers/specs/` et `docs/superpowers/plans/`.
 

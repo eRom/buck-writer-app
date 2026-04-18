@@ -188,6 +188,7 @@ export const userSettings = sqliteTable('user_settings', {
     .notNull()
     .default('low'),
   billingResetDay: integer('billing_reset_day').notNull().default(1),
+  memoryUsageSyncCursor: integer('memory_usage_sync_cursor', { mode: 'timestamp_ms' }),
 });
 
 // ---------- mcp ----------
