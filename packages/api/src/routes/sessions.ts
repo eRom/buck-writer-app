@@ -176,11 +176,13 @@ export function createSessionRoutes(
       );
     }
 
-    const { title, archived, model } = parsed.data;
+    const { title, archived, isFavorite, model, reasoningEffort } = parsed.data;
     const updates: Record<string, unknown> = { updatedAt: now() };
     if (title !== undefined) updates.title = title;
     if (archived !== undefined) updates.archived = archived ? 1 : 0;
+    if (isFavorite !== undefined) updates.isFavorite = isFavorite ? 1 : 0;
     if (model !== undefined) updates.model = model;
+    if (reasoningEffort !== undefined) updates.reasoningEffort = reasoningEffort;
 
     deps.db.db
       .update(chatSessions)

@@ -1,9 +1,14 @@
-import { useRef, useState, type KeyboardEvent, type DragEvent, type ClipboardEvent } from 'react';
+import { useEffect, useRef, useState, type KeyboardEvent, type DragEvent, type ClipboardEvent } from 'react';
+import { Paperclip, ArrowUp, Square, X } from 'lucide-react';
 import { ALLOWED_MIME_TYPES } from '@buck/shared';
 import type { FileEntry } from '@buck/shared';
-import { ModelSelector } from './model-selector';
-import { AttachmentPreview, type PendingAttachment } from './attachment-preview';
 import { AtReference } from './at-reference';
+import { cn } from '@/lib/utils';
+
+export interface PendingAttachment {
+  file: File;
+  preview?: string;
+}
 
 interface ChatInputProps {
   value: string;
@@ -11,8 +16,6 @@ interface ChatInputProps {
   onSubmit: () => void;
   onStop?: () => void;
   isLoading: boolean;
-  model: string;
-  onModelChange: (model: string) => void;
   disabled?: boolean;
   pendingAttachments: PendingAttachment[];
   onAttachmentsChange: (attachments: PendingAttachment[]) => void;
@@ -22,11 +25,19 @@ interface ChatInputProps {
 
 const ACCEPT = ALLOWED_MIME_TYPES.join(',');
 
-function filesToPending(files: FileList | File[]): PendingAttachment[] {
+function filesToPending(files: ArrayLike<File>): PendingAttachment[] {
   return Array.from(files).map((file) => ({
     file,
     preview: file.type.startsWith('image/') ? URL.createObjectURL(file) : undefined,
   }));
+}
+
+function kindOf(mime: string): string {
+  if (mime.startsWith('image/')) return 'IMG';
+  if (mime === 'application/pdf') return 'PDF';
+  if (mime.startsWith('text/')) return 'TXT';
+  if (mime.includes('wordprocessingml')) return 'DOC';
+  return 'FILE';
 }
 
 export function ChatInput({
@@ -35,20 +46,26 @@ export function ChatInput({
   onSubmit,
   onStop,
   isLoading,
-  model,
-  onModelChange,
   disabled,
   pendingAttachments,
   onAttachmentsChange,
   workspaceEntries,
   onReferenceSelect,
 }: ChatInputProps) {
-  const ref = useRef<HTMLTextAreaElement>(null);
+  const textareaRef = useRef<HTMLTextAreaElement>(null);
+
+  useEffect(() => {
+    const el = textareaRef.current;
+    if (!el) return;
+    el.style.height = 'auto';
+    const maxH = Math.floor(window.innerHeight / 3);
+    el.style.height = `${Math.min(el.scrollHeight, maxH)}px`;
+  }, [value]);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [atQuery, setAtQuery] = useState<string | null>(null);
+  const [focused, setFocused] = useState(false);
 
   function handleKeyDown(e: KeyboardEvent<HTMLTextAreaElement>) {
-    // When @reference dropdown is open, let it handle navigation keys
     if (atQuery !== null && ['ArrowDown', 'ArrowUp', 'Enter', 'Escape'].includes(e.key)) {
       return;
     }
@@ -58,7 +75,7 @@ export function ChatInput({
     }
   }
 
-  function addFiles(files: FileList | File[]) {
+  function addFiles(files: ArrayLike<File>) {
     const pending = filesToPending(files);
     if (pending.length > 0) {
       onAttachmentsChange([...pendingAttachments, ...pending]);
@@ -67,9 +84,7 @@ export function ChatInput({
 
   function handleDrop(e: DragEvent<HTMLDivElement>) {
     e.preventDefault();
-    if (e.dataTransfer.files.length > 0) {
-      addFiles(e.dataTransfer.files);
-    }
+    if (e.dataTransfer.files.length > 0) addFiles(e.dataTransfer.files);
   }
 
   function handleDragOver(e: DragEvent<HTMLDivElement>) {
@@ -91,47 +106,42 @@ export function ChatInput({
     }
   }
 
-  function handleRemove(index: number) {
-    const updated = pendingAttachments.filter((_, i) => i !== index);
-    onAttachmentsChange(updated);
+  function removeAttachment(index: number) {
+    onAttachmentsChange(pendingAttachments.filter((_, i) => i !== index));
   }
 
   function handleChange(newValue: string) {
     onChange(newValue);
-
-    // Detect @reference
-    const cursorPos = ref.current?.selectionStart ?? newValue.length;
+    const cursorPos = textareaRef.current?.selectionStart ?? newValue.length;
     const textBeforeCursor = newValue.slice(0, cursorPos);
     const atMatch = textBeforeCursor.match(/@([^\s]*)$/);
-
-    if (atMatch) {
-      setAtQuery(atMatch[1]!);
-    } else {
-      setAtQuery(null);
-    }
+    setAtQuery(atMatch ? atMatch[1]! : null);
   }
 
   function handleReferenceSelect(filePath: string) {
-    // Replace @query with @filepath in the input
-    const cursorPos = ref.current?.selectionStart ?? value.length;
+    const cursorPos = textareaRef.current?.selectionStart ?? value.length;
     const textBeforeCursor = value.slice(0, cursorPos);
     const atMatch = textBeforeCursor.match(/@([^\s]*)$/);
-
     if (atMatch) {
       const before = textBeforeCursor.slice(0, atMatch.index!);
       const after = value.slice(cursorPos);
       onChange(`${before}@${filePath} ${after}`);
     }
-
     setAtQuery(null);
     onReferenceSelect?.(filePath);
   }
 
+  const canSend = value.trim() || pendingAttachments.length > 0;
+
   return (
-    <div className={`border-t border-border p-3${disabled ? ' opacity-50' : ''}`}>
+    <div className={cn('px-4 pb-4', disabled && 'opacity-50')} onDrop={handleDrop} onDragOver={handleDragOver}>
       <div className="mx-auto max-w-3xl">
-        <AttachmentPreview attachments={pendingAttachments} onRemove={handleRemove} />
-        <div className="relative flex items-end gap-2" onDrop={handleDrop} onDragOver={handleDragOver}>
+        <div
+          className={cn(
+            'relative rounded-xl border bg-card transition-colors',
+            focused ? 'border-ring' : 'border-card-border',
+          )}
+        >
           {atQuery !== null && workspaceEntries && (
             <AtReference
               query={atQuery}
@@ -140,51 +150,81 @@ export function ChatInput({
               onClose={() => setAtQuery(null)}
             />
           )}
-          <input
-            ref={fileInputRef}
-            type="file"
-            multiple
-            accept={ACCEPT}
-            className="hidden"
-            onChange={handleFileChange}
-          />
-          <button
-            onClick={() => fileInputRef.current?.click()}
-            disabled={disabled}
-            className="rounded-md border border-border px-2 py-2 text-sm text-muted-foreground hover:text-foreground disabled:opacity-50"
-            aria-label="Joindre des fichiers"
-          >
-            +
-          </button>
-          <ModelSelector value={model} onChange={onModelChange} disabled={isLoading || disabled} />
+          {pendingAttachments.length > 0 && (
+            <div className="flex flex-wrap gap-1 border-b border-border px-2 pt-2">
+              {pendingAttachments.map((a, i) => (
+                <span
+                  key={`${a.file.name}-${i}`}
+                  className="inline-flex items-center gap-1 rounded-md border border-border bg-secondary px-1.5 py-0.5 text-[11px]"
+                >
+                  <span className="font-mono text-muted-foreground">{kindOf(a.file.type)}</span>
+                  <span className="max-w-32 truncate">{a.file.name}</span>
+                  <button
+                    type="button"
+                    onClick={() => removeAttachment(i)}
+                    aria-label={`Retirer ${a.file.name}`}
+                    className="text-muted-foreground hover:text-foreground"
+                  >
+                    <X className="size-3" />
+                  </button>
+                </span>
+              ))}
+            </div>
+          )}
           <textarea
-            ref={ref}
+            ref={textareaRef}
             value={value}
             onChange={(e) => handleChange(e.target.value)}
             onKeyDown={handleKeyDown}
             onPaste={handlePaste}
-            placeholder="Ecris ton message..."
+            onFocus={() => setFocused(true)}
+            onBlur={() => setFocused(false)}
+            placeholder="Envoyer un message..."
             rows={1}
             disabled={disabled}
-            className="flex-1 resize-none rounded-md border border-border bg-input px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-ring"
-            style={{ maxHeight: '200px' }}
+            className="block w-full resize-none overflow-y-auto bg-transparent px-3 pt-2.5 text-sm placeholder:text-muted-foreground focus:outline-none"
           />
-          {isLoading ? (
-            <button
-              onClick={onStop}
-              className="rounded-md border border-destructive px-3 py-2 text-sm text-destructive hover:bg-destructive/10"
-            >
-              Stop
-            </button>
-          ) : (
-            <button
-              onClick={onSubmit}
-              disabled={disabled || (!value.trim() && pendingAttachments.length === 0)}
-              className="rounded-md bg-primary px-3 py-2 text-sm text-primary-foreground disabled:opacity-50"
-            >
-              Envoyer
-            </button>
-          )}
+          <div className="flex items-center justify-between gap-2 px-2 pb-2">
+            <div className="flex items-center gap-1">
+              <input
+                ref={fileInputRef}
+                type="file"
+                multiple
+                accept={ACCEPT}
+                className="hidden"
+                onChange={handleFileChange}
+              />
+              <button
+                type="button"
+                onClick={() => fileInputRef.current?.click()}
+                disabled={disabled}
+                aria-label="Joindre un fichier"
+                className="hover-elevate rounded-md p-1.5 text-muted-foreground hover:text-foreground disabled:opacity-50"
+              >
+                <Paperclip className="size-4" />
+              </button>
+            </div>
+            {isLoading ? (
+              <button
+                type="button"
+                onClick={onStop}
+                aria-label="Stop"
+                className="hover-elevate flex size-7 items-center justify-center rounded-full border border-destructive-border bg-destructive text-destructive-foreground"
+              >
+                <Square className="size-3" />
+              </button>
+            ) : (
+              <button
+                type="button"
+                onClick={onSubmit}
+                disabled={disabled || !canSend}
+                aria-label="Envoyer"
+                className="hover-elevate active-elevate-2 flex size-7 items-center justify-center rounded-full border border-primary-border bg-primary text-primary-foreground disabled:opacity-50"
+              >
+                <ArrowUp className="size-3.5" />
+              </button>
+            )}
+          </div>
         </div>
       </div>
     </div>

@@ -1,9 +1,13 @@
 import { apiFetch } from './api';
 
+export type ReasoningEffort = 'low' | 'medium' | 'high';
+
 export interface Session {
   id: string;
   title: string;
   model: string;
+  reasoningEffort: ReasoningEffort;
+  isFavorite: number;
   archived: number;
   createdAt: number;
   updatedAt: number;
@@ -30,12 +34,22 @@ export async function createSession(title?: string): Promise<Session> {
 
 export async function updateSession(
   id: string,
-  data: { title?: string; archived?: boolean },
+  data: {
+    title?: string;
+    archived?: boolean;
+    isFavorite?: boolean;
+    model?: string;
+    reasoningEffort?: ReasoningEffort;
+  },
 ): Promise<Session> {
   return apiFetch<Session>(`/api/sessions/${id}`, {
     method: 'PATCH',
     body: data,
   });
+}
+
+export async function toggleFavorite(id: string, isFavorite: boolean): Promise<Session> {
+  return updateSession(id, { isFavorite });
 }
 
 export async function deleteSession(id: string): Promise<void> {

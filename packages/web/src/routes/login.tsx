@@ -9,6 +9,7 @@ export const Route = createFileRoute('/login')({
 function LoginPage() {
   return (
     <LoginView
+      isDev={import.meta.env.DEV}
       onRequest={async (email) => {
         await apiFetch<{ sent: boolean }>('/api/auth/request', {
           method: 'POST',

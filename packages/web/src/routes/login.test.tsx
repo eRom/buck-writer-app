@@ -13,23 +13,22 @@ describe('LoginView', () => {
     fireEvent.change(screen.getByLabelText(/email/i), {
       target: { value: 'a@b.c' },
     });
-    fireEvent.click(screen.getByRole('button', { name: /envoyer/i }));
+    fireEvent.click(screen.getByRole('button', { name: /recevoir le lien/i }));
     await waitFor(() => {
       expect(onRequest).toHaveBeenCalledWith('a@b.c');
     });
-    await screen.findByText(/email envoy/i);
+    await screen.findByText(/lien envoye a/i);
   });
 
-  it('disables button after submit for cooldown', async () => {
+  it('after submit, cooldown button is disabled', async () => {
     const onRequest = vi.fn(async () => {});
     render(<LoginView onRequest={onRequest} />);
     fireEvent.change(screen.getByLabelText(/email/i), {
       target: { value: 'a@b.c' },
     });
-    fireEvent.click(screen.getByRole('button', { name: /envoyer/i }));
-    await waitFor(() => {
-      expect(screen.getByRole('button')).toBeDisabled();
-    });
+    fireEvent.click(screen.getByRole('button', { name: /recevoir le lien/i }));
+    const resendBtn = await screen.findByRole('button', { name: /renvoyer dans/i });
+    expect(resendBtn).toBeDisabled();
   });
 
   it('shows error when onRequest throws', async () => {
@@ -40,7 +39,7 @@ describe('LoginView', () => {
     fireEvent.change(screen.getByLabelText(/email/i), {
       target: { value: 'a@b.c' },
     });
-    fireEvent.click(screen.getByRole('button', { name: /envoyer/i }));
+    fireEvent.click(screen.getByRole('button', { name: /recevoir le lien/i }));
     await screen.findByText(/network down/i);
   });
 });
