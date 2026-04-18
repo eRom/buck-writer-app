@@ -14,6 +14,7 @@ import {
   createChatRoute,
   type ChatRouteDeps,
 } from './routes/chat.js';
+import type { McpClient } from './services/mcp-client.js';
 import { createSettingsRoutes } from './routes/settings.js';
 import { createUsageRoutes } from './routes/usage.js';
 import { createWorkspaceRoutes } from './routes/workspace.js';
@@ -40,6 +41,11 @@ export interface AppDeps extends AuthRoutesDeps, SessionRoutesDeps {
    * Loaded workspace skills. Passed to the chat route for tool integration.
    */
   skills?: Map<string, import('./services/skills.js').Skill>;
+  /**
+   * MCP client for the bible-mcp server. When provided and healthy, bible
+   * tools are injected into the chat tool loop with a `bible_` prefix.
+   */
+  mcpClient?: McpClient;
   /**
    * Absolute path to the built SPA (Vite dist/). If provided, Hono serves
    * it as static and falls back to index.html for non-/api paths. Leave
@@ -120,6 +126,7 @@ export function buildApp(deps: AppDeps) {
       openaiApiKey: deps.openaiApiKey,
       workspaceDir: deps.workspaceDir,
       skills: deps.skills,
+      mcpClient: deps.mcpClient,
       nowMs: deps.nowMs,
     }));
   }

@@ -16,6 +16,7 @@ import {
 } from './services/email.js';
 import { loadPrompts } from './services/prompts.js';
 import { loadSkills, createSkillsWatcher } from './services/skills.js';
+import { createMcpClient } from './services/mcp-client.js';
 
 
 const env = loadEnv();
@@ -62,6 +63,17 @@ const prompts = (() => {
 const skills = await loadSkills(env.WORKSPACE_DIR);
 console.warn(`[api] skills loaded (${skills.size})`);
 
+// Init bible MCP client — best-effort, non-blocking if unreachable
+const mcpClient = createMcpClient({
+  url: process.env.MCP_BIBLE_URL ?? 'http://bible-mcp:7801',
+});
+try {
+  await mcpClient.listTools();
+  console.warn(`[api] bible-mcp ok (${mcpClient.cachedTools().length} tools)`);
+} catch (err) {
+  console.warn('[api] bible-mcp unreachable, running in degraded mode:', (err as Error).message);
+}
+
 if (process.env.NODE_ENV !== 'test') {
   const skillsWatcher = createSkillsWatcher(env.WORKSPACE_DIR, (reloaded) => {
     skills.clear();
@@ -70,7 +82,7 @@ if (process.env.NODE_ENV !== 'test') {
   });
 
   // Graceful shutdown
-  const shutdown = () => { skillsWatcher.close().catch(() => {}); };
+  const shutdown = () => { skillsWatcher.close().catch(() => {}); mcpClient.stop(); };
   process.on('SIGINT', shutdown);
   process.on('SIGTERM', shutdown);
 }
@@ -106,6 +118,7 @@ const app = buildApp({
   openaiApiKey: env.OPENAI_API_KEY,
   workspaceDir: env.WORKSPACE_DIR,
   skills,
+  mcpClient,
 });
 
 serve({ fetch: app.fetch, port: env.PORT, hostname: '0.0.0.0' }, (info) => {
