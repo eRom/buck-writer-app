@@ -23,7 +23,11 @@ export async function callTool(
   const first = result?.content?.[0];
   if (!first) return null;
   if (result?.isError) throw new Error(first.text);
-  return JSON.parse(first.text);
+  try {
+    return JSON.parse(first.text);
+  } catch {
+    return first.text;
+  }
 }
 
 export async function listTools(): Promise<McpTool[]> {
