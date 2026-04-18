@@ -14,7 +14,7 @@ const TYPE_COLOR: Record<EntityType, string> = {
 
 // Per-type extractors — schemas vary (name/title/topic/content).
 function getTitle(entity: AnyEntity, type: EntityType): string {
-  const e = entity as Record<string, unknown>;
+  const e = entity as unknown as Record<string, unknown>;
   switch (type) {
     case 'event':
     case 'world-rule':
@@ -35,7 +35,7 @@ function getTitle(entity: AnyEntity, type: EntityType): string {
 }
 
 function getDescription(entity: AnyEntity, type: EntityType): string | null {
-  const e = entity as Record<string, unknown>;
+  const e = entity as unknown as Record<string, unknown>;
   if (type === 'research') return (e.content as string) ?? null;
   if (type === 'note') return (e.tags as string) ?? null;
   return (e.description as string) ?? null;
