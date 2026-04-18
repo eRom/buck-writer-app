@@ -1,8 +1,23 @@
 import { apiFetch } from './api';
-import type { WorkspaceTreeResponse } from '@buck/shared';
+import type { FileEntry, WorkspaceTreeResponse } from '@buck/shared';
+
+const HIDDEN_NAMES = new Set(['.git', 'skills', 'systems']);
+
+function isHidden(name: string): boolean {
+  if (HIDDEN_NAMES.has(name)) return true;
+  if (name.startsWith('.DS')) return true;
+  return false;
+}
+
+function filterTree(entries: FileEntry[]): FileEntry[] {
+  return entries
+    .filter((e) => !isHidden(e.name))
+    .map((e) => (e.children ? { ...e, children: filterTree(e.children) } : e));
+}
 
 export async function fetchWorkspaceTree(): Promise<WorkspaceTreeResponse> {
-  return apiFetch<WorkspaceTreeResponse>('/api/workspace/tree');
+  const res = await apiFetch<WorkspaceTreeResponse>('/api/workspace/tree');
+  return { ...res, tree: filterTree(res.tree) };
 }
 
 export async function createDirectory(dirPath: string): Promise<void> {
