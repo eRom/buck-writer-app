@@ -24,21 +24,22 @@ export function SidebarLeftHeader({ collapsed, onToggle, query, onQueryChange }:
 
   if (collapsed) {
     return (
-      <div className="flex h-10 items-center justify-center gap-1">
-        <button
-          onClick={() => newSession.mutate()}
-          disabled={newSession.isPending}
-          aria-label="Nouvelle session"
-          className="hover-elevate rounded-md p-1.5 text-sidebar-foreground/70 hover:text-sidebar-foreground disabled:opacity-50"
-        >
-          <SquarePen className="size-4" />
-        </button>
+      <div className="flex flex-col items-center gap-1 py-2">
         <button
           onClick={onToggle}
           aria-label="Deployer la sidebar"
           className="hover-elevate rounded-md p-1.5 text-sidebar-foreground/70 hover:text-sidebar-foreground"
         >
           <PanelLeft className="size-4" />
+        </button>
+        <button
+          onClick={() => newSession.mutate()}
+          disabled={newSession.isPending}
+          aria-label="Nouvelle session"
+          title="Nouvelle session"
+          className="hover-elevate rounded-md p-1.5 text-sidebar-foreground/70 hover:text-sidebar-foreground disabled:opacity-50"
+        >
+          <SquarePen className="size-4" />
         </button>
       </div>
     );
