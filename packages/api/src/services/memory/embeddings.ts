@@ -39,8 +39,9 @@ export async function embedText(text: string, deps: EmbedDeps): Promise<EmbedRes
     promptTokens: tokens,
     costUsd,
   });
+  const first = response.data[0]!;
   return {
-    embedding: response.data[0].embedding,
+    embedding: first.embedding,
     tokens,
     model: response.model,
   };

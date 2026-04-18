@@ -31,7 +31,7 @@ export function createRememberService(deps: RememberDeps) {
   async function persist(payload: RememberInput): Promise<string> {
     const { embedding } = await deps.embed(payload.content);
     const signal = AbortSignal.timeout(timeoutMs);
-    const res = await client
+    const builder = client
       .from('buck_memories')
       .insert({
         user_id: deps.userId,
@@ -42,8 +42,8 @@ export function createRememberService(deps: RememberDeps) {
         metadata: payload.metadata ?? {},
       })
       .select('id')
-      .single()
-      .abortSignal(signal);
+      .single() as unknown as { abortSignal: (s: AbortSignal) => Promise<{ data: unknown; error: { message: string } | null }> };
+    const res = await builder.abortSignal(signal);
     if (res.error) throw new Error(res.error.message);
     return (res.data as { id: string }).id;
   }

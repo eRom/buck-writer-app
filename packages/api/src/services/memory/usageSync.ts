@@ -57,7 +57,8 @@ export async function syncMemoryUsage(deps: SyncDeps): Promise<number> {
       createdAt: new Date(row.created_at),
     });
   }
-  const lastDate = new Date(rows[rows.length - 1].created_at);
+  const lastRow = rows[rows.length - 1]!;
+  const lastDate = new Date(lastRow.created_at);
   await deps.saveCursor(lastDate);
   return rows.length;
 }
