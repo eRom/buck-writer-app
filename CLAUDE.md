@@ -128,10 +128,12 @@ Le dossier `.cave/` contient la cartographie persistante du projet :
 ## Skills
 - **playwright-cli** : Automate browser interactions, test web pages and work with Playwright tests.
 - **shadcn** : Manages shadcn components and projects — adding, searching, fixing, debugging, styling, and composing UI.
-
+- **supabase**: DB via Supabase
+-
 ## MCP Server
 - **shadcn**: Vous pouvez parcourir les composants disponibles, en rechercher des spécifiques et les installer directement dans votre projet en utilisant le langage naturel.
 - **resend**: Accès natif à l'ensemble de la plateforme Resend
+- **supabase**: Pour gérer la DB via Supabase
 
 ## UI Design
 - template :

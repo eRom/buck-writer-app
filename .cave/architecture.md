@@ -1,6 +1,6 @@
 # Architecture — Buck Writer
 
-> Derniere mise a jour : 2026-04-18 (M4 complete, migration OpenAI directe)
+> Derniere mise a jour : 2026-04-18 (M5 Memory Supabase mergee)
 
 ## Vue d'ensemble
 
@@ -10,10 +10,11 @@ Buck Writer est un assistant d'ecriture web connecte a OpenAI, double d'un archi
 
 - **Runtime** : Node 20, pnpm workspaces
 - **API** : Hono + SQLite (better-sqlite3) + Drizzle ORM
-- **Web** : React 19 + TanStack Router + Vite + Tailwind v4 + shadcn (preset b1Gdz9c4A)
+- **Web** : React 19 + TanStack Router + Vite + Tailwind v4 + shadcn new-york + **erom-design v2** (OKLCH, amber brand, dark-first, gris chauds hue 28, Figtree + JetBrains Mono)
 - **Streaming** : fetch direct OpenAI Chat Completions (plus d'AI SDK depuis le 2026-04-18), SSE events structures (`content`, `tool_approval`, `tool_result`, `done`, `error`)
 - **Auth** : Magic link via Resend, JWT session cookie, CSRF Double Submit Cookie
 - **Bible MCP** : Express + @modelcontextprotocol/sdk, transport JSON-RPC HTTP, embeddings OpenAI text-embedding-3-large (3072 dims)
+- **Memory (M5)** : Supabase (Postgres + pgvector halfvec(3072) + HNSW cosine + pg_cron + Edge Functions Deno). Module `services/memory/` cote api (@supabase/supabase-js). Tools `recall`/`remember` injectes dans le chat si `MEMORY_ENABLED=true`. Consolidation nocturne (epi->semantique + dedup) et compaction on-demand via Edge Functions Bearer-authed
 - **Docker** : Node 20 Alpine, multi-stage build, pnpm deploy --prod
 
 ## Arborescence
@@ -23,6 +24,9 @@ buck-writer-app/
   packages/
     shared/       — Zod schemas, types, pricing models (tsup build)
     api/          — Hono API, routes, middleware, DB, services, MCP client
+      src/services/memory/   — Module memory portable (M5)
+      supabase/migrations/   — Migrations SQL Supabase (memory schema + pg_cron)
+      supabase/functions/    — Edge Functions Deno (consolidate-memory, compact-state, _shared/)
     web/          — React SPA, TanStack Router, composants chat + workspace
     bible-mcp/    — Serveur MCP bible (HTTP, 51 tools, OpenAI embeddings)
   workspace/systems/  — SYSTEM.md + RULES.md (live-editable, hot-reload)
@@ -30,7 +34,7 @@ buck-writer-app/
   data/bible/         — SQLite bible (characters, locations, events, embeddings)
   docs/superpowers/
     specs/        — specs de design par milestone
-    plans/        — plans d'implementation
+    plans/        — plans d'implementation (+ m5-supabase-provisioning, m5-go-no-go runbooks)
   docker-compose.yml, docker-compose.local.yml, Dockerfile.app, Dockerfile.bible-mcp
 ```
 
@@ -57,6 +61,17 @@ buck-writer-app/
 - REST API `/api/workspace/*`, WebDAV `/webdav/*`, attachments `/api/attachments`
 - Skills `WORKSPACE_DIR/skills/*/SKILL.md`, systems `WORKSPACE_DIR/systems/{SYSTEM,RULES}.md`, tous deux hot-reload chokidar
 
+### Memory (M5, 2026-04-18)
+- Module `services/memory/` isole, 3 entry points : `buildMemoryContext(userId)`, tool `recall`, tool `remember`
+- `bootstrapMemory({ env, insertUsageEvent, readUsageCursor, writeUsageCursor, tokenCounter })` compose les services (no-op si `MEMORY_ENABLED=false` ou env incomplet)
+- Flow chat request : `buildMemoryContext` (parallel fetch `buck_state` static+context, timeout 1.5s, fail-soft `degraded=true` sans throw) → inject `<preferences>` + `<active_context>` au system prompt → tools `recall`/`remember` appendees si enabled → SSE event `memory_status { degraded: true }` avant premier token si necessaire
+- Supabase : 3 tables (`buck_memories` halfvec(3072) + HNSW cosine ; `buck_state` KV two-tier static/context avec token_budget ; `buck_memory_usage` logs Edge-side). RPC `match_memories(query_embedding, threshold, count, user_id, type?)` avec validation enum (RAISE 22023 si invalide)
+- Edge Functions Deno : `consolidate-memory` (pg_cron `0 3 * * *` UTC, LLM extract + dedup vectoriel @ 0.92 similarity), `compact-state` (on-demand si value > token_budget, LLM compresse a 60% du budget). Les deux valident `Authorization: Bearer ${EDGE_INVOKE_KEY}` via helper `_shared/auth.ts`. Secrets Edge : `OPENAI_API_KEY`, `EDGE_INVOKE_KEY`, `BUCK_USER_ID`. pg_cron lit `EDGE_INVOKE_KEY` depuis Vault (`vault.decrypted_secrets`)
+- Cost tracking dual : embeddings Node-side → `usage_events` SQLite avec `input_tokens` = prompt_tokens (budget guard M2 visible) ; Edge-side → `buck_memory_usage` Supabase, rapatriee toutes les 6h par `syncMemoryUsage()` (cron Node dans `index.ts`)
+- Fail-soft : `createRememberService` a un retry buffer en RAM (Map, FIFO cap 100), drainee toutes les 30s quand `memory.enabled`. Insert Supabase fail → buffer + deferred result au tool handler
+- Feature flag `MEMORY_ENABLED=true/false` — rollback instant, code path strictement identique a pre-M5 si false
+- UI : `<MemoryBadge />` monte dans `SidebarLeftFooter` (expanded only), affiche "⚠ memoire indisponible" si `useMemoryStatus().degraded=true`. Store Zustand `memory-status.ts`. SSE event `memory_status` parse dans `lib/chat.ts`
+
 ## Modules
 
 - **Auth** : magic link (Resend), JWT, session cookie, authGuard middleware, dev-login bypass (E2E)
@@ -66,7 +81,8 @@ buck-writer-app/
 - **Prompts** : SYSTEM + RULES injectes, `PromptsRef` wrapper pour hot-reload atomic, bootstrap depuis defaults embarques si workspace vide
 - **Settings / Usage / Budget** : inchange depuis M2
 - **Workspace** : REST + WebDAV + skills + file tools (read/list/create/delete + shell_execute + activate_skill); `shell_execute` auto-execute, destructif bloque par `isDestructiveCommand`
-- **UI** : ChatLayout, SessionList, ChatArea, WorkspacePanel, MarkdownRenderer, ApprovalBlock, ToolCallDisplay, AtReference, UserMenu, Settings, BudgetBanner, **BibleStatusBanner** (M4)
+- **Memory (M5)** : orchestrator parallel fetch avec fail-soft, services `remember` (retry buffer) / `recall` (bump access async) / `state` (KV + compaction Edge), `embedText` wrappe OpenAI + insert `usage_events`, `syncMemoryUsage` cursor-based cross-DB, `bootstrap.ts` compose tout et retourne `MemoryServices { enabled, buildContext, remember, recall, state, syncUsage, drainRetryBuffer }`
+- **UI (erom-design v2, 2026-04-18)** : `ChatShell` (shell 3 panneaux, panel droit sans bg/border flottant) + `SidebarLeft` (search + favoris/today/7j/older + user pill dropdown) + `PanelRight` avec 4 cards (Parametres = modele + raisonnement + budget / Workspace = file tree / Referentiel = Bible MCP status / MCP placeholder). Chat eclate en `ChatStream` + `MessageUser` + `MessageAssistant` + `ReasoningCollapsible` + `ToolCallsCollapsible` + `ToolCallItem` (absorbe approval/terminal/tool-call-display) + `ChatEmptyState` + `MessageFooter`. `ChatInput` auto-grow vertical (max 33vh) + chips attachments. Route `/settings` mono-page (Compte + General + Budget sections). Route `/workspace` supprimee. Login re-skinne en card centree.
 
 ## DX
 

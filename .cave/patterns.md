@@ -1,6 +1,6 @@
 # Patterns et conventions — Buck Writer
 
-> Derniere mise a jour : 2026-04-18 (M4 complete)
+> Derniere mise a jour : 2026-04-18 (M5 Memory Supabase mergee)
 
 ## Architecture
 
@@ -42,6 +42,42 @@
 - **MCP client** : JSON-RPC 2.0 sur `${url}/mcp`, timeout via AbortController, health polling setInterval independant du premier listTools (demarre inconditionnellement). Status notifie via onStatusChange callback
 - **Embeddings bible** : batching 100 textes/call, `text-embedding-3-large` (3072 dims) par defaut, `OPENAI_EMBEDDING_MODEL` override possible. Table `embeddings_meta` stocke `model` + `dim` pour detecter les mismatches au runtime
 - **JSON Schema pour tools** : `zod-to-json-schema` cote bible-mcp (compat Zod 3), strip `$schema/$ref/definitions`, force `properties: {}` sur les objets vides (OpenAI le refuse sinon)
+
+## UI / erom-design v2 (2026-04-18)
+
+- **Source de verite** : skill `~/.claude/skills/erom-design/` (tokens DTCG + patterns). Ne pas y deroger.
+- **Theme** : OKLCH uniquement, zero hex en dur. `--primary` = amber (`oklch(0.82 0.17 70)` dark). Gris chauds hue 28 sur surfaces dark. `<html class="dark">` force par defaut.
+- **Borders > shadows** : hierarchie visuelle via `border`, pas via `shadow-*`. Shadows reservees aux elements flottants (dialogs, popovers).
+- **Hover** : pattern `hover-elevate` + `active-elevate-2` sur boutons et liens interactifs (utilities custom dans `index.css`).
+- **Popovers** : `bg-popover/95 backdrop-blur-xl`. Sticky headers : `bg-sidebar/95 backdrop-blur-sm`.
+- **Badges semantiques** : `bg-{color}-500/10 text-{color}-400` — TOUJOURS ce pattern.
+- **Textes** : principal `text-sm`, nav `text-[13px]`, badges/metadata `text-[11px]` ou `text-[10px]`, section headers `text-[11px] font-semibold uppercase tracking-wide text-sidebar-foreground/40`.
+- **Icones** : `lucide-react` uniquement, `w-4 h-4` ou `size-4` par defaut.
+- **Fonts** : Figtree (sans) + JetBrains Mono (code/metadata), via `@fontsource-variable/*`.
+- **Primitive shadcn** : style "new-york", installees a la demande via `pnpm dlx shadcn@latest add xxx`.
+- **Reecriture UI 2026-04-18** : chat-area.tsx eclate en sous-composants nommes par responsabilite (`message-user`, `message-assistant`, `reasoning-collapsible`, `tool-calls-collapsible`, `tool-call-item`, `chat-stream`, `chat-empty-state`, `message-footer`). 14 composants obsoletes supprimes (chat-area, chat-layout, sidebar, session-list, message-bubble, approval-block, terminal-block, tool-call-display, user-menu, budget-banner, attachment-preview, bible-status-banner, workspace-panel + route /workspace).
+- **Layout** : `ChatShell` dans `components/layout/`, 3 panneaux (sidebar 300/52 + chat + panel droit 300/40). Panel droit sans bg/border (flotte sur bg chat). Kbd shortcuts : cmd/ctrl+B (sidebar), cmd/ctrl+\\ (panel droit). Etat collapsed persistent dans localStorage.
+- **Grouping sessions** : `groupSessions()` dans `lib/session-groups.ts` — favoris > today > 7d > older. Omit les groupes vides. Section headers sticky avec blur.
+- **Favoris** : migration Drizzle 0004 `chat_sessions.is_favorite INTEGER DEFAULT 0` + index. API `PATCH /api/sessions/:id { isFavorite }`. Mutation optimiste cote web (invalidate sur onSettled).
+- **Model / Raisonnement** : 2 selects dans `CardParametres`. Si session active → `PATCH session { model | reasoningEffort }`, sinon `PATCH user_settings { defaultModel | defaultReasoningEffort }`. Liste modeles ordonnee `nano / mini / normal / pro (disabled)` dans un array local (pas `MODELS` brut de shared).
+- **Input chat** : textarea auto-grow via `useEffect` (rows=1, `el.style.height = Math.min(el.scrollHeight, window.innerHeight/3)`). Pas de model selector dans l'input (deplace en panel droit).
+- **Empty state chat** : BookOpen icone (pas Sparkles), copy tutoyee FR ("Commence une nouvelle conversation", "Selectionne ou cree une conversation pour continuer ton recit").
+
+## Memory layer (M5, 2026-04-18)
+
+- **Module portable** : `services/memory/` depend uniquement de `@supabase/supabase-js` + `openai`. Zero couplage avec Buck. Reutilisable ailleurs.
+- **Dependency injection** : toutes les fonctions prennent leurs deps explicitement (`createRememberService({supabase, embed, userId, bufferCap})`). Tests 100% mockable.
+- **Factory pattern** : `createRememberService` / `createRecallService` / `createStateService` retournent des closures stateful (pas de classes). `__setClientForTest` permet de swap le client sans redemarrer.
+- **Feature flag isolation** : `bootstrapMemory` retourne un `MemoryServices` no-op si `MEMORY_ENABLED=false` ou envs incomplets. Aucun `if (memory.enabled)` dans le chat route, juste `memory.buildContext(...)` qui retourne `{preferences:{}, activeContext:{}, degraded:false}` en no-op.
+- **Fail-soft par defaut** : timeout 1.5s sur toutes les calls Supabase critiques. `buildMemoryContext` retourne `degraded=true` au lieu de throw. `remember.remember` buffer en RAM si fail (deferred). `recall.recall` retourne `[]` si fail. Jamais le chat ne crash pour une panne memory.
+- **Retry buffer FIFO** : `Map` avec cap 100, drop oldest si full. Drain periodique (30s) tente de persister tout le buffer ; stop on first failure pour eviter thundering herd.
+- **halfvec(3072) + HNSW cosine** : `vector` type par defaut a une limite 2000 dim pour HNSW → `halfvec` (demi-precision) permet 3072 dim avec tres peu de perte. `embedding <=> x` = cosine distance, `1 - (embedding <=> x)` = cosine similarity.
+- **RPC avec validation enum** : `match_memories` est en plpgsql (pas sql) pour pouvoir `RAISE EXCEPTION 'invalid filter_type' USING ERRCODE='22023'`. La couche DB enforce la regle metier independamment du code applicatif.
+- **Edge Functions Bearer auth** : `requireBearer(req, expectedKey)` helper partage. Les deux functions (`consolidate-memory`, `compact-state`) sont deployees avec `verify_jwt: false` + custom Bearer `EDGE_INVOKE_KEY`. Obligatoire pour eviter abus financier (LLM invoke public).
+- **Secrets dual location** : Vault Supabase (accessible via SQL `vault.decrypted_secrets`, utilise par pg_cron) ET Edge Function Secrets (`Deno.env.get()`). Pas le meme scope. Dupliquer les valeurs dans les deux endroits pour `OPENAI_API_KEY` et `EDGE_INVOKE_KEY`.
+- **Cost tracking dual** : embeddings Node-side → `usage_events` SQLite (synchrone, visible dans budget guard M2). Edge-side (consolidate/compact) → `buck_memory_usage` Supabase + rapatriement cron 6h via `syncMemoryUsage` avec cursor `user_settings.memory_usage_sync_cursor`.
+- **SSE memory_status** : le chat route emet `event: memory_status\ndata: {"degraded": true}\n\n` AVANT le premier token si `buildMemoryContext` retourne degraded. Parse cote web dans `lib/chat.ts`, update store Zustand `useMemoryStatus`.
+- **Usage des tools** : encourage dans `workspace/systems/RULES.md` (section "Memoire long terme"). Interdit d'affirmer avoir memorise sans appeler le tool. `remember` pour prefs stables / decisions / entites. `recall` pour questions contextuelles / coherence / introspection.
 
 ## Tests
 

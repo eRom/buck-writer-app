@@ -1,6 +1,6 @@
 # Fichiers cles — Buck Writer
 
-> Derniere mise a jour : 2026-04-18 (M4 complete)
+> Derniere mise a jour : 2026-04-18 (M5 Memory Supabase mergee)
 
 ## API (packages/api/src/)
 
@@ -40,6 +40,49 @@
 | `services/jwt.ts` | sign/verify JWT |
 | `defaults/systems/{SYSTEM,RULES}.md` | Templates bootstrap copies vers `$WORKSPACE_DIR/systems/` au premier run |
 
+## Memory (packages/api/src/services/memory/) — M5
+
+| Fichier | Role |
+|---------|------|
+| `index.ts` | Barrel exports du module |
+| `types.ts` | `MemoryType`, `RememberInput`, `RecallInput`, `RecallResult`, `MemoryContext`, `BuckStateRow` |
+| `supabaseClient.ts` | `getSupabase(env)` — singleton client service_role, `__resetSupabaseForTest()` |
+| `embeddings.ts` | `embedText(text, deps)` — OpenAI embeddings + insert `usage_events` (kind `memory_embedding`), pricing text-embedding-3-large |
+| `memoryOrchestrator.ts` | `buildMemoryContext(userId, {supabase, timeoutMs})` — Promise.allSettled parallel fetch static/context, `degraded=true` sans throw |
+| `remember.ts` | `createRememberService({supabase, embed, userId, bufferCap})` — persist + FIFO retry buffer RAM, `drain()` periodique |
+| `recall.ts` | `createRecallService({supabase, embed, userId, threshold})` — RPC `match_memories` + bump `last_accessed_at` async |
+| `state.ts` | `createStateService({supabase, userId, compact, tokenCounter})` — set two-tier, trigger `compact-state` Edge si `context` > budget, hard-truncate si compact fail |
+| `usageSync.ts` | `syncMemoryUsage({supabase, userId, sinceCursor, insertUsage, saveCursor})` — rapatriement `buck_memory_usage` → `usage_events` SQLite (mapping `consolidation`→`memory_consolidation`, `compaction`→`memory_compaction`) |
+| `tools.ts` | `recallTool(recall)` + `rememberTool(remember)` — wrappers `{ definition: ToolDefinition, handler: ToolHandler }` pour chat route (format OpenAI raw, pas Vercel AI SDK) |
+| `bootstrap.ts` | `bootstrapMemory({env, insertUsageEvent, readUsageCursor, writeUsageCursor, tokenCounter}) → MemoryServices` — compose tout, no-op si flag off ou env incomplet |
+| `*.test.ts` | 21 tests unit (7 fichiers, types.ts pas de test) |
+
+## Memory Edge Functions (packages/api/supabase/)
+
+| Fichier | Role |
+|---------|------|
+| `migrations/20260418_0001_memory_schema.sql` | Tables `buck_memories` + `buck_state` + `buck_memory_usage` + RPC `match_memories` (plpgsql, valide filter_type enum) |
+| `migrations/20260418_0002_pgcron_schedule.sql` | `cron.schedule('buck_nightly_consolidation', '0 3 * * *', ...)` avec Bearer depuis `vault.decrypted_secrets` |
+| `functions/_shared/auth.ts` | `requireBearer(req, expectedKey)` — valide `Authorization: Bearer`, 401 sinon |
+| `functions/_shared/openai.ts` | `chat()`, `embed()`, `chatCostUsd()`, `embedCostUsd()` — fetch direct OpenAI Deno-compatible |
+| `functions/consolidate-memory/prompts.ts` | `CONSOLIDATION_SYSTEM` + `buildConsolidationUser(episodes)` |
+| `functions/consolidate-memory/index.ts` | Fetch 7 derniers jours episodes → LLM extract facts (JSON schema) → dedup vectoriel @ 0.92 → insert/merge semantic → log usage |
+| `functions/compact-state/index.ts` | Accept `{user_id, key, current_value, token_budget}` → LLM compress a 60% budget → insert usage |
+
+## Memory Web (packages/web/src/)
+
+| Fichier | Role |
+|---------|------|
+| `components/memory-badge.tsx` | `<MemoryBadge />` — affiche "⚠ memoire indisponible" si `useMemoryStatus().degraded` |
+| `stores/memory-status.ts` | Store Zustand `{ degraded, lastSignalAt, setDegraded }` |
+| `tests/e2e/memory.spec.ts` | Playwright round-trip remember/recall, gated par `MEMORY_E2E=1` |
+
+## Scripts
+
+| Fichier | Role |
+|---------|------|
+| `packages/api/scripts/seed-memory-defaults.ts` | Upsert 4 keys static dans `buck_state` : lang/tone/timezone/user_profile |
+
 ## Bible MCP (packages/bible-mcp/src/)
 
 | Fichier | Role |
@@ -56,42 +99,55 @@
 | `tools/{characters,locations,events,interactions,world-rules,research,notes}.ts` | CRUD par domaine |
 | `tools/{search,export,import,duplicates,templates,reindex,backup,stats}.ts` | Tools transverses |
 
-## Web (packages/web/src/)
+## Web (packages/web/src/) — erom-design v2 (2026-04-18)
 
 | Fichier | Role |
 |---------|------|
-| `routes/index.tsx` | Page principale — ChatLayout + Sidebar + ChatArea |
-| `routes/login.tsx` | Page login magic link |
-| `routes/__root.tsx` | Root route — auth guard global |
-| `components/chat/chat-area.tsx` | Hook custom streaming SSE events structures, mount BibleStatusBanner |
-| `components/chat/chat-layout.tsx` | Shell layout sidebar + main |
-| `components/chat/sidebar.tsx` | Sidebar sessions (search, create, delete) |
-| `components/chat/session-list.tsx` | Liste groupee par date |
-| `components/chat/message-bubble.tsx` | Bulle user/assistant avec markdown |
+| `index.css` | Theme erom-design v2 complet : OKLCH, amber brand, dark-first, utilities hover-elevate, scrollbar 6px, font Figtree + JetBrains Mono |
+| `routes/index.tsx` | Route / — ChatShell + SidebarLeft + PanelRight + ChatStream ; `?session=xxx` validateSearch |
+| `routes/login.tsx` + `-login.view.tsx` | Login magic link re-skinnne card centree + dev login si DEV |
+| `routes/settings.tsx` | Mono-page scrollable (AccountSection + GeneralSection + BudgetSection) |
+| `routes/__root.tsx` | Root route (auth guard global) |
+| `components/layout/chat-shell.tsx` | Shell 3 panneaux, persiste collapsed state + kbd shortcuts cmd+b / cmd+\\ |
+| `components/layout/sidebar-left.tsx` | Container sidebar gauche — search state + logout |
+| `components/layout/sidebar-left-header.tsx` | Search input + toggle collapse |
+| `components/layout/sidebar-left-sessions.tsx` | Liste groupee (favoris/today/7j/older) + mutation toggleFavorite optimiste |
+| `components/layout/session-item.tsx` | Lien session + etoile toggle amber |
+| `components/layout/sidebar-left-footer.tsx` | User pill + dropdown settings/logout |
+| `components/layout/panel-right.tsx` | Panel droit flottant (pas de bg/border) — 4 cards + stack d'icones collapsed |
+| `components/panel-right/card-parametres.tsx` | Selecteurs Modele + Raisonnement + budget bar (mutation session ou user_settings) |
+| `components/panel-right/card-workspace.tsx` | File tree compact avec refresh |
+| `components/panel-right/card-referentiel.tsx` | Badge status Bible MCP (on/off via useBibleStatus) |
+| `components/panel-right/card-mcp.tsx` | Placeholder "Aucun serveur MCP configure" |
+| `components/chat/chat-stream.tsx` | Logique streaming SSE (successeur de chat-area.tsx, prefere les sous-composants) |
+| `components/chat/chat-input.tsx` | Textarea auto-grow (max 33vh) + chips attachments + paperclip + send ; pas de model selector |
+| `components/chat/chat-empty-state.tsx` | Empty state BookOpen + CTA FR tutoyee |
+| `components/chat/message-user.tsx` | Bubble sombre aligne droite + copy hover |
+| `components/chat/message-assistant.tsx` | Avatar Sparkles + slots reasoning/toolCalls/footer |
+| `components/chat/message-footer.tsx` | Metadata provider/model/ms/tokens/cost font-mono opacity-40 |
+| `components/chat/reasoning-collapsible.tsx` | "> Reflexion" toggle |
+| `components/chat/tool-calls-collapsible.tsx` | "> N outils utilises" auto-open sur pending approval |
+| `components/chat/tool-call-item.tsx` | Rendu 1 tool call (absorbe approval/terminal/tool-call-display selon state) |
 | `components/chat/markdown-renderer.tsx` | react-markdown + rehype-highlight + katex |
-| `components/chat/chat-input.tsx` | Textarea + attachments + @reference |
-| `components/chat/attachment-preview.tsx` | Preview pending attachments |
+| `components/chat/at-reference.tsx` | Dropdown autocomplete @file |
 | `components/chat/attachment-display.tsx` | Affichage attachments dans messages |
-| `components/chat/approval-block.tsx` | Bloc approval tool |
-| `components/chat/tool-call-display.tsx` | Indicateur appel outil |
-| `components/chat/at-reference.tsx` | Dropdown autocomplete @reference |
-| `components/bible-status-banner.tsx` | Banner warning persistant si bible injoignable |
-| `components/workspace/file-tree.tsx` | Arborescence navigable |
-| `components/workspace/workspace-panel.tsx` | Panel droit collapsible workspace |
+| `components/chat/model-selector.tsx` | Legacy (plus monte dans l'UI, a nettoyer si vraiment inutilise) |
+| `components/settings/account-section.tsx` | Section compte (email readonly) |
+| `components/settings/general-section.tsx` | Section general (defaultModel + defaultReasoningEffort + WebDavWizard) |
+| `components/settings/budget-section.tsx` | Section budget (usage bar + limite + resetDay + hardStop) |
 | `components/settings/webdav-wizard.tsx` | Token WebDAV + instructions OS |
-| `components/chat/model-selector.tsx` | Dropdown modeles OpenAI |
+| `components/workspace/file-tree.tsx` | Arborescence recursive (prop `entries`, onSelect, onInsertReference) |
+| `components/ui/switch.tsx` | Ajoute via shadcn, pour cards MCP/Referentiel |
+| `lib/use-panels-state.ts` | Hook collapsed state + localStorage + kbd shortcuts |
+| `lib/session-groups.ts` + test | groupSessions() : favoris/today/7j/older |
+| `lib/sessions.ts` | Client API sessions (Session.isFavorite + reasoningEffort, toggleFavorite helper) |
 | `lib/api.ts` | apiFetch() — CSRF auto, error handling |
 | `lib/csrf.ts` | readCsrfCookie() |
-| `lib/sessions.ts` | Client API sessions |
 | `lib/session.ts` | fetchMe() — auth state |
 | `lib/settings.ts` | Client API settings + usage |
 | `lib/workspace.ts` | Client API workspace |
 | `lib/attachments.ts` | Client API attachments (upload multipart) |
-| `lib/mcp.ts` | useBibleStatus — TanStack Query poll 30s sur /api/mcp/bible/status |
-| `routes/workspace.tsx` | Page /workspace — file browser complet |
-| `routes/settings*.tsx` | Pages settings (general, budget, account) |
-| `components/chat/user-menu.tsx` | Popover user en sidebar footer |
-| `components/chat/budget-banner.tsx` | Banner rouge hard stop |
+| `lib/mcp.ts` | useBibleStatus — poll 30s sur /api/mcp/bible/status |
 
 ## Shared (packages/shared/src/)
 
@@ -109,7 +165,7 @@
 
 | Fichier | Role |
 |---------|------|
-| `.env.example` | Template variables d'environnement |
+| `.env.example` | Template variables d'environnement (+ M5 : SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, BUCK_USER_ID, MEMORY_ENABLED, OPENAI_EMBEDDING_MODEL, EDGE_INVOKE_KEY) |
 | `.env.development` | Overrides dev local, chemins relatifs `../../` depuis packages/ |
 | `Dockerfile.app` | Multi-stage build Node 20 Alpine pour buck (api+web) |
 | `Dockerfile.bible-mcp` | Multi-stage Node 20 Alpine pour bible-mcp |
