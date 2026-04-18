@@ -133,7 +133,10 @@ export function accumulateToolCalls() {
 
 export class OpenAIError extends Error {
   constructor(public status: number, public data: unknown) {
-    super(`OpenAI API error ${status}`);
+    const detail = typeof data === 'object' && data !== null && 'error' in data
+      ? (data as { error?: { message?: string } }).error?.message ?? ''
+      : '';
+    super(detail ? `OpenAI API error ${status}: ${detail}` : `OpenAI API error ${status}`);
   }
 }
 
