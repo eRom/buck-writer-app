@@ -94,7 +94,7 @@ export function CardParametres({ sessionId }: Props) {
       </header>
       <div className="space-y-1.5">
         <label className="flex items-center justify-between rounded-md border border-border bg-background/40 px-2 py-1.5">
-          <span className="text-xs text-muted-foreground">Model</span>
+          <span className="text-xs text-muted-foreground">Modèle</span>
           <select
             value={model}
             onChange={(e) => modelMutation.mutate(e.target.value as ChatModel)}
@@ -109,7 +109,7 @@ export function CardParametres({ sessionId }: Props) {
           </select>
         </label>
         <label className="flex items-center justify-between rounded-md border border-border bg-background/40 px-2 py-1.5">
-          <span className="text-xs text-muted-foreground">Thinking</span>
+          <span className="text-xs text-muted-foreground">Raisonnement</span>
           <select
             value={effort}
             onChange={(e) => effortMutation.mutate(e.target.value as ReasoningEffort)}
