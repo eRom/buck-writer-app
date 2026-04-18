@@ -20,9 +20,10 @@ export async function callTool(
   const json = (await res.json()) as JsonRpcResponse;
   if (json.error) throw new Error(json.error.message);
   const result = json.result;
-  if (!result?.content?.length) return null;
-  if (result.isError) throw new Error(result.content[0].text);
-  return JSON.parse(result.content[0].text);
+  const first = result?.content?.[0];
+  if (!first) return null;
+  if (result?.isError) throw new Error(first.text);
+  return JSON.parse(first.text);
 }
 
 export async function listTools(): Promise<McpTool[]> {
