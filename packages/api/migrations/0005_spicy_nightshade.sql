@@ -1,0 +1,1 @@
+ALTER TABLE `user_settings` ADD `memory_usage_sync_cursor` integer;
