@@ -7,6 +7,7 @@ import { ChatInput } from './chat-input';
 import type { PendingAttachment } from './attachment-preview';
 import { ApprovalBlock } from './approval-block';
 import { BudgetBanner } from './budget-banner';
+import { BibleStatusBanner } from '@/components/bible-status-banner';
 import { fetchMessages } from '@/lib/sessions';
 import { fetchUsageCurrent } from '@/lib/settings';
 import { fetchWorkspaceTree } from '@/lib/workspace';
@@ -427,6 +428,7 @@ export function ChatArea({ sessionId, onSessionCreated }: ChatAreaProps) {
 
   return (
     <>
+      <BibleStatusBanner />
       {budgetExceeded && (
         <BudgetBanner
           totalUsd={budgetExceeded.totalUsd}

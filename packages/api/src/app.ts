@@ -17,6 +17,7 @@ import {
 import type { McpClient } from './services/mcp-client.js';
 import { createSettingsRoutes } from './routes/settings.js';
 import { createUsageRoutes } from './routes/usage.js';
+import { createMcpRoutes } from './routes/mcp.js';
 import { createWorkspaceRoutes } from './routes/workspace.js';
 import { createAttachmentRoutes } from './routes/attachments.js';
 import { createWebDAVRoutes } from './services/webdav.js';
@@ -138,6 +139,10 @@ export function buildApp(deps: AppDeps) {
   // Usage routes (protected)
   app.use('/api/usage/*', authGuard({ db: deps.db, jwt: deps.jwt, nowMs: deps.nowMs }));
   app.route('/api/usage', createUsageRoutes({ db: deps.db, nowMs: deps.nowMs }));
+
+  // MCP routes (protected)
+  app.use('/api/mcp/*', authGuard({ db: deps.db, jwt: deps.jwt, nowMs: deps.nowMs }));
+  app.route('/api/mcp', createMcpRoutes({ mcpClient: deps.mcpClient }));
 
   // Workspace routes (protected, only if workspaceDir provided)
   if (deps.workspaceDir) {
