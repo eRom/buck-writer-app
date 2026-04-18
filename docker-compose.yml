@@ -1,4 +1,19 @@
 services:
+  bible-mcp:
+    build:
+      context: .
+      dockerfile: Dockerfile.bible-mcp
+    networks:
+      - internal
+    environment:
+      OPENAI_API_KEY: ${OPENAI_API_KEY}
+      BIBLE_DB_PATH: /app/data/bible.db
+      BIBLE_HTTP_PORT: "7801"
+      OPENAI_EMBEDDING_MODEL: ${OPENAI_EMBEDDING_MODEL:-text-embedding-3-large}
+    volumes:
+      - ./data/bible:/app/data
+    restart: unless-stopped
+
   buck-app:
     image: buck-writer:local
     build:
@@ -11,11 +26,15 @@ services:
       - WEB_DIST_ROOT=/app/web-dist
       - WORKSPACE_DIR=/app/workspace
       - DATABASE_URL=file:/app/data/buck.db
+      - MCP_BIBLE_URL=http://bible-mcp:7801
     volumes:
       - ./data/db:/app/data
       - ./data/workspace:/app/workspace
     networks:
       - caddy-public
+      - internal
+    depends_on:
+      - bible-mcp
     healthcheck:
       test:
         - CMD-SHELL
@@ -25,5 +44,7 @@ services:
       retries: 3
 
 networks:
+  internal:
+    driver: bridge
   caddy-public:
     external: true

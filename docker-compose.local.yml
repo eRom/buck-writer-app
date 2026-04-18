@@ -1,0 +1,14 @@
+# docker-compose.local.yml — dev hybride : bible-mcp en Docker, buck en pnpm dev
+services:
+  bible-mcp:
+    build:
+      context: .
+      dockerfile: Dockerfile.bible-mcp
+    ports:
+      - "7801:7801"
+    environment:
+      OPENAI_API_KEY: ${OPENAI_API_KEY}
+      BIBLE_DB_PATH: /app/data/bible.db
+      OPENAI_EMBEDDING_MODEL: ${OPENAI_EMBEDDING_MODEL:-text-embedding-3-large}
+    volumes:
+      - /Users/recarnot/dev/barda-mcp-ecrivain-bible/data:/app/data:ro

@@ -1,0 +1,24 @@
+# Dockerfile.bible-mcp
+FROM node:20-alpine AS builder
+RUN apk add --no-cache python3 make g++ sqlite
+WORKDIR /app
+
+COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
+COPY packages/bible-mcp/package.json packages/bible-mcp/
+RUN corepack enable && corepack prepare pnpm@9.12.0 --activate && \
+    pnpm install --frozen-lockfile --filter @buck/bible-mcp...
+
+COPY packages/bible-mcp packages/bible-mcp
+
+RUN pnpm --filter @buck/bible-mcp build
+
+FROM node:20-alpine AS runtime
+RUN apk add --no-cache sqlite
+WORKDIR /app
+COPY --from=builder /app/packages/bible-mcp/dist ./dist
+COPY --from=builder /app/packages/bible-mcp/node_modules ./node_modules
+COPY --from=builder /app/packages/bible-mcp/package.json ./
+RUN mkdir -p /app/data
+ENV NODE_ENV=production
+EXPOSE 7801
+CMD ["node", "dist/server.js"]
