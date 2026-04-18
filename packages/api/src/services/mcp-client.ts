@@ -63,11 +63,11 @@ export function createMcpClient(opts: McpClientOpts): McpClient {
   }
 
   async function listTools(): Promise<McpTool[]> {
+    startPolling();
     try {
       const result = await rpc<{ tools: McpTool[] }>('tools/list');
       tools = result.tools;
       setHealth(true);
-      startPolling();
       return tools;
     } catch (err) {
       setHealth(false);
