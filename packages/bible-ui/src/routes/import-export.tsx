@@ -60,7 +60,7 @@ function ImportExport() {
               const parsed = JSON.parse(importData);
               importMut.mutate({ data: parsed });
             } catch (err) {
-              alert('JSON invalide: ' + String(err));
+              window.alert('JSON invalide: ' + String(err));
             }
           }}
           disabled={!importData || importMut.isPending}

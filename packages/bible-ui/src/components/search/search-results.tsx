@@ -39,9 +39,8 @@ export function SearchResults({ results }: { results: SearchResult[] }) {
         return (
           <li key={`${r.entity_type}-${r.entity_id}`}>
             {path ? (
-              // @ts-expect-error dynamic route navigation
               <Link
-                to={`${path}/$id`}
+                to={`${path}/$id` as '/characters/$id'}
                 params={{ id: r.entity_id }}
                 className="hover-elevate flex items-center justify-between rounded-md border border-border bg-card px-3 py-2 text-sm"
               >

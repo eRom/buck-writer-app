@@ -12,16 +12,22 @@ interface InteractionEntity {
   characters?: string;
 }
 
-interface ListResponse<K extends string, T> {
+interface CharactersResponse {
   total?: number;
+  characters?: GraphEntity[];
 }
-
-type CharactersResponse = ListResponse<'characters', GraphEntity> & { characters?: GraphEntity[] };
-type LocationsResponse = ListResponse<'locations', GraphEntity> & { locations?: GraphEntity[] };
-type EventsResponse = ListResponse<'events', GraphEntity> & { events?: GraphEntity[] };
-type InteractionsResponse = ListResponse<'interactions', InteractionEntity> & {
+interface LocationsResponse {
+  total?: number;
+  locations?: GraphEntity[];
+}
+interface EventsResponse {
+  total?: number;
+  events?: GraphEntity[];
+}
+interface InteractionsResponse {
+  total?: number;
   interactions?: InteractionEntity[];
-};
+}
 
 export interface GraphData {
   nodes: Array<{ id: string; label: string; type: string; color: string }>;
