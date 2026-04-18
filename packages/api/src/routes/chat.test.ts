@@ -1,4 +1,4 @@
-import { describe, it, expect, afterEach, vi } from 'vitest';
+import { describe, it, expect, afterEach, beforeEach, vi } from 'vitest';
 import fs from 'node:fs';
 import path from 'node:path';
 import os from 'node:os';
@@ -13,24 +13,46 @@ import { newId } from '@buck/shared';
 import { sha256Hex } from '../utils/crypto.js';
 import { users, sessionsAuth, chatSessions } from '../db/schema.js';
 
-vi.mock('ai', () => ({
-  streamText: vi.fn().mockImplementation(({ onFinish }: { onFinish?: (result: { text: string; usage: { inputTokens: number; outputTokens: number }; response: { modelId: string } }) => void }) => {
-    const result = {
-      text: 'Hello! I am Buck.',
-      usage: { inputTokens: 10, outputTokens: 5 },
-      response: { modelId: 'gpt-5.4-mini' },
-    };
-    if (onFinish) setTimeout(() => onFinish(result), 10);
-    return {
-      toTextStreamResponse: () =>
-        new Response('data: done\n\n', {
-          headers: { 'content-type': 'text/event-stream' },
-        }),
-    };
-  }),
-  generateText: vi.fn().mockResolvedValue({ text: 'Test title' }),
-  tool: vi.fn().mockImplementation((config: unknown) => config),
-}));
+// Mock OpenAI fetch — returns a minimal streaming SSE payload with a final
+// chunk carrying usage + finish_reason. Non-streaming requests (title
+// generation) return a plain JSON body.
+const STREAM_SSE =
+  'data: {"choices":[{"delta":{"content":"Hello! I am Buck."},"finish_reason":null}]}\n\n' +
+  'data: {"choices":[{"delta":{},"finish_reason":"stop"}],"usage":{"prompt_tokens":10,"completion_tokens":5}}\n\n' +
+  'data: [DONE]\n\n';
+
+beforeEach(() => {
+  vi.spyOn(globalThis, 'fetch').mockImplementation(async (input: RequestInfo | URL, init?: RequestInit) => {
+    const url = typeof input === 'string' ? input : input instanceof URL ? input.toString() : input.url;
+    if (!url.includes('api.openai.com')) {
+      throw new Error(`Unexpected fetch: ${url}`);
+    }
+    const body = typeof init?.body === 'string' ? init.body : '';
+    let isStream = false;
+    try {
+      const parsed = JSON.parse(body);
+      isStream = parsed.stream === true;
+    } catch {
+      // ignore
+    }
+    if (isStream) {
+      return new Response(STREAM_SSE, {
+        headers: { 'content-type': 'text/event-stream' },
+      });
+    }
+    return new Response(
+      JSON.stringify({
+        choices: [{ message: { content: 'Test title' } }],
+        usage: { prompt_tokens: 5, completion_tokens: 3 },
+      }),
+      { headers: { 'content-type': 'application/json' } },
+    );
+  });
+});
+
+afterEach(() => {
+  vi.restoreAllMocks();
+});
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const migrationsDir = path.resolve(here, '..', '..', 'migrations');
