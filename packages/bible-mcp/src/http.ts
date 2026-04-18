@@ -3,10 +3,15 @@ import fs from "node:fs";
 import { exec } from "node:child_process";
 import express from "express";
 import { z } from "zod";
+import { zodToJsonSchema } from "zod-to-json-schema";
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import type { RegisteredTool } from "@modelcontextprotocol/sdk/server/mcp.js";
 
-const EMPTY_OBJECT_JSON_SCHEMA = { type: "object" as const };
+const EMPTY_OBJECT_JSON_SCHEMA = {
+  type: "object" as const,
+  properties: {} as Record<string, unknown>,
+  additionalProperties: false as const,
+};
 
 interface JsonRpcRequest {
   jsonrpc: "2.0";
@@ -28,14 +33,18 @@ function getRegisteredTools(mcpServer: McpServer): Record<string, RegisteredTool
 }
 
 function schemaToJsonSchema(inputSchema: unknown): Record<string, unknown> {
-  if (!inputSchema) return EMPTY_OBJECT_JSON_SCHEMA;
-
-  // inputSchema is already a ZodObject (wrapped by the SDK's objectFromShape)
+  if (!inputSchema) return { ...EMPTY_OBJECT_JSON_SCHEMA };
   try {
-    // @ts-expect-error z.toJSONSchema — migrated in Task 3 (requires zod >=3.24)
-    return z.toJSONSchema(inputSchema as z.ZodType) as Record<string, unknown>;
+    const result = zodToJsonSchema(inputSchema as z.ZodType, { target: "jsonSchema7" }) as Record<string, unknown>;
+    // Strip $schema and $ref/definitions — OpenAI function calling rejects them
+    const { $schema: _s, $ref: _r, definitions: _d, ...clean } = result as Record<string, unknown>;
+    // Ensure object schemas always have a properties field (OpenAI requirement)
+    if (clean.type === "object" && !clean.properties) {
+      clean.properties = {};
+    }
+    return clean;
   } catch {
-    return EMPTY_OBJECT_JSON_SCHEMA;
+    return { ...EMPTY_OBJECT_JSON_SCHEMA };
   }
 }
 
