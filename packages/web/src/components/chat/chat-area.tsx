@@ -43,6 +43,31 @@ function localId() {
   return `local-${++msgCounter}-${Date.now()}`;
 }
 
+interface SSEFrame {
+  event: string;
+  data: string;
+}
+
+/**
+ * Parse a buffer of SSE bytes into complete (event, data) frames.
+ * Returns the parsed frames plus the remaining (incomplete) buffer.
+ */
+function parseSSEBuffer(buffer: string): { frames: SSEFrame[]; rest: string } {
+  const frames: SSEFrame[] = [];
+  const parts = buffer.split('\n\n');
+  const rest = parts.pop() ?? '';
+  for (const block of parts) {
+    let event = 'message';
+    let data = '';
+    for (const line of block.split('\n')) {
+      if (line.startsWith('event: ')) event = line.slice(7);
+      else if (line.startsWith('data: ')) data += (data ? '\n' : '') + line.slice(6);
+    }
+    if (data) frames.push({ event, data });
+  }
+  return { frames, rest };
+}
+
 export function ChatArea({ sessionId, onSessionCreated }: ChatAreaProps) {
   const [model, setModel] = useState('gpt-5.4-mini');
   const [input, setInput] = useState('');
@@ -228,39 +253,55 @@ export function ChatArea({ sessionId, onSessionCreated }: ChatAreaProps) {
         throw new Error(`API error ${res.status}: ${errBody.error.message ?? ''}`);
       }
 
-      // Read the text stream
+      // Read the SSE stream (structured events)
       const reader = res.body?.getReader();
       if (!reader) throw new Error('No response body');
 
       const decoder = new TextDecoder();
+      let buffer = '';
       let accumulated = '';
 
       while (true) {
         const { done, value } = await reader.read();
         if (done) break;
-        accumulated += decoder.decode(value, { stream: true });
-        const current = accumulated;
-        setMessages((prev) =>
-          prev.map((m) => (m.id === assistantId ? { ...m, content: current } : m)),
-        );
-      }
+        buffer += decoder.decode(value, { stream: true });
+        const { frames, rest } = parseSSEBuffer(buffer);
+        buffer = rest;
 
-      // Check if the response contains a tool requiring approval
-      // When a tool returns requires_approval, the model typically mentions it
-      try {
-        const approvalMatch = accumulated.match(/"status"\s*:\s*"requires_approval".*?"toolName"\s*:\s*"([^"]+)".*?"args"\s*:\s*(\{[^}]+\})/s);
-        if (approvalMatch) {
-          const toolName = approvalMatch[1]!;
-          const args = JSON.parse(approvalMatch[2]!) as Record<string, unknown>;
-          setPendingApproval({
-            toolCallId: `call_${Date.now()}`,
-            toolName,
-            args,
-            messageHistory: allMessages,
-          });
+        for (const { event, data } of frames) {
+          let parsed: Record<string, unknown>;
+          try {
+            parsed = JSON.parse(data);
+          } catch {
+            continue;
+          }
+          if (event === 'content' && typeof parsed.text === 'string') {
+            accumulated += parsed.text;
+            const current = accumulated;
+            setMessages((prev) =>
+              prev.map((m) => (m.id === assistantId ? { ...m, content: current } : m)),
+            );
+          } else if (event === 'tool_approval') {
+            setPendingApproval({
+              toolCallId: String(parsed.toolCallId ?? `call_${Date.now()}`),
+              toolName: String(parsed.toolName ?? ''),
+              args: (parsed.args as Record<string, unknown>) ?? {},
+              messageHistory: allMessages,
+            });
+          } else if (event === 'error') {
+            const err = parsed as { code?: string; message?: string; link?: string };
+            if (err.code === 'provider_rate_limit') {
+              toast.error('Limite OpenAI atteinte', {
+                action: err.link
+                  ? { label: 'Voir les limites', onClick: () => window.open(err.link!, '_blank') }
+                  : undefined,
+              });
+            } else if (err.message) {
+              toast.error(err.message);
+            }
+          }
+          // 'tool_result' and 'done' — no UI side-effect for now
         }
-      } catch {
-        // Parsing error — not an approval response
       }
 
       // Check usage after message completes
@@ -340,16 +381,40 @@ export function ChatArea({ sessionId, onSessionCreated }: ChatAreaProps) {
       if (!reader) throw new Error('No response body');
 
       const decoder = new TextDecoder();
+      let buffer = '';
       let accumulated = '';
 
       while (true) {
         const { done, value } = await reader.read();
         if (done) break;
-        accumulated += decoder.decode(value, { stream: true });
-        const current = accumulated;
-        setMessages((prev) =>
-          prev.map((m) => (m.id === assistantId ? { ...m, content: current } : m)),
-        );
+        buffer += decoder.decode(value, { stream: true });
+        const { frames, rest } = parseSSEBuffer(buffer);
+        buffer = rest;
+
+        for (const { event, data } of frames) {
+          let parsed: Record<string, unknown>;
+          try {
+            parsed = JSON.parse(data);
+          } catch {
+            continue;
+          }
+          if (event === 'content' && typeof parsed.text === 'string') {
+            accumulated += parsed.text;
+            const current = accumulated;
+            setMessages((prev) =>
+              prev.map((m) => (m.id === assistantId ? { ...m, content: current } : m)),
+            );
+          } else if (event === 'tool_approval') {
+            setPendingApproval({
+              toolCallId: String(parsed.toolCallId ?? `call_${Date.now()}`),
+              toolName: String(parsed.toolName ?? ''),
+              args: (parsed.args as Record<string, unknown>) ?? {},
+              messageHistory: messageHistory,
+            });
+          } else if (event === 'error' && parsed.message) {
+            toast.error(String(parsed.message));
+          }
+        }
       }
     } catch (err) {
       if ((err as Error).name === 'AbortError') return;
