@@ -12,6 +12,7 @@ export type CreateSessionInput = z.infer<typeof CreateSessionInput>;
 export const UpdateSessionInput = z.object({
   title: z.string().max(200).optional(),
   archived: z.boolean().optional(),
+  isFavorite: z.boolean().optional(),
   model: z.enum(MODELS).optional(),
 });
 export type UpdateSessionInput = z.infer<typeof UpdateSessionInput>;

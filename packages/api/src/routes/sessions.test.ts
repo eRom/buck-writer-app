@@ -236,6 +236,34 @@ describe('sessions routes', () => {
       });
       expect(res.status).toBe(404);
     });
+
+    it('toggles isFavorite on/off', async () => {
+      ctx = await makeCtx();
+      const createRes = await ctx.app.request('/api/sessions', {
+        method: 'POST',
+        headers: authMutHeaders(ctx.sessionJwt),
+        body: JSON.stringify({ title: 'Favorable' }),
+      });
+      const created = (await createRes.json()) as { id: string };
+
+      const patchOn = await ctx.app.request(`/api/sessions/${created.id}`, {
+        method: 'PATCH',
+        headers: authMutHeaders(ctx.sessionJwt),
+        body: JSON.stringify({ isFavorite: true }),
+      });
+      expect(patchOn.status).toBe(200);
+      const bodyOn = (await patchOn.json()) as { isFavorite: number };
+      expect(bodyOn.isFavorite).toBe(1);
+
+      const patchOff = await ctx.app.request(`/api/sessions/${created.id}`, {
+        method: 'PATCH',
+        headers: authMutHeaders(ctx.sessionJwt),
+        body: JSON.stringify({ isFavorite: false }),
+      });
+      expect(patchOff.status).toBe(200);
+      const bodyOff = (await patchOff.json()) as { isFavorite: number };
+      expect(bodyOff.isFavorite).toBe(0);
+    });
   });
 
   describe('DELETE /api/sessions/:id', () => {
