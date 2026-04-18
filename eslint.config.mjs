@@ -14,6 +14,7 @@ export default [
       'packages/*/migrations/**',
       'packages/*/playwright-report/**',
       'packages/*/test-results/**',
+      'packages/*/public/**',
     ],
   },
   js.configs.recommended,

@@ -6,15 +6,18 @@ Deploiement Docker mono-container derriere Caddy (caddy-public network).
 
 ## Monorepo
 
-pnpm workspace (`pnpm@9.12.0`, Node >=20), 3 packages :
+pnpm workspace (`pnpm@9.12.0`, Node >=20), 4 packages :
 
 | Package | Role | Entrypoint |
 |---------|------|------------|
 | `@buck/shared` | Models, schemas Zod, pricing — zero dep runtime (sauf zod, uuid) | `src/index.ts` |
 | `@buck/api` | API Hono + SQLite (better-sqlite3 via Drizzle ORM) | `src/index.ts` (port 3000) |
 | `@buck/web` | SPA React 19 + Vite + TanStack Router/Query + Tailwind v4 + shadcn | `src/main.tsx` (dev port 5173) |
+| `@buck/bible-mcp` | Serveur MCP Bible (HTTP-only, embeddings OpenAI text-embedding-3-large) | `src/server.ts` (port 7801) |
 
 Dependance interne : `@buck/web` et `@buck/api` importent `@buck/shared` via `workspace:*`.
+
+Les prompts systèmes (SYSTEM.md + RULES.md) vivent dans `$WORKSPACE_DIR/systems/` (live-editable, hot-reload chokidar). Bootstrap depuis `packages/api/src/defaults/systems/` au premier démarrage.
 
 ## Stack technique
 
@@ -41,6 +44,7 @@ pnpm db:migrate       # Applique les migrations
 pnpm db:seed          # Seed initial
 pnpm docker:build     # Build image locale
 pnpm docker:up        # docker compose up -d --build
+docker compose -f docker-compose.local.yml up -d bible-mcp   # dev hybride (bible en Docker, buck pnpm dev)
 ```
 
 ## Dev mode
@@ -75,13 +79,14 @@ Voir `.env.example`. Variables critiques :
 - `RESEND_API_KEY` + `RESEND_FROM` (optionnels — fallback e2e file)
 - `DATABASE_URL`, `WORKSPACE_DIR`, `WEB_DIST_ROOT`
 - `OPENAI_API_KEY` (M1+), `MCP_BIBLE_URL` (M4+)
+- `BIBLE_DB_PATH`, `BIBLE_HTTP_PORT`, `OPENAI_EMBEDDING_MODEL` (M4+, bible-mcp)
 - `E2E=1` active le mode e2e (token file au lieu d'email)
 
 ## Milestones
 
 - **M0** — Foundation : monorepo, auth magic-link, Docker, CI
-- **M1** — Chat OpenAI streaming + sessions CRUD (en cours)
-- **M4** — MCP Bible integration
+- **M1** — Chat OpenAI streaming + sessions CRUD
+- **M4** — MCP Bible integration + prompts live-editable (terminé 2026-04-18)
 
 Specs et plans dans `docs/superpowers/specs/` et `docs/superpowers/plans/`.
 
@@ -135,3 +140,61 @@ Le dossier `.cave/` contient la cartographie persistante du projet :
   - Preset b1Gdz9c4A (
   - https://ui.shadcn.com/create?preset=b1Gdz9c4A&template=vite-monorepo
   - https://ui.shadcn.com/create?preset=b1Gdz9c4A&template=vite-monorepo&item=preview
+
+## Guidelines Rules
+
+### 1. Think Before Coding
+
+**Don't assume. Don't hide confusion. Surface tradeoffs.**
+
+Before implementing:
+- State your assumptions explicitly. If uncertain, ask.
+- If multiple interpretations exist, present them - don't pick silently.
+- If a simpler approach exists, say so. Push back when warranted.
+- If something is unclear, stop. Name what's confusing. Ask.
+
+### 2. Simplicity First
+
+**Minimum code that solves the problem. Nothing speculative.**
+
+- No features beyond what was asked.
+- No abstractions for single-use code.
+- No "flexibility" or "configurability" that wasn't requested.
+- No error handling for impossible scenarios.
+- If you write 200 lines and it could be 50, rewrite it.
+
+Ask yourself: "Would a senior engineer say this is overcomplicated?" If yes, simplify.
+
+### 3. Surgical Changes
+
+**Touch only what you must. Clean up only your own mess.**
+
+When editing existing code:
+- Don't "improve" adjacent code, comments, or formatting.
+- Don't refactor things that aren't broken.
+- Match existing style, even if you'd do it differently.
+- If you notice unrelated dead code, mention it - don't delete it.
+
+When your changes create orphans:
+- Remove imports/variables/functions that YOUR changes made unused.
+- Don't remove pre-existing dead code unless asked.
+
+The test: Every changed line should trace directly to the user's request.
+
+### 4. Goal-Driven Execution
+
+**Define success criteria. Loop until verified.**
+
+Transform tasks into verifiable goals:
+- "Add validation" → "Write tests for invalid inputs, then make them pass"
+- "Fix the bug" → "Write a test that reproduces it, then make it pass"
+- "Refactor X" → "Ensure tests pass before and after"
+
+For multi-step tasks, state a brief plan:
+```
+1. [Step] → verify: [check]
+2. [Step] → verify: [check]
+3. [Step] → verify: [check]
+```
+
+Strong success criteria let you loop independently. Weak criteria ("make it work") require constant clarification.
