@@ -21,7 +21,7 @@ import { createMcpRoutes } from './routes/mcp.js';
 import { createWorkspaceRoutes } from './routes/workspace.js';
 import { createAttachmentRoutes } from './routes/attachments.js';
 import { createWebDAVRoutes } from './services/webdav.js';
-import type { Prompts } from './services/prompts.js';
+import type { PromptsRef } from './services/prompts.js';
 import { authGuard } from './middleware/auth.js';
 import { securityHeaders } from './middleware/security-headers.js';
 import { csrfMiddleware } from './middleware/csrf.js';
@@ -31,7 +31,7 @@ import { users, sessionsAuth } from './db/schema.js';
 import { sha256Hex } from './utils/crypto.js';
 
 export interface AppDeps extends AuthRoutesDeps, SessionRoutesDeps {
-  prompts?: Prompts;
+  prompts?: PromptsRef;
   openaiApiKey?: string;
   /**
    * Absolute path to the user workspace directory. When provided, workspace

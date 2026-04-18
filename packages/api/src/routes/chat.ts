@@ -4,7 +4,7 @@ import { sql } from 'drizzle-orm';
 import * as pathModule from 'node:path';
 import { newId, costOf, getBillingPeriod } from '@buck/shared';
 import type { DbHandles } from '../db/client.js';
-import type { Prompts } from '../services/prompts.js';
+import type { PromptsRef } from '../services/prompts.js';
 import type { Skill } from '../services/skills.js';
 import { chatSessions, messages, usageEvents, userSettings, alertTriggers, attachments } from '../db/schema.js';
 import { isImage, isExtractable, extractText } from '../services/extractor.js';
@@ -25,7 +25,7 @@ const TOOLS_REQUIRING_APPROVAL = ['create_file', 'delete_file', 'shell_execute']
 
 export interface ChatRouteDeps {
   db: DbHandles;
-  prompts: Prompts;
+  prompts: PromptsRef;
   openaiApiKey: string;
   workspaceDir?: string;
   skills?: Map<string, Skill>;
@@ -151,9 +151,9 @@ export function createChatRoute(
 
     // Build system messages
     const systemMessages: ChatMessage[] = [];
-    systemMessages.push({ role: 'system', content: deps.prompts.system });
-    if (deps.prompts.rules.length > 0) {
-      systemMessages.push({ role: 'system', content: deps.prompts.rules });
+    systemMessages.push({ role: 'system', content: deps.prompts.current.system });
+    if (deps.prompts.current.rules.length > 0) {
+      systemMessages.push({ role: 'system', content: deps.prompts.current.rules });
     }
 
     if (deps.skills && deps.skills.size > 0) {

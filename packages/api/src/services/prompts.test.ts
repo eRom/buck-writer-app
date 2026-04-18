@@ -1,36 +1,60 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import fs from 'node:fs';
-import { loadPrompts } from './prompts.js';
+import path from 'node:path';
+import os from 'node:os';
+import { loadPrompts, bootstrapPrompts } from './prompts.js';
+
+let dir: string;
+let defaultsDir: string;
+
+beforeEach(() => {
+  dir = fs.mkdtempSync(path.join(os.tmpdir(), 'buck-systems-'));
+  defaultsDir = fs.mkdtempSync(path.join(os.tmpdir(), 'buck-defaults-'));
+  fs.writeFileSync(path.join(defaultsDir, 'SYSTEM.md'), 'DEFAULT_SYSTEM');
+  fs.writeFileSync(path.join(defaultsDir, 'RULES.md'), 'DEFAULT_RULES');
+});
+afterEach(() => {
+  fs.rmSync(dir, { recursive: true, force: true });
+  fs.rmSync(defaultsDir, { recursive: true, force: true });
+});
 
 describe('loadPrompts', () => {
-  const tmpDir = '/tmp/buck-prompts-test-' + Date.now();
-
-  beforeEach(() => {
-    fs.mkdirSync(tmpDir, { recursive: true });
-    fs.writeFileSync(`${tmpDir}/SYSTEM.md`, 'You are a test bot.');
-    fs.writeFileSync(`${tmpDir}/RULES.md`, '- Be nice.');
-    fs.writeFileSync(`${tmpDir}/USER.md`, '');
+  it('reads SYSTEM.md and RULES.md', () => {
+    fs.writeFileSync(path.join(dir, 'SYSTEM.md'), 'You are Buck.');
+    fs.writeFileSync(path.join(dir, 'RULES.md'), 'Be kind.');
+    const p = loadPrompts(dir);
+    expect(p.system).toBe('You are Buck.');
+    expect(p.rules).toBe('Be kind.');
   });
 
-  afterEach(() => {
-    fs.rmSync(tmpDir, { recursive: true, force: true });
+  it('allows empty rules', () => {
+    fs.writeFileSync(path.join(dir, 'SYSTEM.md'), 'S');
+    const p = loadPrompts(dir);
+    expect(p.rules).toBe('');
   });
 
-  it('loads all three prompt files', () => {
-    const prompts = loadPrompts(tmpDir);
-    expect(prompts.system).toBe('You are a test bot.');
-    expect(prompts.rules).toBe('- Be nice.');
-    expect(prompts.user).toBe('');
+  it('throws if SYSTEM.md missing', () => {
+    expect(() => loadPrompts(dir)).toThrow(/SYSTEM\.md/);
+  });
+});
+
+describe('bootstrapPrompts', () => {
+  it('copies defaults if systems dir missing', () => {
+    fs.rmSync(dir, { recursive: true });
+    bootstrapPrompts(dir, defaultsDir);
+    expect(fs.existsSync(path.join(dir, 'SYSTEM.md'))).toBe(true);
+    expect(fs.readFileSync(path.join(dir, 'SYSTEM.md'), 'utf8')).toBe('DEFAULT_SYSTEM');
   });
 
-  it('throws if SYSTEM.md is missing', () => {
-    fs.unlinkSync(`${tmpDir}/SYSTEM.md`);
-    expect(() => loadPrompts(tmpDir)).toThrow(/SYSTEM\.md/);
+  it('copies defaults if SYSTEM.md absent but other files present', () => {
+    fs.writeFileSync(path.join(dir, 'OTHER.md'), 'x');
+    bootstrapPrompts(dir, defaultsDir);
+    expect(fs.existsSync(path.join(dir, 'SYSTEM.md'))).toBe(true);
   });
 
-  it('returns empty string for missing optional USER.md', () => {
-    fs.unlinkSync(`${tmpDir}/USER.md`);
-    const prompts = loadPrompts(tmpDir);
-    expect(prompts.user).toBe('');
+  it('does not overwrite existing SYSTEM.md', () => {
+    fs.writeFileSync(path.join(dir, 'SYSTEM.md'), 'CUSTOM');
+    bootstrapPrompts(dir, defaultsDir);
+    expect(fs.readFileSync(path.join(dir, 'SYSTEM.md'), 'utf8')).toBe('CUSTOM');
   });
 });

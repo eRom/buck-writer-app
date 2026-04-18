@@ -75,7 +75,6 @@ function tmpPromptsDir() {
   fs.mkdirSync(dir, { recursive: true });
   fs.writeFileSync(path.join(dir, 'SYSTEM.md'), 'You are Buck, a helpful assistant.');
   fs.writeFileSync(path.join(dir, 'RULES.md'), 'Be concise.');
-  fs.writeFileSync(path.join(dir, 'USER.md'), '');
   return dir;
 }
 
@@ -137,7 +136,7 @@ async function makeCtx(tsOverride?: number): Promise<TestCtx> {
     allowedEmails: ['alice@example.com'],
     publicBaseUrl: 'https://buck.example.com',
     nowMs: () => ts,
-    prompts,
+    prompts: { current: prompts },
     openaiApiKey: 'sk-test-fake-key',
   };
 

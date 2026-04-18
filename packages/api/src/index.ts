@@ -14,7 +14,7 @@ import {
   createEmailService,
   createE2EEmailService,
 } from './services/email.js';
-import { loadPrompts } from './services/prompts.js';
+import { loadPrompts, bootstrapPrompts, createPromptsWatcher, type PromptsRef } from './services/prompts.js';
 import { loadSkills, createSkillsWatcher } from './services/skills.js';
 import { createMcpClient } from './services/mcp-client.js';
 
@@ -51,14 +51,21 @@ try {
   console.warn('[api] migration skipped:', (err as Error).message);
 }
 
-const promptsDir = path.resolve(
-  path.dirname(fileURLToPath(import.meta.url)),
-  '..', '..', '..', 'prompts',
-);
-const prompts = (() => {
-  try { return loadPrompts(promptsDir); }
-  catch { console.warn('[api] prompts/ not found, chat disabled'); return undefined; }
-})();
+const here = path.dirname(fileURLToPath(import.meta.url));
+const systemsDir = path.resolve(env.WORKSPACE_DIR, 'systems');
+const defaultsDir = path.resolve(here, 'defaults', 'systems');
+
+bootstrapPrompts(systemsDir, defaultsDir);
+
+let promptsData;
+try {
+  promptsData = loadPrompts(systemsDir);
+} catch (err) {
+  console.error('[api] failed to load prompts:', (err as Error).message);
+  process.exit(1);
+}
+
+const promptsRef: PromptsRef = { current: promptsData };
 // Load workspace skills (hot-reloaded via chokidar watcher)
 const skills = await loadSkills(env.WORKSPACE_DIR);
 console.warn(`[api] skills loaded (${skills.size})`);
@@ -81,8 +88,13 @@ if (process.env.NODE_ENV !== 'test') {
     console.warn(`[api] skills reloaded (${skills.size})`);
   });
 
+  const stopPromptsWatcher = createPromptsWatcher(systemsDir, (p) => {
+    console.warn('[api] prompts reloaded');
+    promptsRef.current = p;
+  });
+
   // Graceful shutdown
-  const shutdown = () => { skillsWatcher.close().catch(() => {}); mcpClient.stop(); };
+  const shutdown = () => { skillsWatcher.close().catch(() => {}); stopPromptsWatcher(); mcpClient.stop(); };
   process.on('SIGINT', shutdown);
   process.on('SIGTERM', shutdown);
 }
@@ -114,7 +126,7 @@ const app = buildApp({
   allowedEmails: env.AUTH_ALLOWED_EMAILS,
   publicBaseUrl: env.PUBLIC_BASE_URL,
   webDistRoot: process.env.WEB_DIST_ROOT,
-  prompts,
+  prompts: promptsRef,
   openaiApiKey: env.OPENAI_API_KEY,
   workspaceDir: env.WORKSPACE_DIR,
   skills,
