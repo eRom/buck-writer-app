@@ -14,11 +14,25 @@ services:
       - ./data/bible:/app/data
     restart: unless-stopped
 
+  bible-ui:
+    build:
+      context: .
+      dockerfile: Dockerfile.bible-ui
+    container_name: buck-bible-ui
+    restart: unless-stopped
+    networks:
+      - caddy-public
+      - internal
+    depends_on:
+      - bible-mcp
+
   buck-app:
     image: buck-writer:local
     build:
       context: .
       dockerfile: Dockerfile.app
+      args:
+        VITE_BIBLE_UI_URL: ${VITE_BIBLE_UI_URL:-https://bible.buck.romain-ecarnot.com}
     container_name: buck-app
     restart: unless-stopped
     env_file: .env
