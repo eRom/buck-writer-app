@@ -1,5 +1,6 @@
 import { useEffect } from 'react';
 import { SigmaContainer, useLoadGraph } from '@react-sigma/core';
+import { useLayoutForceAtlas2 } from '@react-sigma/layout-forceatlas2';
 import Graph from 'graphology';
 import '@react-sigma/core/lib/style.css';
 import type { GraphData } from '@/hooks/use-graph';
@@ -27,6 +28,22 @@ function LoadGraph({ data }: { data: GraphData }) {
   return null;
 }
 
+function ForceAtlasLayout() {
+  const { assign } = useLayoutForceAtlas2({
+    iterations: 200,
+    settings: {
+      gravity: 1,
+      scalingRatio: 10,
+      strongGravityMode: false,
+      slowDown: 5,
+    },
+  });
+  useEffect(() => {
+    assign();
+  }, [assign]);
+  return null;
+}
+
 export function GraphView({ data }: { data: GraphData }) {
   return (
     <SigmaContainer
@@ -38,6 +55,7 @@ export function GraphView({ data }: { data: GraphData }) {
       }}
     >
       <LoadGraph data={data} />
+      <ForceAtlasLayout />
     </SigmaContainer>
   );
 }

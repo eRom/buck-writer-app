@@ -12,12 +12,17 @@ COPY packages/bible-mcp packages/bible-mcp
 
 RUN pnpm --filter @buck/bible-mcp build
 
+# pnpm deploy bundles the package + all hoisted runtime deps into a flat,
+# self-contained directory at /deploy — fixes ERR_MODULE_NOT_FOUND when the
+# workspace install hoists deps to the monorepo root.
+RUN pnpm deploy --filter @buck/bible-mcp --prod /deploy
+
 FROM node:20-alpine AS runtime
 RUN apk add --no-cache sqlite
 WORKDIR /app
-COPY --from=builder /app/packages/bible-mcp/dist ./dist
-COPY --from=builder /app/packages/bible-mcp/node_modules ./node_modules
-COPY --from=builder /app/packages/bible-mcp/package.json ./
+COPY --from=builder /deploy/dist ./dist
+COPY --from=builder /deploy/node_modules ./node_modules
+COPY --from=builder /deploy/package.json ./
 RUN mkdir -p /app/data
 ENV NODE_ENV=production
 EXPOSE 7801
