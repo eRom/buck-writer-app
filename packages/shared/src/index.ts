@@ -5,3 +5,4 @@ export * from './schemas/chat.js';
 export * from './billing/period.js';
 export * from './schemas/settings.js';
 export * from './schemas/workspace.js';
+export * from './voice/index.js';
