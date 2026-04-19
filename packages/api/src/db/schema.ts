@@ -76,6 +76,7 @@ export const chatSessions = sqliteTable(
     createdAt: integer('created_at').notNull(),
     updatedAt: integer('updated_at').notNull(),
     lastMessageAt: integer('last_message_at'),
+    lastResponseId: text('last_response_id'),
   },
   (t) => ({
     userIdx: index('chat_sessions_user_idx').on(t.userId),
@@ -141,6 +142,7 @@ export const usageEvents = sqliteTable(
     inputTokens: integer('input_tokens').notNull().default(0),
     outputTokens: integer('output_tokens').notNull().default(0),
     reasoningTokens: integer('reasoning_tokens').notNull().default(0),
+    cachedInputTokens: integer('cached_input_tokens').notNull().default(0),
     audioInputSeconds: real('audio_input_seconds').notNull().default(0),
     audioOutputSeconds: real('audio_output_seconds').notNull().default(0),
     costUsd: real('cost_usd').notNull(),

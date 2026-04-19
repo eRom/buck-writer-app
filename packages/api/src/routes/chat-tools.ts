@@ -5,8 +5,7 @@ import { promisify } from 'node:util';
 import type { Skill } from '../services/skills.js';
 import { assertSafePath } from '../utils/path-safe.js';
 import { validateShellCommand, listAllowedBins } from '../lib/kill-switch.js';
-import type { ToolDefinition } from '../lib/openai.js';
-import type { McpClient } from '../services/mcp-client.js';
+import type { FunctionToolDef } from '../lib/openai.js';
 
 const execFileAsync = promisify(execFile);
 
@@ -16,112 +15,119 @@ const SAFE_PATH = '/usr/local/bin:/usr/bin:/bin';
 
 export type ToolHandler = (args: Record<string, unknown>) => Promise<unknown>;
 
+/**
+ * Build the function-tool definitions for the Responses API. Shape is
+ * internally-tagged ({type:"function", name, parameters}) — no `function:`
+ * wrapper. MCP tools are NOT listed here; they're wired as remote connectors
+ * via tools: [{type:"mcp", ...}] in the chat route.
+ *
+ * strict defaults to true on Responses; we opt-out on schemas with optional
+ * fields or unions because making them strict-compliant would over-constrain
+ * the model (e.g. shell_execute's cwd is genuinely optional).
+ */
 export function buildToolDefinitions(
   workspaceDir: string | undefined,
   skills: Map<string, Skill> | undefined,
-  mcpClient: McpClient | undefined,
-): ToolDefinition[] {
-  const defs: ToolDefinition[] = [];
+): FunctionToolDef[] {
+  const defs: FunctionToolDef[] = [];
 
   if (workspaceDir) {
     defs.push(
       {
         type: 'function',
-        function: {
-          name: 'read_file',
-          description: 'Read the content of a file in the workspace',
-          parameters: {
-            type: 'object',
-            properties: { path: { type: 'string' } },
-            required: ['path'],
-          },
+        name: 'read_file',
+        description: 'Read the content of a file in the workspace',
+        parameters: {
+          type: 'object',
+          properties: { path: { type: 'string' } },
+          required: ['path'],
+          additionalProperties: false,
         },
+        strict: true,
       },
       {
         type: 'function',
-        function: {
-          name: 'list_directory',
-          description: 'List files and directories at a given path in the workspace',
-          parameters: {
-            type: 'object',
-            properties: {
-              path: { type: 'string', description: 'Relative path, defaults to workspace root' },
+        name: 'list_directory',
+        description: 'List files and directories at a given path in the workspace',
+        parameters: {
+          type: 'object',
+          properties: {
+            path: {
+              type: 'string',
+              description: 'Relative path, defaults to workspace root',
             },
           },
         },
+        strict: false,
       },
       {
         type: 'function',
-        function: {
-          name: 'create_file',
-          description: 'Create or overwrite a file in the workspace. The user will be asked for confirmation before execution.',
-          parameters: {
-            type: 'object',
-            properties: {
-              path: { type: 'string' },
-              content: { type: 'string' },
+        name: 'create_file',
+        description:
+          'Create or overwrite a file in the workspace. The user will be asked for confirmation before execution.',
+        parameters: {
+          type: 'object',
+          properties: {
+            path: { type: 'string' },
+            content: { type: 'string' },
+          },
+          required: ['path', 'content'],
+          additionalProperties: false,
+        },
+        strict: true,
+      },
+      {
+        type: 'function',
+        name: 'delete_file',
+        description:
+          'Delete a file in the workspace. The user will be asked for confirmation before execution.',
+        parameters: {
+          type: 'object',
+          properties: { path: { type: 'string' } },
+          required: ['path'],
+          additionalProperties: false,
+        },
+        strict: true,
+      },
+      {
+        type: 'function',
+        name: 'shell_execute',
+        description: `Execute a single command in the workspace. Strict whitelist: only ${listAllowedBins().join(', ')} are allowed. Shell metacharacters (|, &, ;, $, \`, >, <, \\) are forbidden — no pipes, no redirections, no chaining. For file deletion use delete_file.`,
+        parameters: {
+          type: 'object',
+          properties: {
+            command: {
+              type: 'string',
+              description: 'The shell command to execute',
             },
-            required: ['path', 'content'],
-          },
-        },
-      },
-      {
-        type: 'function',
-        function: {
-          name: 'delete_file',
-          description: 'Delete a file in the workspace. The user will be asked for confirmation before execution.',
-          parameters: {
-            type: 'object',
-            properties: { path: { type: 'string' } },
-            required: ['path'],
-          },
-        },
-      },
-      {
-        type: 'function',
-        function: {
-          name: 'shell_execute',
-          description: `Execute a single command in the workspace. Strict whitelist: only ${listAllowedBins().join(', ')} are allowed. Shell metacharacters (|, &, ;, $, \`, >, <, \\) are forbidden — no pipes, no redirections, no chaining. For file deletion use delete_file.`,
-          parameters: {
-            type: 'object',
-            properties: {
-              command: { type: 'string', description: 'The shell command to execute' },
-              cwd: { type: 'string', description: 'Working directory (relative to workspace)' },
+            cwd: {
+              type: 'string',
+              description: 'Working directory (relative to workspace)',
             },
-            required: ['command'],
           },
+          required: ['command'],
         },
+        strict: false,
       },
     );
   }
 
   if (skills && skills.size > 0) {
-    const list = [...skills.values()].map((s) => `${s.name}: ${s.description}`).join('; ');
+    const list = [...skills.values()]
+      .map((s) => `${s.name}: ${s.description}`)
+      .join('; ');
     defs.push({
       type: 'function',
-      function: {
-        name: 'activate_skill',
-        description: `Activate a skill to get its full instructions. Available skills: ${list}`,
-        parameters: {
-          type: 'object',
-          properties: { name: { type: 'string' } },
-          required: ['name'],
-        },
+      name: 'activate_skill',
+      description: `Activate a skill to get its full instructions. Available skills: ${list}`,
+      parameters: {
+        type: 'object',
+        properties: { name: { type: 'string' } },
+        required: ['name'],
+        additionalProperties: false,
       },
+      strict: true,
     });
-  }
-
-  if (mcpClient && mcpClient.isHealthy()) {
-    for (const tool of mcpClient.cachedTools()) {
-      defs.push({
-        type: 'function',
-        function: {
-          name: `bible_${tool.name}`,
-          description: tool.description,
-          parameters: tool.inputSchema,
-        },
-      });
-    }
   }
 
   return defs;
@@ -130,7 +136,6 @@ export function buildToolDefinitions(
 export function buildToolHandlers(
   workspaceDir: string | undefined,
   skills: Map<string, Skill> | undefined,
-  mcpClient: McpClient | undefined,
 ): Record<string, ToolHandler> {
   const handlers: Record<string, ToolHandler> = {};
 
@@ -141,12 +146,15 @@ export function buildToolHandlers(
       try {
         const absPath = await assertSafePath(wd, String(filePath));
         const stat = await fsp.stat(absPath);
-        if (stat.isDirectory()) return { error: 'path is a directory, use list_directory instead' };
-        if (stat.size > 1024 * 1024) return { error: 'file too large (max 1MB for context)' };
+        if (stat.isDirectory())
+          return { error: 'path is a directory, use list_directory instead' };
+        if (stat.size > 1024 * 1024)
+          return { error: 'file too large (max 1MB for context)' };
         const content = await fsp.readFile(absPath, 'utf8');
         return { content, path: filePath };
       } catch (err) {
-        if (err instanceof Error && 'status' in err) return { error: 'path outside workspace' };
+        if (err instanceof Error && 'status' in err)
+          return { error: 'path outside workspace' };
         return { error: `file not found: ${filePath}` };
       }
     };
@@ -160,7 +168,10 @@ export function buildToolHandlers(
         return {
           entries: entries
             .filter((e) => e.name !== '.attachments')
-            .map((e) => ({ name: e.name, type: e.isDirectory() ? 'directory' : 'file' })),
+            .map((e) => ({
+              name: e.name,
+              type: e.isDirectory() ? 'directory' : 'file',
+            })),
         };
       } catch {
         return { error: `directory not found: ${dirPath ?? '/'}` };
@@ -222,7 +233,13 @@ export function buildToolHandlers(
           truncated: false,
         };
       } catch (err: unknown) {
-        const e = err as { killed?: boolean; code?: number; stdout?: string; stderr?: string; message?: string };
+        const e = err as {
+          killed?: boolean;
+          code?: number;
+          stdout?: string;
+          stderr?: string;
+          message?: string;
+        };
         const truncated = e.message?.includes('maxBuffer') ?? false;
         return {
           stdout: e.stdout ?? '',
@@ -241,20 +258,6 @@ export function buildToolHandlers(
       if (!skill) return { error: `skill not found: ${name}` };
       return { name: skill.name, instructions: skill.body };
     };
-  }
-
-  if (mcpClient) {
-    for (const tool of mcpClient.cachedTools()) {
-      const toolName = tool.name;
-      handlers[`bible_${toolName}`] = async (args) => {
-        try {
-          return await mcpClient.callTool(toolName, args as unknown);
-        } catch (err) {
-          const msg = err instanceof Error ? err.message : 'unknown';
-          return { error: `bible-mcp call failed: ${msg}` };
-        }
-      };
-    }
   }
 
   return handlers;

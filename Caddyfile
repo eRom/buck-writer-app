@@ -1,0 +1,53 @@
+# n8n principal
+{$N8N_HOST} {
+  reverse_proxy n8n:5678
+}
+
+# Voice Agent (Live) — accès restreint
+live.{$N8N_HOST} {
+  basicauth {
+    {$VOICE_USER} {$VOICE_PASSWORD_HASH}
+  }
+  reverse_proxy voice-agent:3000
+}
+
+# Buck Writer — app principale (auth interne magic-link)
+buck.{$BUCK_HOST_BASE} {
+  reverse_proxy buck-app:3000
+}
+
+# Bible UI — SSO via Buck session cookie (forward_auth → buck-app)
+bible.buck.{$BUCK_HOST_BASE} {
+  forward_auth buck-app:3000 {
+    uri /api/auth/verify-session
+    copy_headers X-User-Id
+  }
+  reverse_proxy buck-bible-ui:80
+}
+
+# Bible MCP — remote connector pour l'API Responses OpenAI.
+# OpenAI appelle ce endpoint directement ; Caddy vérifie le Bearer avant
+# de forwarder au container. Le même secret est injecté par Buck dans les
+# headers du tool connector et re-envoyé par OpenAI à chaque call.
+bible-mcp.buck.{$BUCK_HOST_BASE} {
+  @auth header Authorization "Bearer {$MCP_SHARED_SECRET}"
+  handle @auth {
+    reverse_proxy buck-bible-mcp:7801
+  }
+  handle {
+    respond "Unauthorized" 401
+  }
+}
+
+# Writing Tools MCP — remote connector pour l'API Responses OpenAI.
+# Sidecar Python (FastMCP streamable-http) exposant des outils d'analyse
+# texte (readability, passive voice, keyword density, perplexity, etc.).
+writing-mcp.buck.{$BUCK_HOST_BASE} {
+  @auth header Authorization "Bearer {$MCP_SHARED_SECRET}"
+  handle @auth {
+    reverse_proxy buck-writing-tools-mcp:7802
+  }
+  handle {
+    respond "Unauthorized" 401
+  }
+}

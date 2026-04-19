@@ -18,7 +18,7 @@ export function CardReferentiel() {
         <div className="flex flex-col">
           <span className="text-xs">Bible MCP</span>
           <span className="text-[10px] text-muted-foreground">
-            {healthy ? `actif · ${data?.toolCount ?? 0} outils` : 'indisponible'}
+            {healthy ? 'actif' : 'indisponible'}
           </span>
         </div>
         <span

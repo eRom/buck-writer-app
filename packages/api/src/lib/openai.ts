@@ -1,201 +1,398 @@
-export interface SSEContentEvent {
-  type: 'content';
-  text: string;
+// packages/api/src/lib/openai.ts
+//
+// Low-level client + SSE parser for OpenAI Responses API (/v1/responses).
+// Replaces the former Chat Completions helpers (streamChat/parseSSEChunks/
+// accumulateToolCalls). See docs/superpowers/specs/2026-04-19-m7-responses-api-mcp.md.
+
+const OPENAI_URL = 'https://api.openai.com/v1/responses';
+
+// ---------- Request types ----------
+
+/**
+ * Classic message input item — string or structured parts (for images).
+ */
+export interface MessageInputItem {
+  role: 'system' | 'user' | 'assistant' | 'developer';
+  content:
+    | string
+    | Array<
+        | { type: 'input_text'; text: string }
+        | { type: 'input_image'; image_url: string; detail?: 'auto' | 'low' | 'high' }
+        | { type: 'output_text'; text: string }
+      >;
 }
 
-export interface SSEToolCallDelta {
-  type: 'tool_call_delta';
-  index: number;
-  id?: string;
-  name?: string;
-  argumentsDelta: string;
+/**
+ * Result of a function_call item — fed back to the model on the next turn.
+ */
+export interface FunctionCallOutputItem {
+  type: 'function_call_output';
+  call_id: string;
+  output: string;
 }
 
-export interface SSEDoneEvent {
-  type: 'done';
-  finishReason: 'stop' | 'tool_calls' | 'length' | 'content_filter';
-  usage?: { prompt_tokens: number; completion_tokens: number };
+/**
+ * Response to an `mcp_approval_request` — set `approve` to proceed/deny.
+ */
+export interface McpApprovalResponseItem {
+  type: 'mcp_approval_response';
+  approve: boolean;
+  approval_request_id: string;
 }
 
-export type SSEEvent = SSEContentEvent | SSEToolCallDelta | SSEDoneEvent;
+export type ResponsesInputItem =
+  | MessageInputItem
+  | FunctionCallOutputItem
+  | McpApprovalResponseItem;
 
-export interface ToolCall {
+/**
+ * Function tool — internally-tagged (Responses shape).
+ * strict=true is the Responses default; opt-out with strict: false for
+ * schemas that aren't strict-compliant (optional fields without nullable etc.).
+ */
+export interface FunctionToolDef {
+  type: 'function';
+  name: string;
+  description?: string;
+  parameters: Record<string, unknown>;
+  strict?: boolean;
+}
+
+/**
+ * Remote MCP connector tool. OpenAI discovers tools from the server and
+ * performs calls directly; we only see mcp_* events in the stream.
+ */
+export interface McpToolDef {
+  type: 'mcp';
+  server_label: string;
+  server_url: string;
+  server_description?: string;
+  headers?: Record<string, string>;
+  require_approval?:
+    | 'never'
+    | 'always'
+    | {
+        never?: { tool_names: string[] };
+        always?: { tool_names: string[] };
+      };
+  allowed_tools?: string[] | { tool_names: string[] };
+}
+
+/** Built-in tools — architecture supports them, no immediate wiring in M7. */
+export interface WebSearchToolDef {
+  type: 'web_search_preview' | 'web_search';
+  search_context_size?: 'low' | 'medium' | 'high';
+}
+export interface ImageGenToolDef {
+  type: 'image_generation';
+  quality?: 'low' | 'medium' | 'high' | 'auto';
+  size?: string;
+}
+export interface FileSearchToolDef {
+  type: 'file_search';
+  vector_store_ids: string[];
+  max_num_results?: number;
+}
+
+export type ToolDef =
+  | FunctionToolDef
+  | McpToolDef
+  | WebSearchToolDef
+  | ImageGenToolDef
+  | FileSearchToolDef;
+
+export type ToolChoice =
+  | 'auto'
+  | 'none'
+  | 'required'
+  | { type: 'function'; name: string }
+  | { type: 'mcp'; server_label: string; name?: string };
+
+export interface ResponsesRequestBody {
+  model: string;
+  /** Top-level system prompt. Preferred over adding a system message in input. */
+  instructions?: string;
+  /** Short user string OR array of input items (messages + outputs + approvals). */
+  input: string | ResponsesInputItem[];
+  tools?: ToolDef[];
+  tool_choice?: ToolChoice;
+  /** Chain with a previous response for stateful continuation. */
+  previous_response_id?: string;
+  /** Default true on OpenAI side; we default to true so previous_response_id chain works. */
+  store?: boolean;
+  reasoning?: {
+    effort?: 'low' | 'medium' | 'high';
+    summary?: 'auto' | 'concise' | 'detailed';
+  };
+  max_output_tokens?: number;
+  /** Structured output (Responses shape, different from Chat Completions). */
+  text?: {
+    format:
+      | { type: 'text' }
+      | {
+          type: 'json_schema';
+          name: string;
+          schema: Record<string, unknown>;
+          strict?: boolean;
+        };
+  };
+  metadata?: Record<string, string>;
+}
+
+// ---------- Response & event types ----------
+
+export interface ResponsesUsage {
+  input_tokens: number;
+  output_tokens: number;
+  total_tokens: number;
+  input_tokens_details?: { cached_tokens?: number };
+  output_tokens_details?: { reasoning_tokens?: number };
+}
+
+export interface CompletedResponse {
   id: string;
-  type: 'function';
-  function: { name: string; arguments: string };
+  status: 'completed' | 'incomplete' | 'failed';
+  output: unknown[];
+  usage: ResponsesUsage;
+  model?: string;
+  incomplete_details?: { reason: string };
+  error?: { code: string; message: string };
 }
 
-export interface ChatMessage {
-  role: 'system' | 'user' | 'assistant' | 'tool';
-  content?: string | null;
-  tool_calls?: ToolCall[];
-  tool_call_id?: string;
+/**
+ * Parsed SSE event from /v1/responses stream. We keep discriminants aligned
+ * with the OpenAI event type names so downstream switches read naturally.
+ */
+export type ResponsesEvent =
+  | { type: 'response.created'; response: { id: string } }
+  | { type: 'response.in_progress' }
+  | { type: 'response.output_item.added'; output_index: number; item: OutputItem }
+  | { type: 'response.output_item.done'; output_index: number; item: OutputItem }
+  | { type: 'response.content_part.added'; output_index: number; item_id: string; part: unknown }
+  | { type: 'response.content_part.done'; output_index: number; item_id: string; part: unknown }
+  | { type: 'response.output_text.delta'; output_index: number; item_id: string; delta: string }
+  | { type: 'response.output_text.done'; output_index: number; item_id: string; text: string }
+  | { type: 'response.refusal.delta'; output_index: number; item_id: string; delta: string }
+  | { type: 'response.refusal.done'; output_index: number; item_id: string; refusal: string }
+  | { type: 'response.reasoning_summary_text.delta'; output_index: number; item_id: string; delta: string }
+  | { type: 'response.reasoning_summary_text.done'; output_index: number; item_id: string; text: string }
+  | { type: 'response.function_call_arguments.delta'; output_index: number; item_id: string; delta: string }
+  | { type: 'response.function_call_arguments.done'; output_index: number; item_id: string; arguments: string }
+  | { type: 'response.mcp_call_arguments.delta'; output_index: number; item_id: string; delta: string }
+  | { type: 'response.mcp_call_arguments.done'; output_index: number; item_id: string; arguments: string }
+  | { type: 'response.mcp_call.in_progress'; output_index: number; item_id: string }
+  | { type: 'response.mcp_call.completed'; output_index: number; item_id: string }
+  | { type: 'response.mcp_call.failed'; output_index: number; item_id: string; error?: string }
+  | { type: 'response.mcp_list_tools.in_progress'; output_index: number; item_id: string }
+  | { type: 'response.mcp_list_tools.completed'; output_index: number; item_id: string }
+  | { type: 'response.mcp_list_tools.failed'; output_index: number; item_id: string }
+  | { type: 'response.completed'; response: CompletedResponse }
+  | { type: 'response.failed'; response: CompletedResponse }
+  | { type: 'response.incomplete'; response: CompletedResponse }
+  | { type: 'error'; message: string; code?: string }
+  | { type: 'unknown'; raw: string; eventName?: string };
+
+/**
+ * Output items we care about. We only discriminate by type; payloads vary.
+ */
+export interface OutputItem {
+  type:
+    | 'message'
+    | 'function_call'
+    | 'mcp_call'
+    | 'mcp_list_tools'
+    | 'mcp_approval_request'
+    | 'reasoning'
+    | 'web_search_call'
+    | 'image_generation_call'
+    | 'file_search_call';
+  id: string;
+  // message
+  role?: 'assistant';
+  content?: Array<{ type: string; text?: string }>;
+  status?: string;
+  // function_call
+  name?: string;
+  call_id?: string;
+  arguments?: string;
+  // mcp_approval_request
+  server_label?: string;
+  // mcp_call
+  server_url?: string;
+  output?: unknown;
+  error?: string;
 }
 
-export interface ToolDefinition {
-  type: 'function';
-  function: {
-    name: string;
-    description: string;
-    parameters: Record<string, unknown>;
-  };
-}
-
-interface StreamChatOpts {
-  apiKey: string;
-  model: string;
-  messages: ChatMessage[];
-  tools?: ToolDefinition[];
-}
-
-interface ChatOpts {
-  apiKey: string;
-  model: string;
-  messages: ChatMessage[];
-  maxTokens?: number;
-}
-
-const OPENAI_URL = 'https://api.openai.com/v1/chat/completions';
-
-export function parseSSEChunks(line: string): SSEEvent[] {
-  if (!line.startsWith('data: ')) return [];
-  const data = line.slice(6).trim();
-  if (data === '[DONE]') return [];
-
-  try {
-    const parsed = JSON.parse(data);
-    const choice = parsed.choices?.[0];
-    if (!choice) return [];
-
-    const events: SSEEvent[] = [];
-    const delta = choice.delta;
-
-    if (delta?.content) {
-      events.push({ type: 'content', text: delta.content });
-    }
-
-    if (delta?.tool_calls) {
-      for (const tc of delta.tool_calls) {
-        events.push({
-          type: 'tool_call_delta',
-          index: tc.index,
-          id: tc.id,
-          name: tc.function?.name,
-          argumentsDelta: tc.function?.arguments ?? '',
-        });
-      }
-    }
-
-    if (choice.finish_reason) {
-      events.push({
-        type: 'done',
-        finishReason: choice.finish_reason,
-        usage: parsed.usage,
-      });
-    }
-
-    return events;
-  } catch {
-    return [];
-  }
-}
-
-export function accumulateToolCalls() {
-  const calls: Map<number, { id: string; name: string; args: string }> = new Map();
-
-  return {
-    push(delta: { index: number; id?: string; name?: string; argumentsDelta: string }) {
-      const existing = calls.get(delta.index);
-      if (existing) {
-        if (delta.id) existing.id = delta.id;
-        if (delta.name) existing.name = delta.name;
-        existing.args += delta.argumentsDelta;
-      } else {
-        calls.set(delta.index, {
-          id: delta.id ?? '',
-          name: delta.name ?? '',
-          args: delta.argumentsDelta,
-        });
-      }
-    },
-    finish(): ToolCall[] {
-      return [...calls.values()].map((c) => ({
-        id: c.id,
-        type: 'function' as const,
-        function: { name: c.name, arguments: c.args },
-      }));
-    },
-    clear() {
-      calls.clear();
-    },
-  };
-}
+// ---------- Error ----------
 
 export class OpenAIError extends Error {
-  constructor(public status: number, public data: unknown) {
-    const detail = typeof data === 'object' && data !== null && 'error' in data
-      ? (data as { error?: { message?: string } }).error?.message ?? ''
-      : '';
+  constructor(
+    public readonly status: number,
+    public readonly data: unknown,
+  ) {
+    const detail =
+      typeof data === 'object' && data !== null && 'error' in data
+        ? (data as { error?: { message?: string } }).error?.message ?? ''
+        : typeof data === 'string'
+          ? data
+          : '';
     super(detail ? `OpenAI API error ${status}: ${detail}` : `OpenAI API error ${status}`);
   }
 }
 
-export async function streamChat(opts: StreamChatOpts): Promise<Response> {
-  const body: Record<string, unknown> = {
-    model: opts.model,
-    messages: opts.messages,
-    stream: true,
-    stream_options: { include_usage: true },
-  };
-  if (opts.tools && opts.tools.length > 0) {
-    body.tools = opts.tools;
-    body.tool_choice = 'auto';
-  }
+// ---------- HTTP ----------
 
-  const res = await fetch(OPENAI_URL, {
+export interface StreamResponsesOpts {
+  apiKey: string;
+  body: ResponsesRequestBody;
+  signal?: AbortSignal;
+  fetchImpl?: typeof fetch;
+}
+
+/** Open a streaming Responses API call. Throws OpenAIError on non-2xx. */
+export async function streamResponses(opts: StreamResponsesOpts): Promise<Response> {
+  const f = opts.fetchImpl ?? fetch;
+  const res = await f(OPENAI_URL, {
     method: 'POST',
     headers: {
-      'Authorization': `Bearer ${opts.apiKey}`,
+      Authorization: `Bearer ${opts.apiKey}`,
       'Content-Type': 'application/json',
+      Accept: 'text/event-stream',
     },
-    body: JSON.stringify(body),
+    body: JSON.stringify({ ...opts.body, stream: true }),
+    signal: opts.signal,
   });
-
   if (!res.ok) {
     const err = await res.json().catch(() => ({}));
     throw new OpenAIError(res.status, err);
   }
-
   return res;
 }
 
-export async function chat(opts: ChatOpts): Promise<{
-  text: string;
-  usage: { prompt_tokens: number; completion_tokens: number };
-}> {
-  const body: Record<string, unknown> = {
-    model: opts.model,
-    messages: opts.messages,
-  };
-  if (opts.maxTokens) body.max_completion_tokens = opts.maxTokens;
+export interface RespondOpts {
+  apiKey: string;
+  body: Omit<ResponsesRequestBody, 'input'> & { input: ResponsesRequestBody['input'] };
+  fetchImpl?: typeof fetch;
+}
 
-  const res = await fetch(OPENAI_URL, {
+/** Non-streaming call — used for utility prompts (e.g. auto-title). */
+export async function respond(
+  opts: RespondOpts,
+): Promise<{ text: string; usage: ResponsesUsage; responseId: string }> {
+  const f = opts.fetchImpl ?? fetch;
+  const res = await f(OPENAI_URL, {
     method: 'POST',
     headers: {
-      'Authorization': `Bearer ${opts.apiKey}`,
+      Authorization: `Bearer ${opts.apiKey}`,
       'Content-Type': 'application/json',
     },
-    body: JSON.stringify(body),
+    body: JSON.stringify({ ...opts.body, stream: false }),
   });
-
   if (!res.ok) {
     const err = await res.json().catch(() => ({}));
     throw new OpenAIError(res.status, err);
   }
-
-  const data = await res.json();
+  const data = (await res.json()) as {
+    id: string;
+    output?: Array<{ type: string; content?: Array<{ type: string; text?: string }> }>;
+    output_text?: string;
+    usage?: ResponsesUsage;
+  };
+  let text = data.output_text ?? '';
+  if (!text && Array.isArray(data.output)) {
+    for (const item of data.output) {
+      if (item.type === 'message' && item.content) {
+        for (const part of item.content) {
+          if (part.type === 'output_text' && typeof part.text === 'string') text += part.text;
+        }
+      }
+    }
+  }
   return {
-    text: data.choices?.[0]?.message?.content ?? '',
-    usage: data.usage ?? { prompt_tokens: 0, completion_tokens: 0 },
+    text,
+    usage: data.usage ?? { input_tokens: 0, output_tokens: 0, total_tokens: 0 },
+    responseId: data.id,
+  };
+}
+
+// ---------- SSE parsing ----------
+
+/**
+ * Parse one SSE block (terminated by blank line) into a typed event.
+ * A block has the form:
+ *   event: response.output_text.delta
+ *   data: {...json...}
+ *
+ * Returns null for empty blocks / keepalives.
+ */
+export function parseResponsesEventBlock(block: string): ResponsesEvent | null {
+  const trimmed = block.trim();
+  if (!trimmed) return null;
+
+  let eventName: string | undefined;
+  const dataLines: string[] = [];
+  for (const line of trimmed.split('\n')) {
+    if (line.startsWith('event:')) {
+      eventName = line.slice(6).trim();
+    } else if (line.startsWith('data:')) {
+      dataLines.push(line.slice(5).trim());
+    }
+    // Ignore ":" comments and "id:" lines.
+  }
+  if (dataLines.length === 0) return null;
+
+  const dataStr = dataLines.join('\n');
+  if (dataStr === '[DONE]') return null;
+
+  let payload: Record<string, unknown>;
+  try {
+    payload = JSON.parse(dataStr);
+  } catch {
+    return { type: 'unknown', raw: dataStr, eventName };
+  }
+
+  const type = (payload.type as string | undefined) ?? eventName;
+  if (!type) return { type: 'unknown', raw: dataStr, eventName };
+
+  // Return with the payload fields spread; the discriminant is `type`.
+  return { ...(payload as object), type } as ResponsesEvent;
+}
+
+/**
+ * Iterator-friendly stream splitter: feed it decoded chunks, get complete
+ * SSE events out. Buffers partial blocks between chunks.
+ */
+export function createSSEBuffer(): {
+  push(chunk: string): ResponsesEvent[];
+  flush(): ResponsesEvent[];
+} {
+  let buffer = '';
+  function drain(force: boolean): ResponsesEvent[] {
+    const events: ResponsesEvent[] = [];
+    // Blocks are separated by \n\n. On force (stream end), we also drain the tail.
+    while (true) {
+      const idx = buffer.indexOf('\n\n');
+      if (idx === -1) {
+        if (force && buffer.trim()) {
+          const ev = parseResponsesEventBlock(buffer);
+          if (ev) events.push(ev);
+          buffer = '';
+        }
+        return events;
+      }
+      const block = buffer.slice(0, idx);
+      buffer = buffer.slice(idx + 2);
+      const ev = parseResponsesEventBlock(block);
+      if (ev) events.push(ev);
+    }
+  }
+  return {
+    push(chunk: string) {
+      buffer += chunk;
+      return drain(false);
+    },
+    flush() {
+      return drain(true);
+    },
   };
 }

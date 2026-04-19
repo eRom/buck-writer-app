@@ -1,109 +1,37 @@
 import path from "node:path";
 import fs from "node:fs";
 import { exec } from "node:child_process";
+import { randomUUID } from "node:crypto";
 import express from "express";
-import { z } from "zod";
-import { zodToJsonSchema } from "zod-to-json-schema";
+import type { Request, Response, NextFunction } from "express";
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
-import type { RegisteredTool } from "@modelcontextprotocol/sdk/server/mcp.js";
+import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/streamableHttp.js";
+import { isInitializeRequest } from "@modelcontextprotocol/sdk/types.js";
 
-const EMPTY_OBJECT_JSON_SCHEMA = {
-  type: "object" as const,
-  properties: {} as Record<string, unknown>,
-  additionalProperties: false as const,
-};
+/**
+ * Factory that produces a fresh `McpServer` instance. The Streamable HTTP
+ * transport requires one `McpServer` per active transport (per session),
+ * hence the factory pattern.
+ */
+export type McpServerFactory = () => McpServer;
 
-interface JsonRpcRequest {
-  jsonrpc: "2.0";
-  id: number | string;
-  method: string;
-  params?: Record<string, unknown>;
-}
-
-interface JsonRpcResponse {
-  jsonrpc: "2.0";
-  id: number | string | null;
-  result?: unknown;
-  error?: { code: number; message: string; data?: unknown };
-}
-
-function getRegisteredTools(mcpServer: McpServer): Record<string, RegisteredTool> {
-  // _registeredTools is TypeScript private (not JS #private), accessible at runtime
-  return (mcpServer as unknown as { _registeredTools: Record<string, RegisteredTool> })._registeredTools;
-}
-
-function schemaToJsonSchema(inputSchema: unknown): Record<string, unknown> {
-  if (!inputSchema) return { ...EMPTY_OBJECT_JSON_SCHEMA };
-  try {
-    const result = zodToJsonSchema(inputSchema as z.ZodType, { target: "jsonSchema7" }) as Record<string, unknown>;
-    // Strip $schema and $ref/definitions — OpenAI function calling rejects them
-    const { $schema: _s, $ref: _r, definitions: _d, ...clean } = result as Record<string, unknown>;
-    // Ensure object schemas always have a properties field (OpenAI requirement)
-    if (clean.type === "object" && !clean.properties) {
-      clean.properties = {};
-    }
-    return clean;
-  } catch {
-    return { ...EMPTY_OBJECT_JSON_SCHEMA };
+function bearerAuth(
+  req: Request,
+  res: Response,
+  next: NextFunction,
+): void {
+  const expected = process.env.MCP_SHARED_SECRET;
+  if (!expected) {
+    next();
+    return;
   }
-}
-
-function buildToolsList(tools: Record<string, RegisteredTool>) {
-  return Object.entries(tools)
-    .filter(([, tool]) => tool.enabled)
-    .map(([name, tool]) => ({
-      name,
-      description: tool.description,
-      inputSchema: schemaToJsonSchema(tool.inputSchema),
-    }));
-}
-
-async function callTool(
-  tools: Record<string, RegisteredTool>,
-  name: string,
-  args: Record<string, unknown> | undefined,
-): Promise<{ content: Array<{ type: string; text: string }>; isError?: boolean }> {
-  const tool = tools[name];
-  if (!tool) {
-    return {
-      isError: true,
-      content: [{ type: "text", text: `Tool "${name}" not found` }],
-    };
+  const header = req.header("authorization") ?? "";
+  const [scheme, token] = header.split(" ");
+  if (scheme !== "Bearer" || token !== expected) {
+    res.status(401).json({ error: "unauthorized" });
+    return;
   }
-  if (!tool.enabled) {
-    return {
-      isError: true,
-      content: [{ type: "text", text: `Tool "${name}" is disabled` }],
-    };
-  }
-
-  // Validate input via Zod if schema exists
-  // inputSchema is already a ZodObject (wrapped by the SDK's objectFromShape)
-  let parsedArgs: unknown = undefined;
-  if (tool.inputSchema) {
-    const schema = tool.inputSchema as z.ZodType;
-    const parseResult = schema.safeParse(args ?? {});
-    if (!parseResult.success) {
-      return {
-        isError: true,
-        content: [{ type: "text", text: `Validation error: ${parseResult.error.message}` }],
-      };
-    }
-    parsedArgs = parseResult.data;
-  }
-
-  // Call handler
-  const handler = tool.handler as Function;
-  const extra = {} as Record<string, unknown>;
-  const result = tool.inputSchema
-    ? await Promise.resolve(handler(parsedArgs, extra))
-    : await Promise.resolve(handler(extra));
-
-  return result;
-}
-
-function makeJsonRpcError(id: number | string | null, code: number, message: string): JsonRpcResponse {
-  return { jsonrpc: "2.0", id, error: { code, message } };
+  next();
 }
 
 function openBrowser(url: string): void {
@@ -121,114 +49,122 @@ export interface HttpServerOptions {
 }
 
 /**
- * Crée et retourne une Express app configurée autour du MCP server.
- * N'appelle pas app.listen() — utile pour les tests d'intégration (port dynamique).
+ * Express app wrapping bible-mcp with the MCP Streamable HTTP transport on
+ * /mcp. Spec-compliant — same endpoint talks to OpenAI's Responses MCP
+ * connector, MCP Inspector, and our own SDK-based clients.
+ *
+ * Stateful sessions : one `{transport, server}` pair per session_id. The
+ * first POST with an `initialize` JSON-RPC message mints a session_id and
+ * keeps the pair alive until the transport closes (HTTP disconnect or
+ * DELETE /mcp).
+ *
+ * Stateless fallback : clients that POST non-initialize requests without a
+ * session_id get a one-shot pair torn down at response end. Works for the
+ * legacy bible-ui plain-JSON-RPC client which doesn't negotiate sessions.
  */
-export function createHttpApp(mcpServer: McpServer, uiDir?: string): express.Express {
+export function createHttpApp(
+  serverFactory: McpServerFactory,
+  uiDir?: string,
+): express.Express {
   const app = express();
-
   app.use(express.json());
 
-  // CORS headers for Vite dev server
-  app.use((_req, res, next) => {
+  // CORS for the Bible UI hosted on another origin in dev.
+  app.use((req, res, next) => {
     res.setHeader("Access-Control-Allow-Origin", "*");
-    res.setHeader("Access-Control-Allow-Methods", "GET, POST, OPTIONS");
-    res.setHeader("Access-Control-Allow-Headers", "Content-Type");
-    if (_req.method === "OPTIONS") {
+    res.setHeader("Access-Control-Allow-Methods", "GET, POST, DELETE, OPTIONS");
+    res.setHeader(
+      "Access-Control-Allow-Headers",
+      "Content-Type, Authorization, Mcp-Session-Id, MCP-Protocol-Version",
+    );
+    res.setHeader("Access-Control-Expose-Headers", "Mcp-Session-Id");
+    if (req.method === "OPTIONS") {
       res.sendStatus(204);
       return;
     }
     next();
   });
 
-  const tools = getRegisteredTools(mcpServer);
+  const transports: Record<string, StreamableHTTPServerTransport> = {};
 
-  // JSON-RPC endpoint
-  app.post("/mcp", async (req, res) => {
-    const body = req.body as JsonRpcRequest;
+  async function createStatefulPair(): Promise<StreamableHTTPServerTransport> {
+    const transport = new StreamableHTTPServerTransport({
+      sessionIdGenerator: () => randomUUID(),
+      onsessioninitialized: (sessionId: string) => {
+        transports[sessionId] = transport;
+      },
+    });
+    transport.onclose = () => {
+      const sid = transport.sessionId;
+      if (sid && transports[sid]) delete transports[sid];
+    };
+    const server = serverFactory();
+    await server.connect(transport);
+    return transport;
+  }
 
-    if (!body || body.jsonrpc !== "2.0" || !body.method) {
-      res.status(400).json(makeJsonRpcError(body?.id ?? null, -32600, "Invalid JSON-RPC request"));
-      return;
-    }
+  async function createStatelessPair(): Promise<StreamableHTTPServerTransport> {
+    const transport = new StreamableHTTPServerTransport({ sessionIdGenerator: undefined });
+    const server = serverFactory();
+    await server.connect(transport);
+    return transport;
+  }
 
-    const { id, method, params } = body;
-
+  app.post("/mcp", bearerAuth, async (req, res) => {
     try {
-      switch (method) {
-        case "initialize": {
-          const clientProtocol = (params as { protocolVersion?: string })?.protocolVersion;
-          res.json({
-            jsonrpc: "2.0",
-            id,
-            result: {
-              protocolVersion: clientProtocol ?? "2025-06-18",
-              capabilities: { tools: { listChanged: false } },
-              serverInfo: { name: "barda-ecrivain-bible", version: "0.1.0" },
-            },
-          });
-          return;
-        }
+      const sessionId = req.header("mcp-session-id");
+      let transport: StreamableHTTPServerTransport | undefined;
+      let stateless = false;
 
-        case "notifications/initialized":
-        case "notifications/cancelled":
-        case "notifications/roots/list_changed": {
-          // Notifications JSON-RPC : pas d'id, pas de reponse
-          res.status(204).end();
-          return;
-        }
+      if (sessionId && transports[sessionId]) {
+        transport = transports[sessionId];
+      } else if (!sessionId && isInitializeRequest(req.body)) {
+        transport = await createStatefulPair();
+      } else {
+        transport = await createStatelessPair();
+        stateless = true;
+      }
 
-        case "ping": {
-          res.json({ jsonrpc: "2.0", id, result: {} });
-          return;
-        }
+      await transport.handleRequest(req, res, req.body);
 
-        case "tools/list": {
-          const toolsList = buildToolsList(tools);
-          res.json({ jsonrpc: "2.0", id, result: { tools: toolsList } });
-          return;
-        }
-
-        case "tools/call": {
-          const toolName = (params as { name?: string })?.name;
-          const toolArgs = (params as { arguments?: Record<string, unknown> })?.arguments;
-
-          if (!toolName) {
-            res.json(makeJsonRpcError(id, -32602, "Missing 'name' in params"));
-            return;
-          }
-
-          const result = await callTool(tools, toolName, toolArgs);
-          res.json({ jsonrpc: "2.0", id, result });
-          return;
-        }
-
-        case "resources/list": {
-          res.json({ jsonrpc: "2.0", id, result: { resources: [] } });
-          return;
-        }
-
-        case "prompts/list": {
-          res.json({ jsonrpc: "2.0", id, result: { prompts: [] } });
-          return;
-        }
-
-        default: {
-          res.json(makeJsonRpcError(id, -32601, `Method "${method}" not supported`));
-          return;
-        }
+      if (stateless) {
+        res.on("close", () => {
+          transport?.close().catch(() => {});
+        });
       }
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
-      console.error(`[http] Error handling ${method}:`, message);
-      res.json(makeJsonRpcError(id, -32603, message));
+      console.error("[http] POST /mcp error:", message);
+      if (!res.headersSent) {
+        res.status(500).json({
+          jsonrpc: "2.0",
+          id: null,
+          error: { code: -32603, message },
+        });
+      }
     }
   });
 
-  // Serve static UI files (if directory exists and has content)
+  app.get("/mcp", bearerAuth, async (req, res) => {
+    const sessionId = req.header("mcp-session-id");
+    if (!sessionId || !transports[sessionId]) {
+      res.status(400).send("Missing or unknown Mcp-Session-Id");
+      return;
+    }
+    await transports[sessionId].handleRequest(req, res);
+  });
+
+  app.delete("/mcp", bearerAuth, async (req, res) => {
+    const sessionId = req.header("mcp-session-id");
+    if (!sessionId || !transports[sessionId]) {
+      res.status(400).send("Missing or unknown Mcp-Session-Id");
+      return;
+    }
+    await transports[sessionId].handleRequest(req, res);
+  });
+
   if (uiDir && fs.existsSync(uiDir) && fs.readdirSync(uiDir).length > 0) {
     app.use(express.static(uiDir));
-    // SPA fallback — serve index.html for any non-API route
     app.get("/{*path}", (_req, res) => {
       res.sendFile(path.join(uiDir, "index.html"));
     });
@@ -239,13 +175,12 @@ export function createHttpApp(mcpServer: McpServer, uiDir?: string): express.Exp
 }
 
 export function startHttpServer(
-  mcpServer: McpServer,
+  serverFactory: McpServerFactory,
   _dbPath: string,
   options: HttpServerOptions,
 ): void {
   const { port, uiDir } = options;
-  const app = createHttpApp(mcpServer, uiDir);
-
+  const app = createHttpApp(serverFactory, uiDir);
   app.listen(port, "127.0.0.1", () => {
     const url = `http://localhost:${port}`;
     console.error(`[http] Bible UI disponible sur ${url}`);

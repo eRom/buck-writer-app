@@ -97,6 +97,27 @@ describe('runSeed', () => {
       .get() as { n: number };
     sqlite.close();
     expect(userCount.n).toBe(1);
-    expect(mcpCount.n).toBe(1);
+    // Seed now inserts both bible + writing-tools rows.
+    expect(mcpCount.n).toBe(2);
+  });
+
+  it('inserts writing-tools MCP disabled by default', () => {
+    dbPath = tmp();
+    const url = `file:${dbPath}`;
+    runMigrations({ databaseUrl: url, migrationsFolder: migrationsDir });
+    runSeed({
+      databaseUrl: url,
+      allowedEmails: ['alice@example.com'],
+      mcpBibleUrl: 'http://bible-mcp:7801',
+    });
+
+    const sqlite = new Database(dbPath, { readonly: true });
+    const row = sqlite
+      .prepare('SELECT name, core, enabled FROM mcp_servers WHERE name = ?')
+      .get('writing-tools') as
+      | { name: string; core: number; enabled: number }
+      | undefined;
+    sqlite.close();
+    expect(row).toMatchObject({ name: 'writing-tools', core: 0, enabled: 0 });
   });
 });

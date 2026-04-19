@@ -14,7 +14,6 @@ import {
   createChatRoute,
   type ChatRouteDeps,
 } from './routes/chat.js';
-import type { McpClient } from './services/mcp-client.js';
 import type { MemoryServices } from './services/memory/bootstrap.js';
 import { createSettingsRoutes } from './routes/settings.js';
 import { createUsageRoutes } from './routes/usage.js';
@@ -43,11 +42,6 @@ export interface AppDeps extends AuthRoutesDeps, SessionRoutesDeps {
    * Loaded workspace skills. Passed to the chat route for tool integration.
    */
   skills?: Map<string, import('./services/skills.js').Skill>;
-  /**
-   * MCP client for the bible-mcp server. When provided and healthy, bible
-   * tools are injected into the chat tool loop with a `bible_` prefix.
-   */
-  mcpClient?: McpClient;
   /**
    * Absolute path to the built SPA (Vite dist/). If provided, Hono serves
    * it as static and falls back to index.html for non-/api paths. Leave
@@ -163,7 +157,6 @@ export function buildApp(deps: AppDeps) {
       openaiApiKey: deps.openaiApiKey,
       workspaceDir: deps.workspaceDir,
       skills: deps.skills,
-      mcpClient: deps.mcpClient,
       nowMs: deps.nowMs,
       memory: deps.memory,
       buckUserId: deps.buckUserId,
@@ -178,9 +171,10 @@ export function buildApp(deps: AppDeps) {
   app.use('/api/usage/*', authGuard({ db: deps.db, jwt: deps.jwt, nowMs: deps.nowMs }));
   app.route('/api/usage', createUsageRoutes({ db: deps.db, nowMs: deps.nowMs }));
 
-  // MCP routes (protected)
+  // MCP routes (protected) — registry of remote MCP connectors.
   app.use('/api/mcp/*', authGuard({ db: deps.db, jwt: deps.jwt, nowMs: deps.nowMs }));
-  app.route('/api/mcp', createMcpRoutes({ mcpClient: deps.mcpClient }));
+  app.use('/api/mcp', authGuard({ db: deps.db, jwt: deps.jwt, nowMs: deps.nowMs }));
+  app.route('/api/mcp', createMcpRoutes({ db: deps.db }));
 
   // Workspace routes (protected, only if workspaceDir provided)
   if (deps.workspaceDir) {

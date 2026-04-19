@@ -1,0 +1,41 @@
+# Dockerfile.writing-tools-mcp
+# Wraps wdm0006/writing-tools-mcp with a streamable-http transport so it can
+# be declared as a remote MCP connector from the OpenAI Responses API.
+# Heavy deps (torch, transformers, spacy) — first build is slow (~5 min).
+
+FROM python:3.11-slim AS base
+RUN apt-get update && \
+    apt-get install -y --no-install-recommends git build-essential wget && \
+    rm -rf /var/lib/apt/lists/*
+
+RUN pip install --no-cache-dir uv
+
+# Clone upstream at a pinned commit. Bump this hash intentionally after
+# reviewing upstream changes.
+ARG WTM_REF=main
+WORKDIR /opt
+RUN git clone --depth=1 --branch ${WTM_REF} https://github.com/wdm0006/writing-tools-mcp /opt/wtm
+WORKDIR /opt/wtm
+
+# Sync deps into a local .venv
+RUN uv sync
+
+# Pre-download the spaCy small English model used by passive voice / stylometric
+# analyzers (fails cleanly at runtime otherwise).
+RUN uv run python -m spacy download en_core_web_sm
+
+# Our HTTP entrypoint: imports the upstream FastMCP instance and runs it with
+# streamable-http transport on port 7802.
+COPY docker/writing-tools-mcp/entrypoint.py /opt/wtm/entrypoint_http.py
+
+ENV HOST=0.0.0.0 \
+    PORT=7802 \
+    PYTHONUNBUFFERED=1
+
+EXPOSE 7802
+
+# HEALTHCHECK : 400 (bad request) is fine — we just want to verify HTTP is up.
+HEALTHCHECK --interval=30s --timeout=5s --retries=3 \
+    CMD wget --spider -q http://127.0.0.1:7802/mcp || exit 1
+
+CMD ["uv", "run", "python", "entrypoint_http.py"]

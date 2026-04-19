@@ -3,16 +3,44 @@ services:
     build:
       context: .
       dockerfile: Dockerfile.bible-mcp
+    container_name: buck-bible-mcp
     networks:
+      # caddy-public = public access for the OpenAI Responses MCP connector
+      # (behind Caddy Bearer auth via MCP_SHARED_SECRET).
+      - caddy-public
       - internal
     environment:
       OPENAI_API_KEY: ${OPENAI_API_KEY}
       BIBLE_DB_PATH: /app/data/bible.db
       BIBLE_HTTP_PORT: "7801"
       OPENAI_EMBEDDING_MODEL: ${OPENAI_EMBEDDING_MODEL:-text-embedding-3-large}
+      # Defense-in-depth : bible-mcp enforces Bearer too (Caddy already
+      # checks upstream). Leave unset in dev to disable.
+      MCP_SHARED_SECRET: ${MCP_SHARED_SECRET:-}
     volumes:
       - ./data/bible:/app/data
     restart: unless-stopped
+
+  writing-tools-mcp:
+    build:
+      context: .
+      dockerfile: Dockerfile.writing-tools-mcp
+    container_name: buck-writing-tools-mcp
+    networks:
+      - caddy-public
+      - internal
+    restart: unless-stopped
+    environment:
+      MCP_SHARED_SECRET: ${MCP_SHARED_SECRET:-}
+    # First start downloads torch / transformers / spacy model (~3 GB).
+    healthcheck:
+      test:
+        - CMD-SHELL
+        - 'wget -q --spider http://127.0.0.1:7802/mcp || exit 1'
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 60s
 
   bible-ui:
     build:
@@ -40,7 +68,11 @@ services:
       - WEB_DIST_ROOT=/app/web-dist
       - WORKSPACE_DIR=/app/workspace
       - DATABASE_URL=file:/app/data/buck.db
-      - MCP_BIBLE_URL=http://bible-mcp:7801
+      # Public URLs exposed to OpenAI for the MCP connectors. Must be HTTPS
+      # with a valid Bearer (MCP_SHARED_SECRET) fronted by Caddy.
+      - MCP_BIBLE_URL=${MCP_BIBLE_URL:-https://bible-mcp.buck.romain-ecarnot.com}
+      - MCP_WRITING_TOOLS_URL=${MCP_WRITING_TOOLS_URL:-https://writing-mcp.buck.romain-ecarnot.com}
+      - MCP_SHARED_SECRET=${MCP_SHARED_SECRET}
     volumes:
       - ./data/db:/app/data
       - ./data/workspace:/app/workspace
@@ -49,6 +81,7 @@ services:
       - internal
     depends_on:
       - bible-mcp
+      - writing-tools-mcp
     healthcheck:
       test:
         - CMD-SHELL
