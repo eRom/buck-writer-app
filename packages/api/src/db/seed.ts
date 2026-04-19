@@ -8,6 +8,32 @@ export interface SeedOptions {
   mcpWritingToolsUrl?: string;
 }
 
+export interface SeedMcpOptions {
+  databaseUrl: string;
+  mcpBibleUrl: string;
+  mcpWritingToolsUrl?: string;
+}
+
+/**
+ * Re-seeds only the MCP servers table with the latest config payloads.
+ * Called unconditionally on boot (idempotent upsert) so that changes to URLs,
+ * require_approval, or auth_header_env propagate without a manual DB edit.
+ * Users and user_settings are NOT touched — they live on `runSeed` first-run
+ * only.
+ */
+export function runMcpSeed(opts: SeedMcpOptions): void {
+  const filePath = opts.databaseUrl.replace(/^file:/, '');
+  const sqlite = new Database(filePath);
+  sqlite.pragma('foreign_keys = ON');
+  seedMcpServers(sqlite, {
+    databaseUrl: opts.databaseUrl,
+    allowedEmails: [],
+    mcpBibleUrl: opts.mcpBibleUrl,
+    mcpWritingToolsUrl: opts.mcpWritingToolsUrl,
+  });
+  sqlite.close();
+}
+
 /**
  * Seed the core MCP server definitions. Configs are stored as JSON and read
  * at request time by mcp-registry.ts. The `auth_header_env` field is the NAME
@@ -16,7 +42,7 @@ export interface SeedOptions {
  * bible : read tools = never approval, write tools = always approval.
  * writing-tools : read-only, never approval.
  */
-function seedMcpServers(sqlite: Database.Database, opts: SeedOptions): void {
+export function seedMcpServers(sqlite: Database.Database, opts: SeedOptions): void {
   const now = Date.now();
 
   const insertMcp = sqlite.prepare(`

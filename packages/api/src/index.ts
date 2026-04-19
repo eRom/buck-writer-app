@@ -7,7 +7,7 @@ import { buildApp } from './app.js';
 import { loadEnv } from './env.js';
 import { openDb } from './db/client.js';
 import { runMigrations } from './db/migrate.js';
-import { runSeed } from './db/seed.js';
+import { runSeed, runMcpSeed } from './db/seed.js';
 import { users } from './db/schema.js';
 import { createJwtService } from './services/jwt.js';
 import {
@@ -47,8 +47,19 @@ try {
       databaseUrl: env.DATABASE_URL,
       allowedEmails: env.AUTH_ALLOWED_EMAILS,
       mcpBibleUrl: process.env.MCP_BIBLE_URL ?? 'http://bible-mcp:7801',
+      mcpWritingToolsUrl: process.env.MCP_WRITING_TOOLS_URL,
     });
     console.warn('[api] seed applied (first run)');
+  } else {
+    // Refresh MCP servers config on every boot (idempotent upsert). Lets
+    // URL / require_approval / auth_header_env changes propagate without
+    // a manual DB edit.
+    runMcpSeed({
+      databaseUrl: env.DATABASE_URL,
+      mcpBibleUrl: process.env.MCP_BIBLE_URL ?? 'http://bible-mcp:7801',
+      mcpWritingToolsUrl: process.env.MCP_WRITING_TOOLS_URL,
+    });
+    console.warn('[api] mcp_servers refreshed');
   }
 } catch (err) {
   console.warn('[api] migration skipped:', (err as Error).message);
