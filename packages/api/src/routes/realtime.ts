@@ -20,6 +20,7 @@ import {
   mintRealtimeClientSecret,
   type MintedSecret,
 } from '../lib/realtime.js';
+import { OpenAIError } from '../lib/openai.js';
 import { chatSessions, messages, usageEvents } from '../db/schema.js';
 
 export interface RealtimeRouteDeps {
@@ -188,15 +189,26 @@ export function createRealtimeRoute(
     });
 
     // Mint client secret
-    const minted: MintedSecret = await mint({
-      apiKey: deps.openaiApiKey,
-      session: {
-        type: 'realtime',
-        model: REALTIME_MODEL,
-        voice,
-        instructions: sessionConfig.session.instructions.slice(0, 2000),
-      },
-    });
+    let minted: MintedSecret;
+    try {
+      minted = await mint({
+        apiKey: deps.openaiApiKey,
+        session: {
+          type: 'realtime',
+          model: REALTIME_MODEL,
+        },
+      });
+    } catch (err) {
+      if (err instanceof OpenAIError) {
+        console.error('[realtime] mint failed:', err.status, err.data);
+        return c.json(
+          { error: { code: 'openai_mint_failed', message: err.message, status: err.status, data: err.data } },
+          502,
+        );
+      }
+      console.error('[realtime] unexpected mint error:', err);
+      return c.json({ error: { code: 'internal', message: (err as Error).message } }, 500);
+    }
 
     return c.json({
       clientSecret: minted.value,

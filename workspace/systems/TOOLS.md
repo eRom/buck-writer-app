@@ -1,5 +1,7 @@
 # Tools
 
+## Todo list / Liste des tâche (todos_list, todos_create, todos_update, todos_delete)
+
 ## Personnages (create_character, update_character, get_character)
 
 Utilise quand l'auteur :

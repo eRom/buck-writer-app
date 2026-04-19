@@ -2,11 +2,13 @@ import { OpenAIError } from './openai.js';
 
 export const REALTIME_SESSIONS_URL = 'https://api.openai.com/v1/realtime/client_secrets';
 
+// Le mint `/v1/realtime/client_secrets` n'accepte QUE `type` + `model` dans
+// le session descriptor. Tout le reste (voice, instructions, turn_detection,
+// tools, modalities, input_audio_transcription) doit être envoyé plus tard
+// via un event `session.update` sur le DataChannel WebRTC.
 export interface RealtimeSessionDescriptor {
   type: 'realtime';
   model: string;
-  instructions?: string;
-  voice?: string;
 }
 
 export interface MintOpts {
