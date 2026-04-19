@@ -273,6 +273,7 @@ export function createChatRoute(
     const toolHandlers: Record<string, ToolHandler> = buildToolHandlers(
       deps.workspaceDir,
       deps.skills,
+      { db: deps.db, userId, nowMs: now },
     );
 
     if (deps.memory?.enabled) {

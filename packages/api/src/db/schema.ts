@@ -205,6 +205,25 @@ export const userSettings = sqliteTable('user_settings', {
     .default('{"bible":true,"writingTools":true,"webSearch":true}'),
 });
 
+// ---------- todos ----------
+
+export const todos = sqliteTable(
+  'todos',
+  {
+    id: text('id').primaryKey(),
+    userId: text('user_id')
+      .notNull()
+      .references(() => users.id, { onDelete: 'cascade' }),
+    text: text('text').notNull(),
+    done: integer('done').notNull().default(0),
+    createdAt: integer('created_at').notNull(),
+    updatedAt: integer('updated_at').notNull(),
+  },
+  (t) => ({
+    userIdx: index('todos_user_idx').on(t.userId, t.createdAt),
+  }),
+);
+
 // ---------- mcp ----------
 
 export const mcpServers = sqliteTable(

@@ -31,8 +31,12 @@ describe('buildToolDefinitions', () => {
     expect(defs.map((d) => d.name)).toContain('activate_skill');
   });
 
-  it('returns empty when nothing provided', () => {
-    expect(buildToolDefinitions(undefined, undefined)).toEqual([]);
+  it('always exposes todos tools', () => {
+    const names = buildToolDefinitions(undefined, undefined).map((d) => d.name);
+    expect(names).toContain('todos_list');
+    expect(names).toContain('todos_create');
+    expect(names).toContain('todos_update');
+    expect(names).toContain('todos_delete');
   });
 
   it('marks strict where schemas are strict-compliant', () => {
@@ -54,7 +58,7 @@ describe('buildToolHandlers', () => {
     expect(typeof handlers.shell_execute).toBe('function');
   });
 
-  it('returns empty when nothing provided', () => {
+  it('returns empty when nothing provided and no todos ctx', () => {
     expect(Object.keys(buildToolHandlers(undefined, undefined))).toEqual([]);
   });
 });

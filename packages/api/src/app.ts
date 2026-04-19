@@ -18,6 +18,7 @@ import type { MemoryServices } from './services/memory/bootstrap.js';
 import { createSettingsRoutes } from './routes/settings.js';
 import { createUsageRoutes } from './routes/usage.js';
 import { createMcpRoutes } from './routes/mcp.js';
+import { createTodosRoutes } from './routes/todos.js';
 import { createWorkspaceRoutes } from './routes/workspace.js';
 import { createAttachmentRoutes } from './routes/attachments.js';
 import { createWebDAVRoutes } from './services/webdav.js';
@@ -202,6 +203,11 @@ export function buildApp(deps: AppDeps) {
   // Usage routes (protected)
   app.use('/api/usage/*', authGuard({ db: deps.db, jwt: deps.jwt, nowMs: deps.nowMs }));
   app.route('/api/usage', createUsageRoutes({ db: deps.db, nowMs: deps.nowMs }));
+
+  // Todos routes (protected)
+  app.use('/api/todos/*', authGuard({ db: deps.db, jwt: deps.jwt, nowMs: deps.nowMs }));
+  app.use('/api/todos', authGuard({ db: deps.db, jwt: deps.jwt, nowMs: deps.nowMs }));
+  app.route('/api/todos', createTodosRoutes({ db: deps.db, nowMs: deps.nowMs }));
 
   // MCP routes (protected) — registry of remote MCP connectors.
   app.use('/api/mcp/*', authGuard({ db: deps.db, jwt: deps.jwt, nowMs: deps.nowMs }));
