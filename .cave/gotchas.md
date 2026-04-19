@@ -1,6 +1,51 @@
 # Gotchas — Buck Writer
 
-> Derniere mise a jour : 2026-04-18 (M5 Memory Supabase mergee)
+> Derniere mise a jour : 2026-04-18 (M7 Bible UI mergee)
+
+## Bible-mcp Docker runtime cassé : ERR_MODULE_NOT_FOUND express (M7, 2026-04-18)
+
+`Dockerfile.bible-mcp` (pré-existant sur main, pas introduit par M7) crash au runtime avec `Cannot find package 'express'`. Cause probable : le stage runtime copie `packages/bible-mcp/node_modules` mais en pnpm workspace les deps sont symlinkées via `/app/node_modules` (hoisting). Fix probable : copier aussi `/app/node_modules` ou utiliser `pnpm install --shamefully-hoist`. **Bloquera la mise en prod (Phase 9 deferred).** Issue à ouvrir.
+
+## MCP tools snake_case sans namespace (M7, 2026-04-18)
+
+Le serveur `bible-mcp` expose 51 tools en **snake_case sans namespace** (`list_characters`, `get_event`, `update_world_rule`, etc.). Le brainstorming initial assumait des noms dotted (`bible.characters.list`) — faux. Toujours vérifier l'inventaire réel via `tools/list` avant d'écrire des routes consommatrices. Inventaire complet capturé dans `packages/bible-ui/README.md`.
+
+## MCP list_* response shapes inconsistantes (M7, 2026-04-18)
+
+Les `list_*` tools de bible-mcp retournent des wrappers **inconsistants** :
+- `list_characters` → `{total, characters: [...]}`
+- `list_events` → `{total, events: [...]}`
+- `list_notes` → `{total, notes: [...]}`
+- `list_research` → `{total, research: [...]}`
+- `list_world_rules` → `{total, worldRules: [...]}` (camelCase, pas snake !)
+- `list_locations` → `{total, limit, offset, results: [...]}`
+- `list_interactions` → `{total, limit, offset, results: [...]}`
+
+Au lieu d'un array brut. Cause : différents auteurs des tools côté bible-mcp. Workaround côté bible-ui : chaque route déballe explicitement (`raw?.<key>`). Idéalement à harmoniser côté bible-mcp un jour.
+
+## get_bible_stats shape avec worldRules camelCase (M7, 2026-04-18)
+
+`get_bible_stats` retourne `{entities: {characters, locations, events, interactions, worldRules, research, notes}, totalEntities, totalEmbeddings, database}`. Note `worldRules` (camelCase) parmi des autres clés snake-friendly. Pas un wrapper avec total au top level — total est en sortie sœur de entities.
+
+## export_bible retourne du Markdown, pas du JSON (M7, 2026-04-18)
+
+`export_bible` retourne du **texte Markdown**, pas du JSON. Le `mcp-client.ts` faisait `JSON.parse(text)` unconditionnellement → throw sur le markdown. Fix : try/catch JSON.parse avec fallback `return first.text`. Le bouton "Exporter" affiche le résultat dans une `<Textarea readOnly>`.
+
+## restore_bible parameter = backup_name (M7, 2026-04-18)
+
+`list_backups` retourne des backups avec `name` (string) comme identifiant, pas `id`. Le tool `restore_bible` prend `backup_name` en paramètre, pas `id`. À ne pas confondre.
+
+## EADDRINUSE quand on lance pnpm dev + pnpm dev:bible (M7, 2026-04-18)
+
+`pnpm dev` racine lance TOUS les packages en parallèle (api+web+shared+bible-mcp+bible-ui). Lancer `pnpm dev:bible` en plus tente de redémarrer bible-mcp sur 7801 → EADDRINUSE. Solution : un seul terminal, soit `pnpm dev` soit `pnpm dev:bible`. Possible amélioration future : exclure bible-* de `pnpm dev` racine et faire 3 scripts distincts (`dev`, `dev:bible`, `dev:all`).
+
+## TanStackRouterVite plugin crash sans __root.tsx (M7, 2026-04-18)
+
+Si on ajoute le plugin `TanStackRouterVite()` à `vite.config.ts` AVANT que `src/routes/__root.tsx` n'existe, Vite crash au boot avec `rootRouteNode must not be undefined`. Workaround pendant le setup initial : retirer temporairement le plugin, créer `__root.tsx`, puis re-ajouter le plugin.
+
+## envDir Vite et .env racine unique (M7, 2026-04-18)
+
+Romain n'a qu'un `.env` racine. Vite par défaut cherche dans le cwd du package. Solution : `envDir: path.resolve(__dirname, '../..')` dans tous les `vite.config.ts` (web + bible-ui). Vite n'expose au browser QUE les vars préfixées `VITE_*` (sécurité par défaut), donc le `.env` racine peut continuer à contenir des secrets serveur.
 
 ## Drizzle snapshot meta out of sync (2026-04-18)
 

@@ -4,7 +4,7 @@ import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
 import type { Skill } from '../services/skills.js';
 import { assertSafePath } from '../utils/path-safe.js';
-import { isDestructiveCommand } from '../lib/kill-switch.js';
+import { validateShellCommand, listAllowedBins } from '../lib/kill-switch.js';
 import type { ToolDefinition } from '../lib/openai.js';
 import type { McpClient } from '../services/mcp-client.js';
 
@@ -81,7 +81,7 @@ export function buildToolDefinitions(
         type: 'function',
         function: {
           name: 'shell_execute',
-          description: 'Execute a shell command in the workspace. Destructive commands (rm, chmod, etc.) are blocked automatically; safe commands run without confirmation.',
+          description: `Execute a single command in the workspace. Strict whitelist: only ${listAllowedBins().join(', ')} are allowed. Shell metacharacters (|, &, ;, $, \`, >, <, \\) are forbidden — no pipes, no redirections, no chaining. For file deletion use delete_file.`,
           parameters: {
             type: 'object',
             properties: {
@@ -194,8 +194,9 @@ export function buildToolHandlers(
 
     handlers.shell_execute = async ({ command, cwd }) => {
       const cmd = String(command);
-      if (isDestructiveCommand(cmd)) {
-        return { error: 'Commande bloquée : opération destructive détectée', status: 'blocked' as const };
+      const validation = validateShellCommand(cmd);
+      if (!validation.ok) {
+        return { error: validation.error, status: 'blocked' as const };
       }
       let resolvedCwd = wd;
       if (cwd) {
@@ -205,8 +206,9 @@ export function buildToolHandlers(
           return { error: `invalid cwd: ${cwd}` };
         }
       }
+      const [bin, ...rest] = validation.argv;
       try {
-        const { stdout, stderr } = await execFileAsync('/bin/sh', ['-c', cmd], {
+        const { stdout, stderr } = await execFileAsync(bin, rest, {
           cwd: resolvedCwd,
           timeout: SHELL_TIMEOUT_MS,
           maxBuffer: SHELL_MAX_BUFFER,

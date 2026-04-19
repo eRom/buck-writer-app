@@ -1,6 +1,6 @@
 # Architecture — Buck Writer
 
-> Derniere mise a jour : 2026-04-18 (M5 Memory Supabase mergee)
+> Derniere mise a jour : 2026-04-18 (M7 Bible UI mergee — package @buck/bible-ui + 3eme service Docker)
 
 ## Vue d'ensemble
 
@@ -29,13 +29,14 @@ buck-writer-app/
       supabase/functions/    — Edge Functions Deno (consolidate-memory, compact-state, _shared/)
     web/          — React SPA, TanStack Router, composants chat + workspace
     bible-mcp/    — Serveur MCP bible (HTTP, 51 tools, OpenAI embeddings)
+    bible-ui/     — SPA Vite/React 19 (TanStack Router + Query, shadcn) consommant bible-mcp via JSON-RPC, servie par nginx en prod (M7)
   workspace/systems/  — SYSTEM.md + RULES.md (live-editable, hot-reload)
   data/workspace/     — workspace utilisateur (fichiers, skills/, .attachments/)
   data/bible/         — SQLite bible (characters, locations, events, embeddings)
   docs/superpowers/
     specs/        — specs de design par milestone
     plans/        — plans d'implementation (+ m5-supabase-provisioning, m5-go-no-go runbooks)
-  docker-compose.yml, docker-compose.local.yml, Dockerfile.app, Dockerfile.bible-mcp
+  docker-compose.yml, docker-compose.local.yml, Dockerfile.app, Dockerfile.bible-mcp, Dockerfile.bible-ui
 ```
 
 ## Flux de donnees
@@ -82,6 +83,7 @@ buck-writer-app/
 - **Settings / Usage / Budget** : inchange depuis M2
 - **Workspace** : REST + WebDAV + skills + file tools (read/list/create/delete + shell_execute + activate_skill); `shell_execute` auto-execute, destructif bloque par `isDestructiveCommand`
 - **Memory (M5)** : orchestrator parallel fetch avec fail-soft, services `remember` (retry buffer) / `recall` (bump access async) / `state` (KV + compaction Edge), `embedText` wrappe OpenAI + insert `usage_events`, `syncMemoryUsage` cursor-based cross-DB, `bootstrap.ts` compose tout et retourne `MemoryServices { enabled, buildContext, remember, recall, state, syncUsage, drainRetryBuffer }`
+- **Bible UI (M7, 2026-04-18)** : nouveau package `@buck/bible-ui` (SPA Vite/React 19 + TanStack Router + Query 5 + shadcn). 13 routes file-based : Dashboard (`get_bible_stats`), CRUD pour 7 entites (characters/locations/events/notes/research/world-rules/interactions), pages speciales Search (fulltext+semantic via Tabs), Timeline (`get_timeline`), Graph (Sigma + graphology, edges depuis interactions.characters), Import/Export (export = Markdown), Backups. AppShell : TopBar 38px + SidebarLeft 300px + RightPanel 300px, layout calque sur Buck. Conso MCP via `useMcpQuery`/`useMcpMutation` (TanStack Query wrappers autour de `callTool` JSON-RPC). Card-referentiel de Buck devient `<a target="_blank">` vers `VITE_BIBLE_UI_URL` (default `http://localhost:5174`). Prod : container nginx alpine (`Dockerfile.bible-ui`, image 53MB) qui sert le SPA + proxy `/mcp` vers `bible-mcp:7801` via reseau Docker `internal`. Caddy basicauth prevu sur `bible.buck.romain-ecarnot.com` (snippet pret dans `docs/deploy/caddy-snippet-bible.md`, deploiement VPS differe).
 - **UI (erom-design v2, 2026-04-18)** : `ChatShell` (shell 3 panneaux, panel droit sans bg/border flottant) + `SidebarLeft` (search + favoris/today/7j/older + user pill dropdown) + `PanelRight` avec 4 cards (Parametres = modele + raisonnement + budget / Workspace = file tree / Referentiel = Bible MCP status / MCP placeholder). Chat eclate en `ChatStream` + `MessageUser` + `MessageAssistant` + `ReasoningCollapsible` + `ToolCallsCollapsible` + `ToolCallItem` (absorbe approval/terminal/tool-call-display) + `ChatEmptyState` + `MessageFooter`. `ChatInput` auto-grow vertical (max 33vh) + chips attachments. Route `/settings` mono-page (Compte + General + Budget sections). Route `/workspace` supprimee. Login re-skinne en card centree.
 
 ## DX

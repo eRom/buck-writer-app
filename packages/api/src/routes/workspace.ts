@@ -17,7 +17,14 @@ export interface WorkspaceRouteDeps {
 }
 
 /** Directories that cannot themselves be deleted (root-level protected dirs). */
-const PROTECTED_ROOT_DIRS = new Set(['prompts', 'skills']);
+const PROTECTED_ROOT_DIRS = ['prompts', 'skills'] as const;
+
+function isProtectedPath(normalized: string): string | null {
+  for (const dir of PROTECTED_ROOT_DIRS) {
+    if (normalized === dir || normalized.startsWith(dir + '/')) return dir;
+  }
+  return null;
+}
 
 async function buildTree(
   dirPath: string,
@@ -197,10 +204,12 @@ export function createWorkspaceRoutes(
 
     const abs = await assertSafePath(workspaceDir, filePath);
 
-    // Check if this is a protected root-level directory
+    // Block deletion of any path inside a protected root (prompts/, skills/, …),
+    // not just the root directories themselves.
     const normalized = filePath.replace(/\\/g, '/').replace(/^\/+/, '').replace(/\/+$/, '');
-    if (PROTECTED_ROOT_DIRS.has(normalized)) {
-      throw new HttpError(403, 'protected_directory', `cannot delete protected directory: ${normalized}`);
+    const protectedDir = isProtectedPath(normalized);
+    if (protectedDir) {
+      throw new HttpError(403, 'protected_directory', `cannot delete inside protected directory: ${protectedDir}`);
     }
 
     // Check exists

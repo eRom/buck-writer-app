@@ -32,6 +32,13 @@ const Schema = z.object({
   MEMORY_ENABLED: z.coerce.boolean().default(false),
   OPENAI_EMBEDDING_MODEL: z.string().default('text-embedding-3-large'),
   EDGE_INVOKE_KEY: z.string().min(1).optional(),
+  /**
+   * Set to true ONLY when the API sits behind a trusted reverse proxy
+   * (Caddy on the same VPS) that overwrites X-Forwarded-For with the real
+   * client IP. When false, X-Forwarded-For is ignored for rate-limit keys
+   * and the TCP socket peer address is used instead.
+   */
+  TRUST_PROXY: z.coerce.boolean().default(false),
 });
 
 export type Env = z.infer<typeof Schema>;

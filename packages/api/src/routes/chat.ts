@@ -8,7 +8,6 @@ import type { PromptsRef } from '../services/prompts.js';
 import type { Skill } from '../services/skills.js';
 import { chatSessions, messages, usageEvents, userSettings, alertTriggers, attachments } from '../db/schema.js';
 import { isImage, isExtractable, extractText } from '../services/extractor.js';
-import { isDestructiveCommand } from '../lib/kill-switch.js';
 import {
   streamChat,
   chat,
@@ -25,8 +24,8 @@ import { recallTool, rememberTool } from '../services/memory/tools.js';
 import { buildSystemPromptWithMemory } from '../lib/prompts.js';
 
 // Tools asking the user for explicit approval on every call. shell_execute is
-// NOT in this list — destructive shell commands are blocked upstream by the
-// kill-switch, non-destructive ones (ls, date, pwd…) run without friction.
+// NOT in this list — it enforces a strict whitelist (see kill-switch.ts) so
+// allowed commands run without friction, forbidden ones are rejected upstream.
 const TOOLS_REQUIRING_APPROVAL = ['create_file', 'delete_file'];
 
 export interface ChatRouteDeps {
@@ -372,25 +371,6 @@ export function createChatRoute(
               const name = tc.function.name;
 
               if (TOOLS_REQUIRING_APPROVAL.includes(name)) {
-                // Kill switch for shell_execute even in approval path
-                if (name === 'shell_execute' && typeof args.command === 'string' && isDestructiveCommand(args.command)) {
-                  const blocked = { error: 'Commande bloquée : opération destructive détectée', status: 'blocked' as const };
-                  llmMessages.push({
-                    role: 'tool',
-                    tool_call_id: tc.id,
-                    content: JSON.stringify(blocked),
-                  });
-                  collectedToolMetas.push({
-                    toolCallId: tc.id,
-                    toolName: name,
-                    args,
-                    status: 'blocked',
-                    result: blocked,
-                  });
-                  sendEvent('tool_result', { toolCallId: tc.id, toolName: name, result: blocked });
-                  continue;
-                }
-
                 sendEvent('tool_approval', {
                   toolCallId: tc.id,
                   toolName: name,

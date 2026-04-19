@@ -1,6 +1,6 @@
 # Fichiers cles — Buck Writer
 
-> Derniere mise a jour : 2026-04-18 (M5 Memory Supabase mergee)
+> Derniere mise a jour : 2026-04-18 (M7 Bible UI mergee)
 
 ## API (packages/api/src/)
 
@@ -99,6 +99,31 @@
 | `tools/{characters,locations,events,interactions,world-rules,research,notes}.ts` | CRUD par domaine |
 | `tools/{search,export,import,duplicates,templates,reindex,backup,stats}.ts` | Tools transverses |
 
+## Bible UI (packages/bible-ui/src/) — M7 (2026-04-18)
+
+| Fichier | Role |
+|---------|------|
+| `main.tsx` | Bootstrap : RouterProvider + QueryClientProvider + ThemeProvider (dark default) |
+| `routes/__root.tsx` | Layout racine : `<AppShell>` (TopBar + SidebarLeft + RightPanel) wrap `<Outlet/>` |
+| `routes/index.tsx` | Dashboard : `useMcpQuery('get_bible_stats')`, grid 4-col cards stats par type |
+| `routes/{characters,locations,events,notes,research,world-rules,interactions}.tsx` | Liste CRUD + Sheet creation (snake_case tool names) |
+| `routes/{...}.$id.tsx` | Detail edit + ConfirmDialog delete |
+| `routes/search.tsx` | Tabs fulltext/semantic, `search_fulltext` / `search_semantic` |
+| `routes/timeline.tsx` | Frise verticale `get_timeline` (chapter+sortOrder, pas de date) |
+| `routes/graph.tsx` | Sigma + graphology via `useGraph` (combine 4 list_* + parse interactions.characters) |
+| `routes/import-export.tsx` | `export_bible` (Markdown !) + `import_bulk` |
+| `routes/backups.tsx` | `list_backups` + `backup_bible` + `restore_bible` (id = backup_name) |
+| `api/mcp-client.ts` | `callTool(name, params)` POST `/mcp` JSON-RPC + fallback markdown si JSON.parse fail |
+| `hooks/use-mcp.ts` | `useMcpQuery` / `useMcpMutation` wrappers TanStack Query autour callTool |
+| `hooks/use-graph.ts` | Compose nodes/edges depuis 4 list_* tools + parse CSV/JSON interactions.characters |
+| `components/entities/{entity-card,entity-list,entity-form}.tsx` | Composants generiques CRUD multi-type (FIELDS config par type) |
+| `components/layout/{app-shell,topbar,sidebar-left,right-panel}.tsx` | Shell 3 panneaux calque Buck |
+| `components/ui/*.tsx` | 19 composants shadcn (7 copies depuis @buck/web + 12 installes) |
+| `styles/globals.css` | Tokens erom v2 OKLCH (copie de @buck/web/src/index.css) |
+| `theme-provider.tsx` | Copie de @buck/web (defaultTheme="dark") |
+| `nginx.conf` | Sert dist/ + proxy `/mcp` → `bible-mcp:7801` (resolver Docker 127.0.0.11) |
+| `vite.config.ts` | TanStackRouterVite + react + tailwind, port 5174, envDir racine, proxy `/mcp` → 7801 |
+
 ## Web (packages/web/src/) — erom-design v2 (2026-04-18)
 
 | Fichier | Role |
@@ -169,7 +194,9 @@
 | `.env.development` | Overrides dev local, chemins relatifs `../../` depuis packages/ |
 | `Dockerfile.app` | Multi-stage build Node 20 Alpine pour buck (api+web) |
 | `Dockerfile.bible-mcp` | Multi-stage Node 20 Alpine pour bible-mcp |
-| `docker-compose.yml` | Services buck + bible-mcp, networks caddy-public + internal |
+| `Dockerfile.bible-ui` | Multi-stage Node 20 builder + nginx alpine runtime (M7), proxy `/mcp` vers bible-mcp |
+| `docker-compose.yml` | Services buck + bible-mcp + **bible-ui** (M7), networks caddy-public + internal |
+| `docs/deploy/caddy-snippet-bible.md` | Snippet Caddy basicauth pour `bible.buck.romain-ecarnot.com` (M7, deploy differe) |
 | `docker-compose.local.yml` | Dev hybride : bible-mcp Docker + buck pnpm dev |
 | `eslint.config.mjs` | ESLint flat config monorepo |
 | `workspace/systems/{SYSTEM,RULES}.md` | Prompts live-editable, committed (dev) |

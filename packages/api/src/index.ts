@@ -205,6 +205,7 @@ const app = buildApp({
   mcpClient,
   memory,
   buckUserId: env.BUCK_USER_ID,
+  trustProxy: env.TRUST_PROXY,
 });
 
 serve({ fetch: app.fetch, port: env.PORT, hostname: '0.0.0.0' }, (info) => {

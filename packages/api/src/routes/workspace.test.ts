@@ -295,7 +295,7 @@ describe('workspace routes', () => {
       expect(res.status).toBe(403);
     });
 
-    it('allows deleting contents inside protected dirs', async () => {
+    it('refuses to delete files inside protected dirs', async () => {
       ctx = await makeCtx();
       await fsp.mkdir(path.join(ctx.workspaceDir, 'prompts'), { recursive: true });
       await fsp.writeFile(
@@ -313,10 +313,28 @@ describe('workspace routes', () => {
           },
         },
       );
-      expect(res.status).toBe(200);
+      expect(res.status).toBe(403);
       expect(
         fs.existsSync(path.join(ctx.workspaceDir, 'prompts', 'system.md')),
-      ).toBe(false);
+      ).toBe(true);
+    });
+
+    it('refuses to delete nested paths inside protected dirs (skills)', async () => {
+      ctx = await makeCtx();
+      await fsp.mkdir(path.join(ctx.workspaceDir, 'skills', 'foo'), { recursive: true });
+      await fsp.writeFile(path.join(ctx.workspaceDir, 'skills', 'foo', 'SKILL.md'), 'x');
+
+      const res = await ctx.app.request(
+        '/api/workspace/file?path=skills/foo/SKILL.md',
+        {
+          method: 'DELETE',
+          headers: {
+            cookie: `buck_session=${ctx.sessionJwt}; buck_csrf=${CSRF_TOKEN}`,
+            'x-csrf-token': CSRF_TOKEN,
+          },
+        },
+      );
+      expect(res.status).toBe(403);
     });
   });
 });

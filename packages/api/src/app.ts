@@ -26,7 +26,7 @@ import type { PromptsRef } from './services/prompts.js';
 import { authGuard } from './middleware/auth.js';
 import { securityHeaders } from './middleware/security-headers.js';
 import { csrfMiddleware } from './middleware/csrf.js';
-import { createRateLimiter, ipKey } from './middleware/rate-limit.js';
+import { createRateLimiter, createIpKey } from './middleware/rate-limit.js';
 import { budgetGuard } from './middleware/budget-guard.js';
 import { users, sessionsAuth } from './db/schema.js';
 import { sha256Hex } from './utils/crypto.js';
@@ -65,6 +65,11 @@ export interface AppDeps extends AuthRoutesDeps, SessionRoutesDeps {
    * authenticated user id when omitted.
    */
   buckUserId?: string;
+  /**
+   * Whether the API runs behind a trusted reverse proxy that rewrites
+   * X-Forwarded-For. Defaults to false (safe). See env.TRUST_PROXY.
+   */
+  trustProxy?: boolean;
 }
 
 // Re-export ChatRouteDeps for consumers
@@ -72,6 +77,7 @@ export type { ChatRouteDeps };
 
 export function buildApp(deps: AppDeps) {
   const app = new Hono<{ Variables: { userId: string } }>();
+  const ipKey = createIpKey(deps.trustProxy ?? false);
   app.use('*', securityHeaders());
   app.use('*', csrfMiddleware());
 
@@ -173,8 +179,17 @@ export function buildApp(deps: AppDeps) {
     app.route('/webdav', createWebDAVRoutes({ workspaceDir: deps.workspaceDir, jwt: deps.jwt }));
   }
 
-  // E2E-only helpers. Gated behind E2E=1 to prevent leakage.
+  // E2E-only helpers. Triple-gated: E2E=1 AND NODE_ENV !== 'production' AND
+  // an explicit fail-fast above makes it impossible to mount these routes in
+  // a production build even if both flags get set by accident.
+  if (process.env.E2E === '1' && process.env.NODE_ENV === 'production') {
+    throw new Error(
+      '[fatal] refusing to start: E2E=1 is incompatible with NODE_ENV=production. ' +
+      'These routes provide passwordless session issuance and must NEVER be mounted in production.',
+    );
+  }
   if (process.env.E2E === '1' && process.env.NODE_ENV !== 'production') {
+    console.warn('[api] /!\\ E2E routes mounted (/api/__e2e__/*) — passwordless dev-login enabled. DO NOT USE IN PRODUCTION.');
     const SESSION_TTL_SECONDS = 30 * 24 * 60 * 60;
     const SESSION_TTL_MS = SESSION_TTL_SECONDS * 1000;
 

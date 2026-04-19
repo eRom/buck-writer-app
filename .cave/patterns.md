@@ -1,6 +1,27 @@
 # Patterns et conventions — Buck Writer
 
-> Derniere mise a jour : 2026-04-18 (M5 Memory Supabase mergee)
+> Derniere mise a jour : 2026-04-18 (M7 Bible UI mergee)
+
+## Bible UI — patterns specifiques (M7)
+
+- **Outils MCP** : nommage **snake_case sans namespace** (`list_characters`, `get_character`, `create_character`, etc.). PAS de namespace dotted. Inventaire complet 51 tools dans `packages/bible-ui/README.md`.
+- **Shape responses MCP** : les `list_*` tools retournent un wrapper `{ total, <typeName>: [...] }` ou `{ total, limit, offset, results: [...] }` selon les tools. Pas d'array brut. Conventions par tool :
+  - `list_characters` → `{characters: [...]}`
+  - `list_events` → `{events: [...]}`
+  - `list_notes` → `{notes: [...]}`
+  - `list_research` → `{research: [...]}`
+  - `list_world_rules` → `{worldRules: [...]}` (camelCase, pas snake !)
+  - `list_locations` → `{results: [...]}` + limit/offset
+  - `list_interactions` → `{results: [...]}` + limit/offset
+- **Entites Bible heterogenes** : pas de champ `name` partout. `event.title`, `note.content`, `world_rule.title+category`, `research.topic+content`, `interaction.description+nature+characters` (CSV string ou JSON array). EntityCard utilise extracteur `getTitle(entity)` par type.
+- **CSV strings end-to-end** : champs `event.characters`, `interaction.characters` stockes en string CSV (ou JSON array selon le tool), ne PAS faire split/join cote client par defaut. `useGraph` parse via `JSON.parse` puis fallback `,` split.
+- **TanStack Router file-based** : routes dans `src/routes/`, `__root.tsx` = layout, `<entity>.tsx` = liste, `<entity>.$id.tsx` = detail. `routeTree.gen.ts` auto-genere par `TanStackRouterVite()` plugin, ignore via `.gitignore`.
+- **mcp-client.ts** : `JSON.parse(text)` avec fallback `return text` si parse echoue (cas `export_bible` qui retourne du Markdown).
+- **MCP via nginx** : SPA appelle `/mcp` relatif. En dev, Vite proxy `/mcp` vers `localhost:7801`. En prod, nginx du container `bible-ui` proxy `/mcp` vers `bible-mcp:7801` via reseau Docker `internal`. Same-origin partout, zero CORS.
+- **nginx resolver Docker** : `nginx.conf` doit utiliser `resolver 127.0.0.11` + variable pour upstream sinon le container ne boot pas si `bible-mcp` n'est pas resolu au demarrage.
+- **Versions deps alignees sur @buck/web** : eviter drift monorepo. Bible-ui copie ses versions React/Vite/TanStack/etc. depuis web.
+- **Composants shadcn** : copier depuis `@buck/web/src/components/ui/` ce qui existe (7 composants), installer le manquant via `pnpx shadcn@latest add ...`. `toast` est deprecated upstream → utiliser `sonner` a la place (`import { toast } from 'sonner'`).
+
 
 ## Architecture
 

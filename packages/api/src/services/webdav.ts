@@ -86,6 +86,12 @@ const DAV_METHODS = 'OPTIONS, PROPFIND, GET, HEAD, PUT, DELETE, MKCOL, MOVE, COP
  * - Bearer <token> header
  * - Basic auth (password = JWT, username ignored)
  * Verifies scope=webdav.
+ *
+ * SECURITY INVARIANT: this middleware MUST NOT read cookies. WebDAV is
+ * excluded from the CSRF middleware, so authenticating via the browser
+ * session cookie (buck_session) would expose every WebDAV mutation to CSRF
+ * forgery from any cross-origin page. Authentication is header-only and
+ * scope-restricted to webdav. Locked in by webdav.test.ts.
  */
 async function webdavAuth(
   jwt: JwtService,

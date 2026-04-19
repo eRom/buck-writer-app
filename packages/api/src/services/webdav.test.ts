@@ -83,6 +83,25 @@ describe('WebDAV auth', () => {
     });
     expect(res.status).toBe(200);
   });
+
+  // Defense-in-depth: WebDAV is excluded from the CSRF middleware, so a
+  // session cookie (scope=app) must NEVER authenticate WebDAV requests —
+  // otherwise a cross-origin browser could forge uploads/deletes via cookie.
+  it('rejects requests authenticated only by buck_session cookie', async () => {
+    const sessionJwt = await jwt.sign({ sub: 'user-1', scope: 'app' }, '1h');
+    const res = await req('OPTIONS', '/webdav/', {
+      headers: { cookie: `buck_session=${sessionJwt}` },
+    });
+    expect(res.status).toBe(401);
+  });
+
+  it('rejects even with a webdav-scoped JWT delivered as cookie (must be header)', async () => {
+    const token = await jwt.sign({ sub: 'user-1', scope: 'webdav' }, '1h');
+    const res = await req('OPTIONS', '/webdav/', {
+      headers: { cookie: `buck_session=${token}` },
+    });
+    expect(res.status).toBe(401);
+  });
 });
 
 describe('OPTIONS', () => {
