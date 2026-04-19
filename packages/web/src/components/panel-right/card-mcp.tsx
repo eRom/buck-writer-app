@@ -1,11 +1,60 @@
-import { useQuery } from '@tanstack/react-query';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Plug } from 'lucide-react';
-import { fetchMcpServers } from '@/lib/mcp';
+import { fetchMcpServers, setMcpEnabled } from '@/lib/mcp';
+import type { McpServerSummary } from '@/lib/mcp';
+
+function Badge({
+  enabled,
+  onClick,
+  disabled,
+}: {
+  enabled: boolean;
+  onClick?: () => void;
+  disabled?: boolean;
+}) {
+  const base =
+    'inline-flex items-center rounded-md px-2 py-0.5 text-[10px] font-medium transition-colors';
+  const color = enabled
+    ? 'bg-emerald-500/10 text-emerald-400'
+    : 'bg-gray-500/10 text-gray-400';
+  const interactive =
+    onClick && !disabled ? 'cursor-pointer hover:brightness-125' : 'cursor-default';
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      disabled={!onClick || disabled}
+      aria-pressed={enabled}
+      aria-label={enabled ? 'Désactiver' : 'Activer'}
+      className={`${base} ${color} ${interactive}`}
+    >
+      {enabled ? 'on' : 'off'}
+    </button>
+  );
+}
 
 export function CardMcp() {
+  const qc = useQueryClient();
   const { data, isLoading } = useQuery({
     queryKey: ['mcp-servers'],
     queryFn: fetchMcpServers,
+  });
+  const toggle = useMutation({
+    mutationFn: ({ id, enabled }: { id: string; enabled: boolean }) =>
+      setMcpEnabled(id, enabled),
+    onMutate: async ({ id, enabled }) => {
+      await qc.cancelQueries({ queryKey: ['mcp-servers'] });
+      const prev = qc.getQueryData<McpServerSummary[]>(['mcp-servers']);
+      qc.setQueryData<McpServerSummary[]>(
+        ['mcp-servers'],
+        (old) => old?.map((s) => (s.id === id ? { ...s, enabled } : s)) ?? [],
+      );
+      return { prev };
+    },
+    onError: (_err, _vars, ctx) => {
+      if (ctx?.prev) qc.setQueryData(['mcp-servers'], ctx.prev);
+    },
+    onSettled: () => qc.invalidateQueries({ queryKey: ['mcp-servers'] }),
   });
 
   return (
@@ -39,18 +88,20 @@ export function CardMcp() {
                   )}
                 </div>
                 {s.description && (
-                  <p className="truncate text-[10px] text-muted-foreground">{s.description}</p>
+                  <p className="truncate text-[10px] text-muted-foreground">
+                    {s.description}
+                  </p>
                 )}
               </div>
-              <span
-                className={
-                  s.enabled
-                    ? 'inline-flex items-center rounded-md bg-emerald-500/10 px-2 py-0.5 text-[10px] font-medium text-emerald-400'
-                    : 'inline-flex items-center rounded-md bg-gray-500/10 px-2 py-0.5 text-[10px] font-medium text-gray-400'
+              <Badge
+                enabled={s.enabled}
+                disabled={s.core || toggle.isPending}
+                onClick={
+                  s.core
+                    ? undefined
+                    : () => toggle.mutate({ id: s.id, enabled: !s.enabled })
                 }
-              >
-                {s.enabled ? 'on' : 'off'}
-              </span>
+              />
             </li>
           ))}
         </ul>
