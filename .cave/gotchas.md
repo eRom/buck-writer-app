@@ -1,6 +1,93 @@
 # Gotchas — Buck Writer
 
-> Derniere mise a jour : 2026-04-18 (M7 Bible UI mergee)
+> Derniere mise a jour : 2026-04-19 (premier deploy VPS prod + 5 sec fixes + UX graph)
+
+## Bug critique : migrate.ts CLI block re-fired in bundled dist/index.js (2026-04-19)
+
+`tsup` bundle `src/db/migrate.ts` INTO `dist/index.js`. Le legacy CLI guard
+`if (import.meta.url === \`file://\${process.argv[1]}\`)` matchait dans LES DEUX cas :
+- direct invocation : argv[1]=/app/dist/db/migrate.js, meta=...db/migrate.js ✓
+- bundled boot : argv[1]=/app/dist/index.js, meta=/app/dist/index.js ✓ (faux positif)
+Au boot de l'app le bloc bundlé re-lance `runMigrations({databaseUrl:...})` SANS `migrationsFolder`
+→ drizzle defaulte à cwd-relative `/migrations` → ENOENT → crashloop sur le VPS.
+**Fix** : ajouter `&& import.meta.url.endsWith('/migrate.js')` à la guard.
+Pattern à appliquer à tout fichier qui contient un bloc CLI-only ET est importé par un autre entry.
+
+## Bug critique : TanStack flat-routing nesting silencieux (bible-ui, 2026-04-19)
+
+Avec TanStack Router file-based + flat dot-notation, `events.tsx` devient automatiquement
+le **layout parent** de `events.$id.tsx`. Si `events.tsx` n'a pas `<Outlet/>`, naviguer
+vers `/events/<uuid>` change l'URL mais affiche toujours le grid de events (le child detail
+ne monte jamais). Symptome : "le click sur Card ne fait rien".
+**Fix** : renommer `events.$id.tsx` → `events_.$id.tsx` (underscore = non-nested route).
+URL inchangée, parent-child link rompu. Appliqué à characters, events, locations, interactions, notes, research, world-rules.
+
+## bible-mcp Docker : ERR_MODULE_NOT_FOUND express RÉSOLU (2026-04-19)
+
+Le Dockerfile.bible-mcp copiait `packages/bible-mcp/node_modules` au runtime stage,
+mais pnpm workspace hoiste vers `/app/node_modules`. Crash `Cannot find package 'express'`.
+**Fix** : utiliser `pnpm deploy --filter @buck/bible-mcp --prod /deploy` au build stage,
+puis COPY /deploy → /app au runtime. Crée un dir flat self-contained avec toutes les deps.
+Pattern à reproduire pour tout package pnpm workspace dockerisé.
+
+## Sécurité : 5 vulns patchées par audit Gemini (2026-04-19)
+
+Toutes mergées commit `49ee6e6` :
+- **VULN-001 P0** : `shell_execute` blacklist contournable (r\\m, base64|sh, $(...)).
+  Replaced by strict whitelist (35 binaires) + tokenizer rejetant tous métacaractères shell + `execFile` direct (plus de `/bin/sh -c`). Voir `lib/kill-switch.ts`.
+- **VULN-002 P1** : `DELETE /file?path=prompts/SYSTEM.md` n'était pas bloqué (set check
+  exact match). Fix : `isProtectedPath()` check `===` ET `startsWith(dir + '/')`.
+- **VULN-003 P1** : `X-Forwarded-For` spoofing du rate-limiter. Fix : env `TRUST_PROXY=true`
+  uniquement si derrière reverse-proxy de confiance, sinon socket peer address via `getConnInfo`.
+- **VULN-004 P2** : E2E backdoor. Fail-fast au boot si `E2E=1 && NODE_ENV=production`.
+  ⚠️ piège trouvé en prod : le `.env` Romain avait `E2E=1` → boot a planté → fix `.env.production` séparé.
+- **VULN-005 P2** : WebDAV CSRF (déjà OK, juste tests de régression cookie-auth rejected).
+
+## RightPanel mort dans bible-ui (2026-04-19)
+
+`AppShell` rendait inconditionnellement un `<RightPanel>` que **aucune route ne peuplait**,
+résultant en colonne permanente "Sélectionner une entité…" (et double-sidebar avec NodeDetail
+sur /graph). Fichier supprimé, prop retirée. Si besoin futur d'un panneau droit contextuel,
+le poser au niveau de la route, pas du shell.
+
+## use-graph : extractArray() défensive pour shape MCP inconsistante (2026-04-19)
+
+Les `list_*` MCP retournent `.results` (locations, interactions) ou `.<typeName>`
+(characters, events). Pour `useGraph()` qui consomme les 4, helper `extractArray<T>()`
+qui prend la première valeur Array de l'objet. Plus robuste qu'un dispatch par tool name.
+Source : pattern emprunté à `barda-mcp-ecrivain-bible/packages/ui/src/hooks/useGraph.ts`.
+
+## Resend : domaine d'envoi doit être vérifié (2026-04-19)
+
+`RESEND_FROM=romain.ecarnot@gmail.com` → 422 `gmail.com domain is not verified`.
+Resend exige un domaine custom vérifié (SPF + DKIM via Cloudflare). Romain a déjà
+`romain-ecarnot.com` vérifié → utiliser `dev@romain-ecarnot.com` (ou `noreply@`, `buck@`).
+Workaround quick : `onboarding@resend.dev` (pas joli mais marche).
+
+## Deploy VPS : pattern git-on-vps + deploy key (2026-04-19)
+
+Pas de CI/CD. Pattern adopté :
+1. Repo cloné sur VPS dans `/opt/buck-writer-app` via deploy key SSH github (read-only).
+   Config SSH : `Host github-buck` dans `~/.ssh/config` qui pointe vers `~/.ssh/id_ed25519_buck`.
+2. `.env.production` (gitignored) scp depuis local → VPS comme `.env`.
+3. `git pull && docker compose build && docker compose up -d`.
+4. Script `scripts/deploy-vps.sh` automatise tout (idempotent, sanity HTTPS curls finaux).
+
+Réseau Docker : `caddy-public` (external) partagé entre la stack Buck et le Caddy
+de Trinity (qui sert aussi n8n + voice-agent sur le même VPS). Caddy attaché aux 2 réseaux
+(`trinity-network` + `caddy-public`).
+
+## .env.production séparé du .env dev (2026-04-19)
+
+Ne pas réutiliser le `.env` local pour la prod. Pièges trouvés en prod sur le `.env` perso :
+- `E2E=1` (dev local) → fail-fast en prod ✓ (sécurité)
+- `MEMORY_ENABLED` listé 2× (true puis false → la dernière gagne)
+- `BIBLE_PASSWORD_HASH=None` (placeholder oublié)
+- `TRUST_PROXY` absent
+- `RESEND_FROM` = email gmail non vérifié dans Resend
+**Pattern** : maintenir `.env.production` dédié + `.gitignore` (déjà fait).
+
+
 
 ## Bible-mcp Docker runtime cassé : ERR_MODULE_NOT_FOUND express (M7, 2026-04-18)
 

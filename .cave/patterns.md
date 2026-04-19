@@ -1,6 +1,44 @@
 # Patterns et conventions — Buck Writer
 
-> Derniere mise a jour : 2026-04-18 (M7 Bible UI mergee)
+> Derniere mise a jour : 2026-04-19 (deploy VPS + UX graph + sécu)
+
+## TanStack Router file-based : underscore = non-nested (2026-04-19)
+
+En flat dot-notation, `parent.tsx` devient automatiquement le **layout** de `parent.child.tsx`.
+Si on ne veut PAS de nesting (ex: `/events` = liste, `/events/$id` = detail standalone),
+renommer en `parent_.child.tsx` (underscore suffix). URL identique, mais la route est sœur
+au lieu d'enfant. À utiliser pour TOUTES les `<entity>_.$id.tsx` de bible-ui.
+
+## Unwrap MCP list responses : extractArray<T>() (2026-04-19)
+
+Les `list_*` MCP retournent inconsistamment `.results` ou `.<typeName>`. Pour les hooks
+qui consomment plusieurs tools (ex: `useGraph` lit characters + locations + events + interactions),
+helper défensif `extractArray<T>(data)` qui prend la première valeur Array de l'objet.
+Plus robuste qu'un dispatch par tool name. Voir `packages/bible-ui/src/hooks/use-graph.ts`.
+
+## Sécurité shell : whitelist + tokenizer, jamais blacklist (2026-04-19)
+
+`packages/api/src/lib/kill-switch.ts` : `validateShellCommand(cmd)` parse via tokenizer
+maison (gère quotes simples/doubles, refuse tous métacaractères `|&;<>(){}\`$\\`),
+puis exige que argv[0] soit dans `ALLOWED_BINS` (35 binaires). Exécution via
+`execFile(bin, args)` direct, **jamais `/bin/sh -c`**. Pattern à reproduire pour
+toute commande exécutée à partir d'input non-controlé.
+
+## Test bundle ESM CLI guard : check filename suffix (2026-04-19)
+
+Tout bloc CLI bootstrap `if (import.meta.url === \`file://\${process.argv[1]}\`)` doit
+ALSO vérifier que le fichier match le nom attendu (`import.meta.url.endsWith('/migrate.js')`),
+sinon le bundler peut le re-fire au boot d'un autre entry qui l'a importé. Bug réel
+prod 2026-04-19 sur `db/migrate.ts` bundlé dans `dist/index.js`.
+
+## Deploy VPS : TRUST_PROXY=true derrière Caddy (2026-04-19)
+
+Le rate-limiter (et tout code qui lit l'IP) doit recevoir l'IP réelle du client, pas
+l'IP du conteneur Caddy. Variable d'env `TRUST_PROXY=true` pour activer la lecture
+de `X-Forwarded-For` leftmost. À NE PAS mettre à `true` sur un déploiement direct
+(sinon n'importe qui peut spoofer l'IP).
+
+
 
 ## Bible UI — patterns specifiques (M7)
 

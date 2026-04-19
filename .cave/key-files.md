@@ -1,6 +1,16 @@
 # Fichiers cles — Buck Writer
 
-> Derniere mise a jour : 2026-04-18 (M7 Bible UI mergee)
+> Derniere mise a jour : 2026-04-19 (deploy VPS prod + UX graph + 5 sec fixes)
+
+## Deploy / Infra
+
+| Fichier | Role |
+|---------|------|
+| `scripts/deploy-vps.sh` | Script idempotent : git pull VPS + scp .env.production + build + up + sanity HTTPS |
+| `.env.production` (gitignored) | Variables prod scp vers /opt/buck-writer-app/.env sur VPS |
+| `~/.ssh/id_vps20260131` | Clé SSH locale → VPS root@72.62.239.98 |
+| `/Users/recarnot/dev/trinity-lifeos-agent/vps/docker/{docker-compose.yml,caddy/Caddyfile,.env}` | Stack Trinity (n8n + voice + caddy + qdrant) — Caddy attaché à `caddy-public` pour servir Buck + sites Buck dans Caddyfile |
+
 
 ## API (packages/api/src/)
 
@@ -110,7 +120,15 @@
 | `routes/{...}.$id.tsx` | Detail edit + ConfirmDialog delete |
 | `routes/search.tsx` | Tabs fulltext/semantic, `search_fulltext` / `search_semantic` |
 | `routes/timeline.tsx` | Frise verticale `get_timeline` (chapter+sortOrder, pas de date) |
-| `routes/graph.tsx` | Sigma + graphology via `useGraph` (combine 4 list_* + parse interactions.characters) |
+| `routes/graph.tsx` | Compose `<GraphView>` + `<NodeDetail>` selon selectedNode (port UX barda) |
+| `components/graph/graph-view.tsx` | SigmaContainer + compose GraphLoader/Events/Layout/Controls/Legend/Highlighter |
+| `components/graph/graph-events.tsx` | clickNode → onSelectNode, clickStage → null |
+| `components/graph/graph-highlighter.tsx` | nodeReducer/edgeReducer : dim non-voisins, scale x1.4 selectionne, restore camera |
+| `components/graph/graph-layout.tsx` | useWorkerLayoutForceAtlas2 (web worker, barnesHut, 3s puis stop) |
+| `components/graph/graph-controls.tsx` | Zoom +/−/Recentrer + filtres checkbox par type (hidden flag) |
+| `components/graph/graph-legend.tsx` | Color key entity types |
+| `components/graph/node-detail.tsx` | Panneau droit : badge + description + bouton "Voir la fiche" navigate /<type>/$id + liste Connexions cliquables |
+| `routes/<entity>_.$id.tsx` | Renommé depuis `<entity>.$id.tsx` — underscore évite le nesting parent-child auto de TanStack flat-routing |
 | `routes/import-export.tsx` | `export_bible` (Markdown !) + `import_bulk` |
 | `routes/backups.tsx` | `list_backups` + `backup_bible` + `restore_bible` (id = backup_name) |
 | `api/mcp-client.ts` | `callTool(name, params)` POST `/mcp` JSON-RPC + fallback markdown si JSON.parse fail |

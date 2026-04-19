@@ -1,6 +1,17 @@
 # Architecture — Buck Writer
 
-> Derniere mise a jour : 2026-04-18 (M7 Bible UI mergee — package @buck/bible-ui + 3eme service Docker)
+> Derniere mise a jour : 2026-04-19 (premier deploy VPS prod : https://buck.romain-ecarnot.com + https://bible.buck.romain-ecarnot.com)
+
+## Production
+
+- **URLs** : `https://buck.romain-ecarnot.com` (auth magic-link), `https://bible.buck.romain-ecarnot.com` (basicauth Caddy, user `romain`, à terme SSO via forward_auth — task gerber 90069226)
+- **VPS** : Hostinger 72.62.239.98, repo cloné dans `/opt/buck-writer-app` via deploy key GitHub SSH
+- **DNS** : Cloudflare records `buck` + `*.buck` (proxy=DNS only/grey, sinon Caddy ne peut pas faire challenge HTTP)
+- **Réseau Docker** : `caddy-public` (external) partagé entre stack Buck et Caddy Trinity (n8n + voice-agent + qdrant). Caddy attaché aux 2 réseaux.
+- **Caddyfile** : 4 sites — `trinity.romain-ecarnot.com` (n8n), `live.trinity.*` (voice basicauth), **`buck.*` (buck-app:3000)**, **`bible.buck.*` (basicauth → buck-bible-ui:80)**
+- **Deploy** : `scripts/deploy-vps.sh` (git pull + scp .env.production + docker compose build/up + healthchecks). Pas de CI/CD.
+
+
 
 ## Vue d'ensemble
 
