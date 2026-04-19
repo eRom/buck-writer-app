@@ -28,7 +28,7 @@ const INITIAL = {
 
 export const useRealtimeStore = create<RealtimeStoreState>((set) => ({
   ...INITIAL,
-  setState: (s) => set((prev) => (s === 'error' ? { state: s } : { state: s, error: null })),
+  setState: (s) => set(() => (s === 'error' ? { state: s } : { state: s, error: null })),
   setError: (msg) => set({ state: 'error', error: msg }),
   reset: () => set({ ...INITIAL }),
   attach: (chatSessionId, realtimeSessionId, analyser) => set({ chatSessionId, realtimeSessionId, analyser }),

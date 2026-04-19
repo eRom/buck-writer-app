@@ -54,7 +54,7 @@ describe('realtimeApi', () => {
     );
     const out = await realtimeApi.closeSession('rts1', 's1');
     expect(out).toEqual({ closed: true, costUsd: 0.1 });
-    const url = fetchMock.mock.calls[0][0] as string;
+    const url = fetchMock.mock.calls[0]?.[0] as string;
     expect(url).toMatch(/^\/api\/realtime\/session\/rts1\?sessionId=s1$/);
   });
 
