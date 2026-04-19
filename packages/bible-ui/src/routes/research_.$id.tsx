@@ -7,7 +7,7 @@ import { Button } from '@/components/ui/button';
 import { Trash2 } from 'lucide-react';
 import type { Research } from '@/types/entities';
 
-export const Route = createFileRoute('/research/$id')({ component: ResearchDetail });
+export const Route = createFileRoute('/research_/$id')({ component: ResearchDetail });
 
 function ResearchDetail() {
   const { id } = Route.useParams();

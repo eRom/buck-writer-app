@@ -7,7 +7,7 @@ import { Button } from '@/components/ui/button';
 import { Trash2 } from 'lucide-react';
 import type { Location } from '@/types/entities';
 
-export const Route = createFileRoute('/locations/$id')({ component: LocationDetail });
+export const Route = createFileRoute('/locations_/$id')({ component: LocationDetail });
 
 function LocationDetail() {
   const { id } = Route.useParams();

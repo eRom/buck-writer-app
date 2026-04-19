@@ -7,7 +7,7 @@ import { Button } from '@/components/ui/button';
 import { Trash2 } from 'lucide-react';
 import type { Event } from '@/types/entities';
 
-export const Route = createFileRoute('/events/$id')({ component: EventDetail });
+export const Route = createFileRoute('/events_/$id')({ component: EventDetail });
 
 function EventDetail() {
   const { id } = Route.useParams();
