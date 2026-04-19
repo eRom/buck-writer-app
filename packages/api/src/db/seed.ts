@@ -63,32 +63,12 @@ export function seedMcpServers(sqlite: Database.Database, opts: SeedOptions): vo
       auth_header_env: 'MCP_SHARED_SECRET',
       server_description:
         "Buck's narrative bible: characters, locations, events, rules, notes.",
-      require_approval: {
-        never: {
-          tool_names: [
-            'list_entities',
-            'get_entity',
-            'search',
-            'semantic_search',
-            'list_events',
-            'get_stats',
-            'get_timeline',
-            'list_relations',
-          ],
-        },
-        always: {
-          tool_names: [
-            'create_entity',
-            'update_entity',
-            'delete_entity',
-            'create_event',
-            'update_event',
-            'delete_event',
-            'create_relation',
-            'delete_relation',
-          ],
-        },
-      },
+      // Solo-owned data → 'never' globally. The previous granular config
+      // used generic tool names (list_entities, create_entity…) that don't
+      // match bible-mcp's domain-specific tools (list_characters, etc.),
+      // making OpenAI fall back to requesting approval for every call.
+      // When the UI approval flow lands (M7.1), revisit with real tool names.
+      require_approval: 'never',
     }),
     createdAt: now,
   });
