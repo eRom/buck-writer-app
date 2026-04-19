@@ -77,7 +77,7 @@ export function seedMcpServers(sqlite: Database.Database, opts: SeedOptions): vo
     id: newId(),
     name: 'writing-tools',
     core: 0,
-    enabled: 0,
+    enabled: 1,
     config: JSON.stringify({
       url: `${opts.mcpWritingToolsUrl ?? 'http://writing-tools-mcp:7802'}/mcp`,
       auth_header_env: 'MCP_SHARED_SECRET',

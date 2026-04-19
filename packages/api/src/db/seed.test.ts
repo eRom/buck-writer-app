@@ -101,7 +101,7 @@ describe('runSeed', () => {
     expect(mcpCount.n).toBe(2);
   });
 
-  it('inserts writing-tools MCP disabled by default', () => {
+  it('inserts writing-tools MCP enabled by default', () => {
     dbPath = tmp();
     const url = `file:${dbPath}`;
     runMigrations({ databaseUrl: url, migrationsFolder: migrationsDir });
@@ -118,6 +118,6 @@ describe('runSeed', () => {
       | { name: string; core: number; enabled: number }
       | undefined;
     sqlite.close();
-    expect(row).toMatchObject({ name: 'writing-tools', core: 0, enabled: 0 });
+    expect(row).toMatchObject({ name: 'writing-tools', core: 0, enabled: 1 });
   });
 });
