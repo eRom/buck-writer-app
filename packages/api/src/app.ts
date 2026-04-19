@@ -22,6 +22,9 @@ import { createWorkspaceRoutes } from './routes/workspace.js';
 import { createAttachmentRoutes } from './routes/attachments.js';
 import { createWebDAVRoutes } from './services/webdav.js';
 import type { PromptsRef } from './services/prompts.js';
+import { createRealtimeRoute } from './routes/realtime.js';
+import type { UsageTracker } from './services/realtime/usage-tracker.js';
+import type { mintRealtimeClientSecret } from './lib/realtime.js';
 import { authGuard } from './middleware/auth.js';
 import { securityHeaders } from './middleware/security-headers.js';
 import { csrfMiddleware } from './middleware/csrf.js';
@@ -59,6 +62,18 @@ export interface AppDeps extends AuthRoutesDeps, SessionRoutesDeps {
    * authenticated user id when omitted.
    */
   buckUserId?: string;
+  /**
+   * Whether realtime voice routes are enabled. Set via REALTIME_ENABLED=1.
+   */
+  realtimeEnabled?: boolean;
+  /**
+   * In-memory usage tracker for realtime sessions.
+   */
+  usageTracker?: UsageTracker;
+  /**
+   * Override mint function (tests injection).
+   */
+  mintFn?: typeof mintRealtimeClientSecret;
   /**
    * Whether the API runs behind a trusted reverse proxy that rewrites
    * X-Forwarded-For. Defaults to false (safe). See env.TRUST_PROXY.
@@ -160,6 +175,23 @@ export function buildApp(deps: AppDeps) {
       nowMs: deps.nowMs,
       memory: deps.memory,
       buckUserId: deps.buckUserId,
+    }));
+  }
+
+  // Realtime routes (protected, only if openaiApiKey + prompts available)
+  if (deps.prompts && deps.openaiApiKey && deps.usageTracker) {
+    app.use(
+      '/api/realtime/*',
+      authGuard({ db: deps.db, jwt: deps.jwt, nowMs: deps.nowMs }),
+    );
+    app.route('/api/realtime', createRealtimeRoute({
+      db: deps.db,
+      openaiApiKey: deps.openaiApiKey,
+      prompts: deps.prompts,
+      usageTracker: deps.usageTracker,
+      nowMs: deps.nowMs,
+      featureFlag: deps.realtimeEnabled ?? false,
+      mintFn: deps.mintFn,
     }));
   }
 
