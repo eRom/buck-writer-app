@@ -19,7 +19,9 @@ export function CardTodos() {
   const { data: todos = [], isLoading } = useQuery({
     queryKey: TODOS_KEY,
     queryFn: fetchTodos,
-    refetchInterval: 8000,
+    // Pas de polling : les mutations locales invalident. Pour que les todos
+    // créés par le LLM apparaissent, invalider ['todos'] en fin de stream chat
+    // (ou ré-ouvrir le panel pour refetch via refetchOnMount).
   });
 
   const invalidate = () => qc.invalidateQueries({ queryKey: TODOS_KEY });
