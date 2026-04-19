@@ -128,12 +128,12 @@ fi
 # ---------- 6. Caddy reload ----------
 
 if [ "$SKIP_TRINITY" != "1" ]; then
-  log "Reloading Caddy (Trinity stack)"
-  # Try docker compose exec ; fall back to `caddy reload` directly if the
-  # command layout differs.
-  $SSH "cd $TRINITY_COMPOSE_DIR && docker compose exec -T caddy caddy reload --config /etc/caddy/Caddyfile" \
-    || $SSH "docker exec \$(docker ps --filter name=caddy --format '{{.Names}}' | head -1) caddy reload --config /etc/caddy/Caddyfile" \
-    || fail "Caddy reload failed — check $TRINITY_CADDY_PATH syntax manually"
+  log "Restarting Caddy container (Trinity stack) — required to reload env vars"
+  # NB: `caddy reload` seul ne re-lit PAS les env vars du container. Il faut
+  # recreate le container pour que les placeholders {$MCP_SHARED_SECRET}
+  # soient remplacés avec la nouvelle valeur de .env.trinity.
+  $SSH "cd $TRINITY_COMPOSE_DIR && docker compose up -d --force-recreate caddy" \
+    || fail "Caddy restart failed — check $TRINITY_CADDY_PATH syntax and compose layout"
 fi
 
 # ---------- 7. Sanity checks ----------
