@@ -40,4 +40,20 @@ describe('realtime-store', () => {
     expect(useRealtimeStore.getState().realtimeSessionId).toBe('rts1');
     expect(useRealtimeStore.getState().analyser).toBe(fakeAnalyser);
   });
+
+  it('addTranscript ajoute avec id unique', () => {
+    useRealtimeStore.getState().addTranscript({ role: 'user', text: 'Bonjour', startedAt: 1000 });
+    useRealtimeStore.getState().addTranscript({ role: 'assistant', text: 'Salut', startedAt: 2000 });
+    const ts = useRealtimeStore.getState().recentTranscripts;
+    expect(ts).toHaveLength(2);
+    expect(ts[0]!.role).toBe('user');
+    expect(ts[1]!.role).toBe('assistant');
+    expect(ts[0]!.id).not.toBe(ts[1]!.id);
+  });
+
+  it('clearTranscripts vide la liste', () => {
+    useRealtimeStore.getState().addTranscript({ role: 'user', text: 'test', startedAt: 1 });
+    useRealtimeStore.getState().clearTranscripts();
+    expect(useRealtimeStore.getState().recentTranscripts).toHaveLength(0);
+  });
 });

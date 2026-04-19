@@ -22,6 +22,7 @@ export function useRealtimeVoice(chatSessionId: string | null): UseRealtimeVoice
     clientRef.current = null;
     if (client) await client.stop();
     useRealtimeStore.getState().reset();
+    useRealtimeStore.getState().clearTranscripts();
   }, []);
 
   const start = useCallback(
@@ -53,6 +54,10 @@ export function useRealtimeVoice(chatSessionId: string | null): UseRealtimeVoice
         const id = (e as CustomEvent<string>).detail;
         const prev = useRealtimeStore.getState();
         store.attach(chatSessionId, id, prev.analyser);
+      });
+      client.addEventListener('transcript', (e) => {
+        const t = (e as CustomEvent<{ role: 'user' | 'assistant'; text: string; startedAt: number }>).detail;
+        useRealtimeStore.getState().addTranscript(t);
       });
 
       try {

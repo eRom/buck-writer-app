@@ -15,6 +15,8 @@ import { fetchWorkspaceTree } from '@/lib/workspace';
 import { uploadAttachments } from '@/lib/attachments';
 import { readCsrfCookie, CSRF_HEADER } from '@/lib/csrf';
 import { useMemoryStatus } from '@/stores/memory-status';
+import { useRealtimeStore } from '@/stores/realtime-store';
+import { useQueryClient } from '@tanstack/react-query';
 
 interface ToolMeta {
   toolCallId: string;
@@ -94,6 +96,8 @@ function toolOutputText(meta: ToolMeta): string | undefined {
 }
 
 export function ChatStream({ sessionId, onSessionCreated }: ChatStreamProps) {
+  const queryClient = useQueryClient();
+  const recentTranscripts = useRealtimeStore((s) => s.recentTranscripts);
   const [model] = useState('gpt-5.4-mini');
   const [input, setInput] = useState('');
   const [pendingAttachments, setPendingAttachments] = useState<PendingAttachment[]>([]);
@@ -167,6 +171,15 @@ export function ChatStream({ sessionId, onSessionCreated }: ChatStreamProps) {
     window.addEventListener('focus', onFocus);
     return () => window.removeEventListener('focus', onFocus);
   }, [budgetExceeded]);
+
+  // Invalide la query messages 2s après chaque ajout de transcript voix
+  useEffect(() => {
+    if (recentTranscripts.length === 0 || !sessionId) return;
+    const t = setTimeout(() => {
+      void queryClient.invalidateQueries({ queryKey: ['messages', sessionId] });
+    }, 2000);
+    return () => clearTimeout(t);
+  }, [recentTranscripts, sessionId, queryClient]);
 
   useEffect(() => {
     scrollRef.current?.scrollTo({
@@ -519,6 +532,16 @@ export function ChatStream({ sessionId, onSessionCreated }: ChatStreamProps) {
                 </MessageAssistant>
               );
             })}
+            {recentTranscripts.map((t) =>
+              t.role === 'user' ? (
+                <MessageUser key={t.id} content={t.text} />
+              ) : (
+                <MessageAssistant key={t.id} toolCalls={null}>
+                  <span className="text-xs text-muted-foreground mr-1">[voix]</span>
+                  <MarkdownRenderer content={t.text} />
+                </MessageAssistant>
+              ),
+            )}
           </div>
         )}
       </div>
