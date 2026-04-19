@@ -4,6 +4,7 @@ import { fetchMe } from '@/lib/session';
 import { AccountSection } from '@/components/settings/account-section';
 import { GeneralSection } from '@/components/settings/general-section';
 import { BudgetSection } from '@/components/settings/budget-section';
+import { AudioLiveSection } from '@/components/settings/audio-live-section';
 
 export const Route = createFileRoute('/settings')({
   beforeLoad: async () => {
@@ -32,6 +33,7 @@ function SettingsPage() {
         <AccountSection email={me.email} />
         <GeneralSection />
         <BudgetSection />
+        <AudioLiveSection />
       </main>
     </div>
   );
