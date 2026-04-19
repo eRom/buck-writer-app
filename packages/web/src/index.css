@@ -1,8 +1,8 @@
-@import "tailwindcss";
+@import 'tailwindcss';
 @plugin "@tailwindcss/typography";
-@import "tw-animate-css";
-@import "@fontsource-variable/figtree";
-@import "@fontsource-variable/jetbrains-mono";
+@import 'tw-animate-css';
+@import '@fontsource-variable/figtree';
+@import '@fontsource-variable/jetbrains-mono';
 
 @custom-variant dark (&:where(.dark, .dark *));
 
@@ -94,9 +94,9 @@
 .dark {
   --opaque-button-border-intensity: 9;
 
-  --background: oklch(0.155 0.006 28);
+  --background: oklch(0.239 0.002 114);
   --foreground: oklch(0.95 0 0);
-  --card: oklch(0.19 0.007 28);
+  --card: oklch(0.275 0 0);
   --card-foreground: oklch(0.95 0 0);
   --card-border: oklch(0.27 0.007 28);
   --popover: oklch(0.19 0.007 28);
@@ -118,7 +118,7 @@
   --border: oklch(0.27 0.007 28);
   --input: oklch(0.24 0.007 28 / 0.6);
   --ring: oklch(0.82 0.17 70);
-  --sidebar: oklch(0.17 0.006 28);
+  --sidebar: oklch(0.275 0 0);
   --sidebar-foreground: oklch(0.88 0 0);
   --sidebar-primary: oklch(0.82 0.17 70);
   --sidebar-primary-foreground: oklch(0.15 0.01 40);
@@ -143,7 +143,9 @@
     background-color: var(--background);
     color: var(--foreground);
   }
-  code, pre, kbd {
+  code,
+  pre,
+  kbd {
     font-family: var(--font-mono);
   }
   ::selection {
@@ -168,10 +170,14 @@
 
 @layer utilities {
   .hover-elevate {
-    transition: box-shadow 150ms ease, transform 150ms ease;
+    transition:
+      box-shadow 150ms ease,
+      transform 150ms ease;
   }
   .hover-elevate:hover {
-    box-shadow: var(--elevate-1) 0 0 0 1px, var(--elevate-2) 0 4px 8px;
+    box-shadow:
+      var(--elevate-1) 0 0 0 1px,
+      var(--elevate-2) 0 4px 8px;
     transform: translateY(-1px);
   }
   .active-elevate-2:active {
@@ -179,10 +185,14 @@
     transform: translateY(0px);
   }
   .toggle-elevate {
-    transition: box-shadow 150ms ease, transform 150ms ease;
+    transition:
+      box-shadow 150ms ease,
+      transform 150ms ease;
   }
   .toggle-elevated {
-    box-shadow: var(--elevate-1) 0 0 0 1px, var(--elevate-2) 0 4px 8px;
+    box-shadow:
+      var(--elevate-1) 0 0 0 1px,
+      var(--elevate-2) 0 4px 8px;
   }
   .no-default-active-elevate:active {
     transform: none !important;

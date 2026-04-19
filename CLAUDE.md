@@ -19,6 +19,13 @@ Dependance interne : `@buck/web` et `@buck/api` importent `@buck/shared` via `wo
 
 Les prompts systèmes (SYSTEM.md + RULES.md) vivent dans `$WORKSPACE_DIR/systems/` (live-editable, hot-reload chokidar). Bootstrap depuis `packages/api/src/defaults/systems/` au premier démarrage.
 
+## Documentations officiels
+
+- **The Responses API** is our new API primitive : https://developers.openai.com/api/docs/guides/migrate-to-responses
+- Use **connectors and remote MCP servers** to give models new capabilities : https://developers.openai.com/api/docs/guides/tools-connectors-mcp
+- Upload, manage, and attach **reusable skills** : https://developers.openai.com/api/docs/guides/tools-skills
+- Allow models to **search the web** : https://developers.openai.com/api/docs/guides/tools-web-search
+
 ## Stack technique
 
 - **Runtime** : Node 20+, TypeScript ES2022, ESM (`"type": "module"`)
