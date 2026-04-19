@@ -1,61 +1,56 @@
 import { useEffect } from 'react';
 import { SigmaContainer, useLoadGraph } from '@react-sigma/core';
-import { useLayoutForceAtlas2 } from '@react-sigma/layout-forceatlas2';
-import Graph from 'graphology';
 import '@react-sigma/core/lib/style.css';
-import type { GraphData } from '@/hooks/use-graph';
+import type Graph from 'graphology';
+import { GraphEvents } from './graph-events';
+import { GraphLayout } from './graph-layout';
+import { GraphControls } from './graph-controls';
+import { GraphLegend } from './graph-legend';
+import { GraphHighlighter } from './graph-highlighter';
+import type { GraphNode } from '@/hooks/use-graph';
 
-function LoadGraph({ data }: { data: GraphData }) {
+function GraphLoader({ graph }: { graph: Graph }) {
   const loadGraph = useLoadGraph();
   useEffect(() => {
-    const g = new Graph();
-    data.nodes.forEach((n) => {
-      g.addNode(n.id, {
-        label: n.label,
-        color: n.color,
-        size: 8,
-        x: Math.random(),
-        y: Math.random(),
-      });
-    });
-    data.edges.forEach((e) => {
-      if (g.hasNode(e.source) && g.hasNode(e.target)) {
-        g.addEdgeWithKey(e.id, e.source, e.target, { label: e.label, color: '#3f3f46' });
-      }
-    });
-    loadGraph(g);
-  }, [data, loadGraph]);
+    loadGraph(graph);
+  }, [loadGraph, graph]);
   return null;
 }
 
-function ForceAtlasLayout() {
-  const { assign } = useLayoutForceAtlas2({
-    iterations: 200,
-    settings: {
-      gravity: 1,
-      scalingRatio: 10,
-      strongGravityMode: false,
-      slowDown: 5,
-    },
-  });
-  useEffect(() => {
-    assign();
-  }, [assign]);
-  return null;
+interface GraphViewProps {
+  graph: Graph;
+  onSelectNode: (n: GraphNode | null) => void;
+  selectedNodeId?: string | null;
 }
 
-export function GraphView({ data }: { data: GraphData }) {
+export function GraphView({ graph, onSelectNode, selectedNodeId }: GraphViewProps) {
   return (
     <SigmaContainer
-      style={{ height: '100%', width: '100%', background: 'transparent' }}
+      className="h-full w-full"
+      style={{ backgroundColor: '#0c0a09' }}
       settings={{
-        renderEdgeLabels: true,
-        defaultEdgeColor: '#3f3f46',
+        renderLabels: true,
+        labelSize: 12,
+        labelWeight: 'bold',
         labelColor: { color: '#fafaf9' },
+        labelRenderedSizeThreshold: 6,
+        defaultEdgeColor: '#52525b',
+        defaultEdgeType: 'line',
+        edgeReducer: (_edge, data) => ({
+          ...data,
+          color: data.color || '#52525b',
+          size: data.size || 0.5,
+        }),
+        nodeReducer: (_node, data) => ({ ...data }),
+        allowInvalidContainer: true,
       }}
     >
-      <LoadGraph data={data} />
-      <ForceAtlasLayout />
+      <GraphLoader graph={graph} />
+      <GraphEvents onSelectNode={onSelectNode} />
+      <GraphLayout />
+      <GraphControls />
+      <GraphLegend />
+      <GraphHighlighter selectedNodeId={selectedNodeId ?? null} />
     </SigmaContainer>
   );
 }
