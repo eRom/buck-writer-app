@@ -194,5 +194,97 @@ describe('settings routes', () => {
       const body2 = await res2.json() as Record<string, unknown>;
       expect(body2.hardStop).toBe(true);
     });
+
+    it('updates realtimeDefaultVoice', async () => {
+      ctx = await makeCtx();
+      const res = await ctx.app.request('/api/settings', {
+        method: 'PATCH',
+        headers: authMutHeaders(ctx.sessionJwt),
+        body: JSON.stringify({ realtimeDefaultVoice: 'alloy' }),
+      });
+      expect(res.status).toBe(200);
+      const body = await res.json() as Record<string, unknown>;
+      expect(body.realtimeDefaultVoice).toBe('alloy');
+    });
+
+    it('round-trips realtimeTurnDetection JSON', async () => {
+      ctx = await makeCtx();
+      const td = {
+        mode: 'semantic_vad',
+        threshold: 0.7,
+        prefix_padding_ms: 200,
+        silence_duration_ms: 800,
+        interrupt_response: false,
+      };
+      const res = await ctx.app.request('/api/settings', {
+        method: 'PATCH',
+        headers: authMutHeaders(ctx.sessionJwt),
+        body: JSON.stringify({ realtimeTurnDetection: td }),
+      });
+      expect(res.status).toBe(200);
+      const body = await res.json() as Record<string, unknown>;
+      expect(body.realtimeTurnDetection).toEqual(td);
+    });
+
+    it('rejects realtimeSilenceTimeoutSec out of range with 422', async () => {
+      ctx = await makeCtx();
+      const res = await ctx.app.request('/api/settings', {
+        method: 'PATCH',
+        headers: authMutHeaders(ctx.sessionJwt),
+        body: JSON.stringify({ realtimeSilenceTimeoutSec: 5 }),
+      });
+      expect(res.status).toBe(422);
+      const body = await res.json() as { error: { code: string } };
+      expect(body.error.code).toBe('invalid_input');
+    });
+
+    it('rejects realtimeSilenceTimeoutSec > 60 with 422', async () => {
+      ctx = await makeCtx();
+      const res = await ctx.app.request('/api/settings', {
+        method: 'PATCH',
+        headers: authMutHeaders(ctx.sessionJwt),
+        body: JSON.stringify({ realtimeSilenceTimeoutSec: 90 }),
+      });
+      expect(res.status).toBe(422);
+    });
+
+    it('round-trips realtimeTools JSON', async () => {
+      ctx = await makeCtx();
+      const tools = { bible: false, writingTools: true, webSearch: false };
+      const res = await ctx.app.request('/api/settings', {
+        method: 'PATCH',
+        headers: authMutHeaders(ctx.sessionJwt),
+        body: JSON.stringify({ realtimeTools: tools }),
+      });
+      expect(res.status).toBe(200);
+      const body = await res.json() as Record<string, unknown>;
+      expect(body.realtimeTools).toEqual(tools);
+    });
+  });
+
+  describe('GET /api/settings — realtime defaults', () => {
+    it('retourne les champs realtime avec les defaults', async () => {
+      ctx = await makeCtx();
+      const res = await ctx.app.request('/api/settings', {
+        method: 'GET',
+        headers: authGetHeaders(ctx.sessionJwt),
+      });
+      expect(res.status).toBe(200);
+      const body = await res.json() as Record<string, unknown>;
+      expect(body.realtimeDefaultVoice).toBe('coral');
+      expect(body.realtimeSilenceTimeoutSec).toBe(30);
+      expect(body.realtimeTurnDetection).toEqual({
+        mode: 'server_vad',
+        threshold: 0.5,
+        prefix_padding_ms: 500,
+        silence_duration_ms: 500,
+        interrupt_response: true,
+      });
+      expect(body.realtimeTools).toEqual({
+        bible: true,
+        writingTools: true,
+        webSearch: true,
+      });
+    });
   });
 });
