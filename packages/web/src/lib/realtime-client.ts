@@ -132,14 +132,24 @@ export class RealtimeClient extends EventTarget {
     const offer = await pc.createOffer();
     await pc.setLocalDescription(offer);
 
-    const answerRes = await fetch(`https://api.openai.com/v1/realtime?model=${encodeURIComponent(realtimeModel)}`, {
-      method: 'POST',
-      headers: {
-        Authorization: `Bearer ${clientSecret}`,
-        'Content-Type': 'application/sdp',
+    // Endpoint GA (2026) : /v1/realtime/calls.
+    // L'ancien /v1/realtime était le beta — il rejette le client_secret GA
+    // avec 'api_version_mismatch'.
+    const answerRes = await fetch(
+      `https://api.openai.com/v1/realtime/calls?model=${encodeURIComponent(realtimeModel)}`,
+      {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${clientSecret}`,
+          'Content-Type': 'application/sdp',
+        },
+        body: offer.sdp ?? '',
       },
-      body: offer.sdp ?? '',
-    });
+    );
+    if (!answerRes.ok) {
+      const errText = await answerRes.text().catch(() => '');
+      throw new Error(`OpenAI SDP exchange failed: ${answerRes.status} ${errText}`);
+    }
     const answerSdp = await answerRes.text();
     await pc.setRemoteDescription({ type: 'answer', sdp: answerSdp });
   }
