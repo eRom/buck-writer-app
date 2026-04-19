@@ -12,21 +12,36 @@ interface InteractionEntity {
   characters?: string;
 }
 
+interface EventEntity extends GraphEntity {
+  locationId?: string;
+  characters?: string;
+}
+
+// MCP list_* tools return inconsistent shapes:
+//   list_characters → { characters: [...] }
+//   list_events     → { events: [...] }
+//   list_locations  → { results: [...] }
+//   list_interactions → { results: [...] }
+// We accept both keys to stay resilient to upstream changes.
 interface CharactersResponse {
   total?: number;
   characters?: GraphEntity[];
+  results?: GraphEntity[];
 }
 interface LocationsResponse {
   total?: number;
   locations?: GraphEntity[];
+  results?: GraphEntity[];
 }
 interface EventsResponse {
   total?: number;
-  events?: GraphEntity[];
+  events?: EventEntity[];
+  results?: EventEntity[];
 }
 interface InteractionsResponse {
   total?: number;
   interactions?: InteractionEntity[];
+  results?: InteractionEntity[];
 }
 
 export interface GraphData {
@@ -70,10 +85,10 @@ export function useGraph(): { data: GraphData; isLoading: boolean } {
   const isLoading =
     charactersQ.isLoading || locationsQ.isLoading || eventsQ.isLoading || interactionsQ.isLoading;
 
-  const characters = charactersQ.data?.characters ?? [];
-  const locations = locationsQ.data?.locations ?? [];
-  const events = eventsQ.data?.events ?? [];
-  const interactions = interactionsQ.data?.interactions ?? [];
+  const characters = charactersQ.data?.characters ?? charactersQ.data?.results ?? [];
+  const locations = locationsQ.data?.locations ?? locationsQ.data?.results ?? [];
+  const events = eventsQ.data?.events ?? eventsQ.data?.results ?? [];
+  const interactions = interactionsQ.data?.interactions ?? interactionsQ.data?.results ?? [];
 
   const nodes: GraphData['nodes'] = [
     ...characters.map((e) => ({ id: e.id, label: getLabel(e), type: 'character', color: COLORS.character! })),
@@ -81,19 +96,34 @@ export function useGraph(): { data: GraphData; isLoading: boolean } {
     ...events.map((e) => ({ id: e.id, label: getLabel(e), type: 'event', color: COLORS.event! })),
   ];
 
+  const nodeIds = new Set(nodes.map((n) => n.id));
   const edges: GraphData['edges'] = [];
+  const seen = new Set<string>();
+  const pushEdge = (id: string, source: string, target: string, label?: string) => {
+    if (!nodeIds.has(source) || !nodeIds.has(target) || source === target) return;
+    if (seen.has(id)) return;
+    seen.add(id);
+    edges.push({ id, source, target, label });
+  };
+
+  // Interaction → clique between participants (n*(n-1)/2 edges)
   interactions.forEach((i) => {
     const ids = parseIds(i.characters);
-    if (ids.length >= 2) {
-      for (let k = 0; k < ids.length - 1; k++) {
-        edges.push({
-          id: `${i.id}-${k}`,
-          source: ids[k]!,
-          target: ids[k + 1]!,
-          label: i.description?.slice(0, 30),
-        });
+    for (let a = 0; a < ids.length; a++) {
+      for (let b = a + 1; b < ids.length; b++) {
+        pushEdge(`int-${i.id}-${a}-${b}`, ids[a]!, ids[b]!, i.description?.slice(0, 30));
       }
     }
+  });
+
+  // Event → location and event → each character present
+  events.forEach((e) => {
+    if (e.locationId) {
+      pushEdge(`evt-loc-${e.id}`, e.id, e.locationId, 'lieu');
+    }
+    parseIds(e.characters).forEach((cid, k) => {
+      pushEdge(`evt-char-${e.id}-${k}`, e.id, cid, 'présent');
+    });
   });
 
   return { data: { nodes, edges }, isLoading };
