@@ -179,6 +179,21 @@ else
   warn "Skipping MCP endpoint curls (no MCP_SHARED_SECRET)"
 fi
 
+# ---------- 8. Cleanup ----------
+
+log "Cleaning old images + build cache"
+# Dangling images (untagged leftovers from previous builds)
+$SSH "docker image prune -f" || true
+# Build cache (keeps layers < 24h to speed up next build, drops older)
+$SSH "docker builder prune -f --filter 'until=24h'" || true
+# Stopped containers (healthcheck zombies, dead writing-tools attempts, etc.)
+$SSH "docker container prune -f" || true
+# Unused networks (none should remain but just in case)
+$SSH "docker network prune -f" || true
+
+log "Disk usage after cleanup"
+$SSH "docker system df" || true
+
 echo
 ok "Deploy done."
 echo "  Tail Buck logs   :  $SSH 'cd $REMOTE_DIR && docker compose logs -f --tail=50'"
