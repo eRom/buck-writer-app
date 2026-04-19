@@ -72,4 +72,10 @@ export const realtimeApi = {
       method: 'DELETE',
     });
   },
+  writeToChat(sessionId: string, content: string): Promise<{ id: string; createdAt: number }> {
+    return apiFetch('/api/realtime/write-to-chat', {
+      method: 'POST',
+      body: { sessionId, content },
+    });
+  },
 };

@@ -533,6 +533,7 @@ export function ChatStream({ sessionId, onSessionCreated }: ChatStreamProps) {
         onAttachmentsChange={setPendingAttachments}
         workspaceEntries={wsTree?.tree}
         onReferenceSelect={handleReferenceSelect}
+        chatSessionId={sessionId}
       />
     </>
   );

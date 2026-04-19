@@ -1,9 +1,11 @@
 import { useEffect, useRef, useState, type KeyboardEvent, type DragEvent, type ClipboardEvent } from 'react';
-import { Paperclip, ArrowUp, Square, X } from 'lucide-react';
+import { Paperclip, ArrowUp, Square, X, Mic } from 'lucide-react';
 import { ALLOWED_MIME_TYPES } from '@buck/shared';
 import type { FileEntry } from '@buck/shared';
 import { AtReference } from './at-reference';
 import { cn } from '@/lib/utils';
+import { useRealtimeStore } from '@/stores/realtime-store';
+import { useRealtimeVoice } from '@/hooks/use-realtime-voice';
 
 export interface PendingAttachment {
   file: File;
@@ -21,6 +23,7 @@ interface ChatInputProps {
   onAttachmentsChange: (attachments: PendingAttachment[]) => void;
   workspaceEntries?: FileEntry[];
   onReferenceSelect?: (path: string) => void;
+  chatSessionId?: string | null;
 }
 
 const ACCEPT = ALLOWED_MIME_TYPES.join(',');
@@ -51,7 +54,10 @@ export function ChatInput({
   onAttachmentsChange,
   workspaceEntries,
   onReferenceSelect,
+  chatSessionId = null,
 }: ChatInputProps) {
+  const realtimeState = useRealtimeStore((s) => s.state);
+  const { start, stop } = useRealtimeVoice(chatSessionId ?? null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
 
   useEffect(() => {
@@ -203,6 +209,27 @@ export function ChatInput({
               >
                 <Paperclip className="size-4" />
               </button>
+              {chatSessionId && (
+                <button
+                  type="button"
+                  aria-label={realtimeState === 'idle' ? 'Démarrer Live' : 'Arrêter Live'}
+                  onClick={() => {
+                    if (realtimeState === 'idle') {
+                      void start({ voice: 'coral', turnDetection: { mode: 'server_vad', threshold: 0.5, prefix_padding_ms: 300, silence_duration_ms: 500, interrupt_response: true }, tools: { bible: true, writingTools: true, webSearch: true } });
+                    } else {
+                      void stop();
+                    }
+                  }}
+                  className={cn(
+                    'hover-elevate rounded-md p-1.5 disabled:opacity-50',
+                    realtimeState !== 'idle'
+                      ? 'text-amber-500 hover:text-amber-600'
+                      : 'text-muted-foreground hover:text-foreground',
+                  )}
+                >
+                  <Mic className="size-4" />
+                </button>
+              )}
             </div>
             {isLoading ? (
               <button
