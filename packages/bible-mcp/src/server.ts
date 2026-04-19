@@ -12,8 +12,9 @@ if (!process.env.OPENAI_API_KEY) {
 }
 
 const dbInstance = getDb(dbPath);
-const mcpServer = createServer(dbInstance, dbPath);
-const app = createHttpApp(mcpServer);
+// Streamable HTTP requires one McpServer per active transport — we pass a
+// factory that registers all tools on a fresh instance per session.
+const app = createHttpApp(() => createServer(dbInstance, dbPath));
 
 app.listen(port, "0.0.0.0", () => {
   console.warn(`[bible-mcp] listening on http://0.0.0.0:${port}`);

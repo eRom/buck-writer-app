@@ -15,12 +15,19 @@ describe('useMcpQuery', () => {
       'fetch',
       vi.fn().mockResolvedValue({
         ok: true,
+        headers: new Headers({ 'content-type': 'application/json' }),
         json: async () => ({
           jsonrpc: '2.0',
           id: 1,
           result: { content: [{ type: 'text', text: '[{"id":"a"}]' }] },
         }),
-      })
+        text: async () =>
+          JSON.stringify({
+            jsonrpc: '2.0',
+            id: 1,
+            result: { content: [{ type: 'text', text: '[{"id":"a"}]' }] },
+          }),
+      } as unknown as Response)
     );
 
     const { result } = renderHook(
