@@ -1,58 +1,186 @@
 #!/usr/bin/env bash
-# Buck Writer — VPS deployment script
-# Pattern: git on VPS + docker compose build/up. No registry, no tarballs.
+# Buck Writer — VPS deployment (Trinity-aware).
+# Deploys Buck + syncs Trinity's Caddyfile/.env for MCP remote connectors.
 #
-# Prereqs (one-time, manual): see scripts/deploy-vps-PREREQS.md
-#   - DNS A records buck + *.buck → 72.62.239.98 (Cloudflare, DNS-only/grey)
-#   - Trinity stack updated to attach Caddy on caddy-public network
+# What this script does, in order :
+#   1. git fetch + hard reset on VPS Buck repo to latest main
+#   2. Sync local .env.production → VPS Buck .env
+#   3. Sync local Caddyfile → Trinity Caddy config (adds MCP blocks)
+#   4. Sync local .env.trinity → Trinity .env (MCP_SHARED_SECRET + existing)
+#   5. Build + up Buck containers (bible-mcp, writing-tools-mcp, bible-ui, buck-app)
+#   6. Reload Caddy inside Trinity docker-compose
+#   7. Sanity checks against public endpoints (with + without Bearer)
+#
+# Prereqs (one-time, manual):
+#   - DNS : *.buck + buck → IP VPS (wildcard OK)
+#   - Trinity repo cloned at /opt/trinity-lifeos with Caddy stack running
 #   - docker network "caddy-public" created on VPS
-#   - /opt/buck-writer-app cloned + .env in place
+#   - /opt/buck-writer-app cloned + (first run) .env bootstrapped
+#   - Local files present : .env.production, .env.trinity, Caddyfile
 #
-# Usage:  ./scripts/deploy-vps.sh
-# Env (optional override):
-#   REMOTE_USER=root REMOTE_IP=72.62.239.98 REMOTE_DIR=/opt/buck-writer-app
+# Usage   :  ./scripts/deploy-vps.sh
+# Env vars (override defaults) :
+#   REMOTE_USER=root
+#   REMOTE_IP=72.62.239.98
+#   REMOTE_DIR=/opt/buck-writer-app
+#   TRINITY_DIR=/opt/trinity-lifeos
+#   TRINITY_COMPOSE_DIR=/opt/trinity-lifeos/vps/docker
+#   TRINITY_CADDY_PATH=/opt/trinity-lifeos/vps/docker/caddy/Caddyfile
+#   TRINITY_ENV_PATH=/opt/trinity-lifeos/vps/docker/.env
+#   SSH_KEY=~/.ssh/id_vps20260131
+#   SKIP_BUCK_BUILD=1     # sync envs/Caddy only, no docker build
+#   SKIP_TRINITY=1        # deploy only Buck, don't touch Trinity
 
 set -euo pipefail
 
 REMOTE_USER="${REMOTE_USER:-root}"
 REMOTE_IP="${REMOTE_IP:-72.62.239.98}"
 REMOTE_DIR="${REMOTE_DIR:-/opt/buck-writer-app}"
+TRINITY_DIR="${TRINITY_DIR:-/opt/trinity-lifeos}"
+TRINITY_COMPOSE_DIR="${TRINITY_COMPOSE_DIR:-$TRINITY_DIR/vps/docker}"
+TRINITY_CADDY_PATH="${TRINITY_CADDY_PATH:-$TRINITY_COMPOSE_DIR/caddy/Caddyfile}"
+TRINITY_ENV_PATH="${TRINITY_ENV_PATH:-$TRINITY_COMPOSE_DIR/.env}"
 SSH_KEY="${SSH_KEY:-$HOME/.ssh/id_vps20260131}"
+SKIP_BUCK_BUILD="${SKIP_BUCK_BUILD:-0}"
+SKIP_TRINITY="${SKIP_TRINITY:-0}"
+
 SSH="ssh -i $SSH_KEY $REMOTE_USER@$REMOTE_IP"
+SCP="scp -i $SSH_KEY"
 
-GREEN='\033[0;32m'; BLUE='\033[0;34m'; RED='\033[0;31m'; NC='\033[0m'
-log()  { echo "${BLUE}▶${NC} $*"; }
-ok()   { echo "${GREEN}✓${NC} $*"; }
-fail() { echo "${RED}✗${NC} $*"; exit 1; }
+GREEN='\033[0;32m'; BLUE='\033[0;34m'; YELLOW='\033[0;33m'; RED='\033[0;31m'; NC='\033[0m'
+log()  { printf "${BLUE}▶${NC} %s\n" "$*"; }
+ok()   { printf "${GREEN}✓${NC} %s\n" "$*"; }
+warn() { printf "${YELLOW}⚠${NC} %s\n" "$*"; }
+fail() { printf "${RED}✗${NC} %s\n" "$*"; exit 1; }
 
+# ---------- Preflight ----------
+
+log "Preflight"
 [ -f "$SSH_KEY" ] || fail "SSH key not found: $SSH_KEY"
 [ -f .env.production ] || fail ".env.production missing — generate it locally first"
+[ -f Caddyfile ] || fail "Caddyfile missing at repo root"
+[ -f .env.trinity ] || fail ".env.trinity missing at repo root"
 
-log "Pulling latest main on VPS"
+# Extract shared secret from the local production env for sanity checks.
+MCP_SHARED_SECRET="$(grep -E '^MCP_SHARED_SECRET=' .env.production | head -1 | cut -d= -f2- || true)"
+[ -n "${MCP_SHARED_SECRET:-}" ] || warn "MCP_SHARED_SECRET not found in .env.production — MCP curl checks will be skipped"
+
+# Sanity: the .env.trinity secret must match the .env.production one.
+TRINITY_SECRET="$(grep -E '^MCP_SHARED_SECRET=' .env.trinity | head -1 | cut -d= -f2- || true)"
+if [ -n "${MCP_SHARED_SECRET:-}" ] && [ "$TRINITY_SECRET" != "$MCP_SHARED_SECRET" ]; then
+  fail "MCP_SHARED_SECRET mismatch between .env.production and .env.trinity — align them first"
+fi
+
+# SSH reachability.
+$SSH "echo ok" >/dev/null 2>&1 || fail "SSH to $REMOTE_USER@$REMOTE_IP failed"
+ok "SSH OK — secrets aligned"
+
+# Verify Trinity layout on VPS (unless skipped).
+if [ "$SKIP_TRINITY" != "1" ]; then
+  $SSH "[ -f $TRINITY_CADDY_PATH ]" || fail "Trinity Caddyfile not found at $TRINITY_CADDY_PATH"
+  $SSH "[ -f $TRINITY_ENV_PATH ]" || fail "Trinity .env not found at $TRINITY_ENV_PATH"
+  $SSH "[ -d $TRINITY_COMPOSE_DIR ]" || fail "Trinity compose dir not found: $TRINITY_COMPOSE_DIR"
+  ok "Trinity layout OK"
+fi
+
+# ---------- 1. Buck repo refresh ----------
+
+log "Pulling latest on VPS Buck repo ($REMOTE_DIR)"
 $SSH "cd $REMOTE_DIR && git fetch --all && git reset --hard origin/main"
 
+# ---------- 2. Buck .env ----------
+
 log "Syncing .env.production → $REMOTE_DIR/.env"
-scp -i "$SSH_KEY" .env.production "$REMOTE_USER@$REMOTE_IP:$REMOTE_DIR/.env"
+$SCP .env.production "$REMOTE_USER@$REMOTE_IP:$REMOTE_DIR/.env"
 
 log "Ensuring data directories exist"
 $SSH "cd $REMOTE_DIR && mkdir -p data/db data/workspace data/bible"
 
-log "Building images (bible-mcp, bible-ui, buck-app)"
-$SSH "cd $REMOTE_DIR && docker compose build"
+# ---------- 3 + 4. Trinity Caddy + env ----------
 
-log "Starting / updating containers"
-$SSH "cd $REMOTE_DIR && docker compose up -d"
+if [ "$SKIP_TRINITY" = "1" ]; then
+  warn "SKIP_TRINITY=1 — skipping Trinity Caddy/env sync"
+else
+  log "Backing up Trinity Caddyfile + .env on VPS"
+  $SSH "cp $TRINITY_CADDY_PATH ${TRINITY_CADDY_PATH}.bak-$(date +%Y%m%d-%H%M%S)"
+  $SSH "cp $TRINITY_ENV_PATH ${TRINITY_ENV_PATH}.bak-$(date +%Y%m%d-%H%M%S)"
 
-log "Waiting for healthchecks"
-sleep 8
+  log "Syncing Caddyfile → $TRINITY_CADDY_PATH"
+  $SCP Caddyfile "$REMOTE_USER@$REMOTE_IP:$TRINITY_CADDY_PATH"
+
+  log "Syncing .env.trinity → $TRINITY_ENV_PATH"
+  $SCP .env.trinity "$REMOTE_USER@$REMOTE_IP:$TRINITY_ENV_PATH"
+fi
+
+# ---------- 5. Buck build + up ----------
+
+if [ "$SKIP_BUCK_BUILD" = "1" ]; then
+  warn "SKIP_BUCK_BUILD=1 — skipping Buck docker build/up"
+else
+  log "Building Buck images (bible-mcp, writing-tools-mcp, bible-ui, buck-app)"
+  warn "First build of writing-tools-mcp takes ~5 min (torch + transformers + spacy)"
+  $SSH "cd $REMOTE_DIR && docker compose build"
+
+  log "Starting / updating Buck containers"
+  $SSH "cd $REMOTE_DIR && docker compose up -d"
+fi
+
+# ---------- 6. Caddy reload ----------
+
+if [ "$SKIP_TRINITY" != "1" ]; then
+  log "Reloading Caddy (Trinity stack)"
+  # Try docker compose exec ; fall back to `caddy reload` directly if the
+  # command layout differs.
+  $SSH "cd $TRINITY_COMPOSE_DIR && docker compose exec -T caddy caddy reload --config /etc/caddy/Caddyfile" \
+    || $SSH "docker exec \$(docker ps --filter name=caddy --format '{{.Names}}' | head -1) caddy reload --config /etc/caddy/Caddyfile" \
+    || fail "Caddy reload failed — check $TRINITY_CADDY_PATH syntax manually"
+fi
+
+# ---------- 7. Sanity checks ----------
+
+log "Waiting 10s for containers to settle"
+sleep 10
+
+log "Container status (Buck)"
 $SSH "cd $REMOTE_DIR && docker compose ps"
 
 log "Sanity HTTPS checks"
-echo
-echo "  buck.romain-ecarnot.com →"
-curl -sI https://buck.romain-ecarnot.com/api/health | head -1 || true
-echo "  bible.buck.romain-ecarnot.com (expect 401 without creds) →"
-curl -sI https://bible.buck.romain-ecarnot.com | head -1 || true
+printf "\n  buck.romain-ecarnot.com/api/health → "
+curl -sI -o /dev/null -w "%{http_code}\n" https://buck.romain-ecarnot.com/api/health || true
 
-ok "Deploy done. Tail logs with:"
-echo "  $SSH 'cd $REMOTE_DIR && docker compose logs -f --tail=50'"
+printf "  bible.buck.romain-ecarnot.com (SSO — expect 302/200 if logged) → "
+curl -sI -o /dev/null -w "%{http_code}\n" https://bible.buck.romain-ecarnot.com || true
+
+if [ -n "${MCP_SHARED_SECRET:-}" ]; then
+  INIT_BODY='{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-06-18","capabilities":{},"clientInfo":{"name":"deploy-vps","version":"0"}}}'
+
+  printf "  bible-mcp.buck (no bearer → expect 401) → "
+  curl -sI -o /dev/null -w "%{http_code}\n" https://bible-mcp.buck.romain-ecarnot.com/mcp || true
+
+  printf "  bible-mcp.buck (with bearer → expect 200) → "
+  curl -s -o /dev/null -w "%{http_code}\n" -X POST \
+    -H "Authorization: Bearer $MCP_SHARED_SECRET" \
+    -H "Content-Type: application/json" \
+    -H "Accept: application/json, text/event-stream" \
+    -d "$INIT_BODY" \
+    https://bible-mcp.buck.romain-ecarnot.com/mcp || true
+
+  printf "  writing-mcp.buck (no bearer → expect 401) → "
+  curl -sI -o /dev/null -w "%{http_code}\n" https://writing-mcp.buck.romain-ecarnot.com/mcp || true
+
+  printf "  writing-mcp.buck (with bearer → expect 200) → "
+  curl -s -o /dev/null -w "%{http_code}\n" -X POST \
+    -H "Authorization: Bearer $MCP_SHARED_SECRET" \
+    -H "Content-Type: application/json" \
+    -H "Accept: application/json, text/event-stream" \
+    -d "$INIT_BODY" \
+    https://writing-mcp.buck.romain-ecarnot.com/mcp || true
+else
+  warn "Skipping MCP endpoint curls (no MCP_SHARED_SECRET)"
+fi
+
+echo
+ok "Deploy done."
+echo "  Tail Buck logs   :  $SSH 'cd $REMOTE_DIR && docker compose logs -f --tail=50'"
+echo "  Tail bible-mcp   :  $SSH 'docker logs -f buck-bible-mcp --tail=50'"
+echo "  Tail writing-mcp :  $SSH 'docker logs -f buck-writing-tools-mcp --tail=50'"
