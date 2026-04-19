@@ -182,5 +182,47 @@ describe('usage routes', () => {
       });
       expect(res.status).toBe(401);
     });
+
+    it('breakdown byKind: chat + realtime séparés', async () => {
+      ctx = await makeCtx();
+      const april10 = new Date('2026-04-10T10:00:00Z').getTime();
+
+      // Insert a chat event
+      ctx.db.db.insert(usageEvents).values({
+        id: newId(),
+        userId: ctx.userId,
+        createdAt: april10,
+        model: 'gpt-5.4-mini',
+        inputTokens: 100,
+        outputTokens: 50,
+        costUsd: 3,
+        kind: 'chat',
+      }).run();
+
+      // Insert a realtime event
+      ctx.db.db.insert(usageEvents).values({
+        id: newId(),
+        userId: ctx.userId,
+        createdAt: april10 + 1000,
+        model: 'gpt-realtime-1.5',
+        inputTokens: 0,
+        outputTokens: 0,
+        costUsd: 7,
+        kind: 'realtime',
+      }).run();
+
+      const res = await ctx.app.request('/api/usage/current', {
+        method: 'GET',
+        headers: authGetHeaders(ctx.sessionJwt),
+      });
+      expect(res.status).toBe(200);
+      const body = await res.json() as {
+        totalUsd: number;
+        byKind: { chat: number; realtime: number };
+      };
+      expect(body.totalUsd).toBe(10);
+      expect(body.byKind.chat).toBe(3);
+      expect(body.byKind.realtime).toBe(7);
+    });
   });
 });
