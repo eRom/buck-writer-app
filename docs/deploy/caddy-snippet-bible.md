@@ -1,8 +1,10 @@
-# Caddy snippet pour bible-ui — à appliquer sur le VPS lors du déploiement
+# Caddy snippet pour bible-ui — SSO via forward_auth
+
+Depuis 2026-04-19, `bible.buck.romain-ecarnot.com` n'est plus protégée par basicauth mais par le cookie de session Buck (SSO Caddy `forward_auth` → endpoint `/api/auth/verify-session` sur `buck-app`).
 
 ## DNS prérequis (Hostinger)
 
-Créer un record wildcard :
+Record wildcard :
 - Type: `A`
 - Nom: `*.buck`
 - Valeur: IP du VPS
@@ -10,59 +12,64 @@ Créer un record wildcard :
 
 Couvre `buck.romain-ecarnot.com` ET `bible.buck.romain-ecarnot.com`.
 
-## Variables d'env Caddy (.env du compose Caddy sur trinity-lifeos-agent)
+## Variables d'env
+
+### Sur le `.env` Buck (`.env.production`)
+
+Indispensable pour que le cookie soit envoyé à `bible.buck.*` :
+
+```env
+COOKIE_DOMAIN=.romain-ecarnot.com
+```
+
+### Sur le `.env` Caddy (compose Trinity)
+
+Plus besoin de `BIBLE_USER` / `BIBLE_PASSWORD_HASH` — les retirer si présents.
 
 ```env
 BUCK_HOST_BASE=romain-ecarnot.com
-BIBLE_USER=romain
-BIBLE_PASSWORD_HASH='$2a$14$DYnh9iQXhZIXrEoNn/2Ci.MCc365Ea3HzojSHjxi1l1cA7x8tWZV2'
 ```
 
-⚠️ Le hash bcrypt contient des `$` qui doivent être quotés (`'...'`) pour ne pas être interprétés par le shell.
+## Bloc Caddyfile
 
-Mot de passe en clair (à stocker dans ton gestionnaire de mots de passe, jamais dans git) : généré au moment du brainstorming, demande à Trinity ou regénère via :
-
-```bash
-docker run --rm caddy:2 caddy hash-password --plaintext 'NOUVEAU_PASSWORD_FORT'
-```
-
-## Bloc Caddyfile à ajouter
-
-À ajouter à la fin de `/Users/recarnot/dev/trinity-lifeos-agent/vps/docker/caddy/CaddyFile` :
+`trinity-lifeos-agent/vps/docker/caddy/Caddyfile` :
 
 ```
-buck.{$BUCK_HOST_BASE} {
-    reverse_proxy buck-app:3000
-}
-
 bible.buck.{$BUCK_HOST_BASE} {
-    basicauth {
-        {$BIBLE_USER} {$BIBLE_PASSWORD_HASH}
+    forward_auth buck-app:3000 {
+        uri /api/auth/verify-session
+        copy_headers X-User-Id
     }
-    reverse_proxy bible-ui:80
+    reverse_proxy buck-bible-ui:80
 }
 ```
 
-## Reload Caddy
+## Déploiement (ordre important)
+
+1. Déployer Buck avec `COOKIE_DOMAIN=.romain-ecarnot.com` (rebuild + redémarrage `buck-app`).
+2. **Se relogger sur `https://buck.romain-ecarnot.com`** (magic-link) pour obtenir un cookie avec le nouveau Domain parent. L'ancien cookie host-only reste valide mais ne sera pas envoyé à `bible.buck.*`.
+3. Patch Caddyfile + reload :
 
 ```bash
-ssh vps "cd /path/to/trinity && docker compose -f vps/docker-compose.yml exec caddy caddy reload --config /etc/caddy/Caddyfile"
+ssh vps "cd /path/to/trinity && docker compose -f vps/docker/docker-compose.yml exec caddy caddy reload --config /etc/caddy/Caddyfile"
 ```
 
 ## Sanity checks post-deploy
 
 ```bash
-# Buck doit répondre 200 (avec login magic-link)
+# Buck répond 200 (authentifié) ou redirect login
 curl -i https://buck.romain-ecarnot.com
 
-# Bible doit demander basicauth (HTTP 401)
+# Bible sans cookie → 401 (forward_auth rejette)
 curl -i https://bible.buck.romain-ecarnot.com
 
-# Avec creds
-curl -i -u romain:LE_PLAINTEXT https://bible.buck.romain-ecarnot.com
+# Bible avec cookie de session Buck → 200 + UI
+curl -i -H "cookie: buck_session=<JWT>" https://bible.buck.romain-ecarnot.com
 
-# /mcp aussi protégé (401 sans auth)
-curl -i -X POST https://bible.buck.romain-ecarnot.com/mcp \
-  -H 'Content-Type: application/json' \
-  -d '{"jsonrpc":"2.0","id":1,"method":"tools/list"}'
+# Endpoint forward_auth directement (sans cookie → 401, avec cookie → 204 + X-User-Id)
+curl -i https://buck.romain-ecarnot.com/api/auth/verify-session
 ```
+
+## Rollback basicauth (au cas où)
+
+Si le SSO pose souci, restaurer le bloc basicauth précédent (cf. historique git `vps/docker/caddy/Caddyfile`) et remettre `BIBLE_USER` / `BIBLE_PASSWORD_HASH` dans l'env Caddy.

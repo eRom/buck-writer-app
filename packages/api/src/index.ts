@@ -206,6 +206,7 @@ const app = buildApp({
   memory,
   buckUserId: env.BUCK_USER_ID,
   trustProxy: env.TRUST_PROXY,
+  cookieDomain: env.COOKIE_DOMAIN,
 });
 
 serve({ fetch: app.fetch, port: env.PORT, hostname: '0.0.0.0' }, (info) => {

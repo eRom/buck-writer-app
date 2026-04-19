@@ -70,6 +70,11 @@ export interface AppDeps extends AuthRoutesDeps, SessionRoutesDeps {
    * X-Forwarded-For. Defaults to false (safe). See env.TRUST_PROXY.
    */
   trustProxy?: boolean;
+  /**
+   * Optional Domain attribute appended to buck_session cookies. See
+   * AuthRoutesDeps.cookieDomain for details.
+   */
+  cookieDomain?: string;
 }
 
 // Re-export ChatRouteDeps for consumers
@@ -108,6 +113,19 @@ export function buildApp(deps: AppDeps) {
   app.post(
     '/api/auth/webdav-token',
     authGuard({ db: deps.db, jwt: deps.jwt, nowMs: deps.nowMs }),
+  );
+
+  // SSO endpoint for Caddy forward_auth — mounted BEFORE the rate limiter
+  // (bible-ui fires one request per asset). Returns 204 + X-User-Id when the
+  // buck_session cookie is valid, 401 otherwise. Caddy copies X-User-Id to
+  // the upstream request via `copy_headers`.
+  app.get(
+    '/api/auth/verify-session',
+    authGuard({ db: deps.db, jwt: deps.jwt, nowMs: deps.nowMs }),
+    (c) => {
+      c.header('X-User-Id', c.get('userId'));
+      return c.body(null, 204);
+    },
   );
 
   // Rate-limit auth mutation endpoints (5 req/min per IP) to prevent magic-link spam
@@ -211,7 +229,8 @@ export function buildApp(deps: AppDeps) {
         scope: 'app', userAgent: c.req.header('user-agent') ?? null,
         expiresAt: ts + SESSION_TTL_MS, createdAt: ts,
       }).run();
-      const cookie = `buck_session=${sessionJwt}; Path=/; HttpOnly; SameSite=Lax; Max-Age=${SESSION_TTL_SECONDS}`;
+      const domainAttr = deps.cookieDomain ? `; Domain=${deps.cookieDomain}` : '';
+      const cookie = `buck_session=${sessionJwt}; Path=/; HttpOnly; SameSite=Lax; Max-Age=${SESSION_TTL_SECONDS}${domainAttr}`;
       c.header('Set-Cookie', cookie);
       return c.redirect('/');
     });

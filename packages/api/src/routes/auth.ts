@@ -15,6 +15,12 @@ export interface AuthRoutesDeps {
   publicBaseUrl: string;
   nowMs?: () => number;
   unknownEmailDelayMs?: number;
+  /**
+   * Optional Domain attribute appended to buck_session cookies. Set to
+   * ".romain-ecarnot.com" to share the cookie with bible.buck.* (SSO via
+   * Caddy forward_auth). Undefined = host-only cookie.
+   */
+  cookieDomain?: string;
 }
 
 const MAGIC_LINK_TTL_MS = 15 * 60 * 1000;
@@ -26,6 +32,7 @@ export function createAuthRoutes(deps: AuthRoutesDeps): Hono {
   const whitelist = new Set(deps.allowedEmails.map((e) => e.toLowerCase()));
   const unknownDelay = deps.unknownEmailDelayMs ?? 400;
   const app = new Hono();
+  const domainAttr = deps.cookieDomain ? `; Domain=${deps.cookieDomain}` : '';
 
   app.post('/request', async (c) => {
     const raw = await c.req.json().catch(() => ({}));
@@ -138,7 +145,7 @@ export function createAuthRoutes(deps: AuthRoutesDeps): Hono {
       })
       .run();
 
-    const cookie = `buck_session=${sessionJwt}; Path=/; HttpOnly; Secure; SameSite=Lax; Max-Age=${SESSION_TTL_SECONDS}`;
+    const cookie = `buck_session=${sessionJwt}; Path=/; HttpOnly; Secure; SameSite=Lax; Max-Age=${SESSION_TTL_SECONDS}${domainAttr}`;
     c.header('Set-Cookie', cookie);
     return c.redirect('/');
   });
@@ -186,7 +193,7 @@ export function createAuthRoutes(deps: AuthRoutesDeps): Hono {
     }
     c.header(
       'Set-Cookie',
-      'buck_session=; Path=/; HttpOnly; Secure; SameSite=Lax; Max-Age=0',
+      `buck_session=; Path=/; HttpOnly; Secure; SameSite=Lax; Max-Age=0${domainAttr}`,
     );
     return c.json({ ok: true });
   });

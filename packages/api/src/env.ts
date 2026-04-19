@@ -39,6 +39,13 @@ const Schema = z.object({
    * and the TCP socket peer address is used instead.
    */
   TRUST_PROXY: z.coerce.boolean().default(false),
+  /**
+   * Cookie Domain attribute for buck_session. Set to a parent domain
+   * (e.g. ".romain-ecarnot.com") to share the session cookie across
+   * subdomains for Caddy forward_auth SSO. When absent, the cookie is
+   * scoped to the current host only (default browser behaviour).
+   */
+  COOKIE_DOMAIN: z.string().min(1).optional(),
 });
 
 export type Env = z.infer<typeof Schema>;
