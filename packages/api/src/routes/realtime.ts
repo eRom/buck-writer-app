@@ -199,7 +199,8 @@ export function createRealtimeRoute(
     });
 
     return c.json({
-      clientSecret: minted,
+      clientSecret: minted.value,
+      expiresAt: minted.expiresAt,
       realtimeModel: REALTIME_MODEL,
       sessionConfig,
     });
@@ -225,6 +226,22 @@ export function createRealtimeRoute(
     };
 
     const realtimeSessionId = body.realtimeSessionId ?? '';
+    if (!realtimeSessionId || realtimeSessionId.length < 6) {
+      return c.json({ error: { code: 'invalid', message: 'realtimeSessionId required' } }, 400);
+    }
+    const sessionId = body.sessionId ?? '';
+    if (!sessionId) {
+      return c.json({ error: { code: 'invalid', message: 'sessionId required' } }, 400);
+    }
+    // Ownership check : la chat session doit appartenir au userId.
+    const chatRow = deps.db.db
+      .select()
+      .from(chatSessions)
+      .where(and(eq(chatSessions.id, sessionId), eq(chatSessions.userId, userId)))
+      .get();
+    if (!chatRow) {
+      return c.json({ error: { code: 'not_found', message: 'chat session not found' } }, 404);
+    }
 
     let tracked;
     try {
@@ -391,6 +408,19 @@ export function createRealtimeRoute(
     const userId = c.get('userId');
     const realtimeSessionId = c.req.param('id');
     const sessionId = c.req.query('sessionId') ?? null;
+
+    // Ownership : si un sessionId est fourni, il doit appartenir au userId.
+    // Sinon on refuse l'accès au tracker pour éviter les cross-user drops.
+    if (sessionId) {
+      const chatRow = deps.db.db
+        .select()
+        .from(chatSessions)
+        .where(and(eq(chatSessions.id, sessionId), eq(chatSessions.userId, userId)))
+        .get();
+      if (!chatRow) {
+        return c.json({ error: { code: 'not_found', message: 'chat session not found' } }, 404);
+      }
+    }
 
     const tracked = deps.usageTracker.drop(realtimeSessionId);
     if (!tracked) {

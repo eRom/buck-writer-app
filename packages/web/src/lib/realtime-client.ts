@@ -299,6 +299,9 @@ export class RealtimeClient extends EventTarget {
     if (this.silenceTimer) clearTimeout(this.silenceTimer);
     this.durationTimers.forEach(clearTimeout);
     if (this.transcriptFlushTimer) clearTimeout(this.transcriptFlushTimer);
+    // Flush la dernière fenêtre d'usage + transcripts AVANT de demander la
+    // fermeture côté serveur, sinon la dernière merge locale est perdue.
+    await this.flushUsage();
     await this.flushTranscript();
     if (this.realtimeSessionId) {
       try {

@@ -199,11 +199,13 @@ describe('realtime routes', () => {
       });
       expect(res.status).toBe(200);
       const body = await res.json() as {
-        clientSecret: { value: string; expiresAt: number };
+        clientSecret: string;
+        expiresAt: number;
         realtimeModel: string;
         sessionConfig: { type: string; session: { voice: string } };
       };
-      expect(body.clientSecret.value).toBe('eph_test_secret');
+      expect(body.clientSecret).toBe('eph_test_secret');
+      expect(body.expiresAt).toBeGreaterThan(0);
       expect(body.realtimeModel).toBe('gpt-realtime-1.5');
       expect(body.sessionConfig.type).toBe('session.update');
     });
@@ -289,6 +291,7 @@ describe('realtime routes', () => {
         headers: authHeaders(ctx.sessionJwt),
         body: JSON.stringify({
           realtimeSessionId: 'rsession_mono',
+          sessionId: ctx.chatSessionId,
           audioInputTokens: 1000,
           audioOutputTokens: 500,
           textInputTokens: 100,
@@ -304,6 +307,7 @@ describe('realtime routes', () => {
         headers: authHeaders(ctx.sessionJwt),
         body: JSON.stringify({
           realtimeSessionId: 'rsession_mono',
+          sessionId: ctx.chatSessionId,
           audioInputTokens: 500, // lower than 1000
           audioOutputTokens: 500,
           textInputTokens: 100,

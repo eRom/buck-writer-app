@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef } from 'react';
+import { useCallback, useEffect } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import { RealtimeClient, type StartOpts } from '@/lib/realtime-client';
 import { useRealtimeStore, type RealtimeState } from '@/stores/realtime-store';
@@ -13,16 +13,20 @@ export interface UseRealtimeVoiceReturn {
   error: string | null;
 }
 
+// Singleton module-level : un seul RealtimeClient par onglet/app, partagé par
+// toutes les instances du hook (Notch, ChatInput, hotkey, etc.). Évite les
+// refs locales qui créaient des stop() no-op sur des instances tierces.
+const clientSingleton: { current: RealtimeClient | null } = { current: null };
+
 export function useRealtimeVoice(chatSessionId: string | null): UseRealtimeVoiceReturn {
   const state = useRealtimeStore((s) => s.state);
   const muted = useRealtimeStore((s) => s.muted);
   const error = useRealtimeStore((s) => s.error);
-  const clientRef = useRef<RealtimeClient | null>(null);
   const queryClient = useQueryClient();
 
   const stop = useCallback(async () => {
-    const client = clientRef.current;
-    clientRef.current = null;
+    const client = clientSingleton.current;
+    clientSingleton.current = null;
     if (client) await client.stop();
     useRealtimeStore.getState().reset();
     useRealtimeStore.getState().clearTranscripts();
@@ -31,14 +35,14 @@ export function useRealtimeVoice(chatSessionId: string | null): UseRealtimeVoice
   const start = useCallback(
     async (config: StartOpts, silenceTimeoutSec?: number) => {
       if (!chatSessionId) return;
-      if (clientRef.current) return;
+      if (clientSingleton.current) return;
       const store = useRealtimeStore.getState();
 
       const client = new RealtimeClient({
         chatSessionId,
         silenceTimeoutMs: silenceTimeoutSec ? silenceTimeoutSec * 1000 : undefined,
       });
-      clientRef.current = client;
+      clientSingleton.current = client;
 
       client.addEventListener('state', (e) => {
         const next = (e as CustomEvent<RealtimeState>).detail;
@@ -75,7 +79,11 @@ export function useRealtimeVoice(chatSessionId: string | null): UseRealtimeVoice
       try {
         await client.start(config);
       } catch (err) {
-        clientRef.current = null;
+        // Cleanup ressources (micro, PC, AudioContext) avant de nullifier
+        await client.stop().catch(() => {
+          // swallow — on est déjà en erreur
+        });
+        clientSingleton.current = null;
         store.setError((err as Error).message ?? 'start failed');
       }
     },
@@ -85,15 +93,21 @@ export function useRealtimeVoice(chatSessionId: string | null): UseRealtimeVoice
   const toggleMute = useCallback(() => {
     const next = !useRealtimeStore.getState().muted;
     useRealtimeStore.getState().setMuted(next);
-    clientRef.current?.setMuted(next);
+    clientSingleton.current?.setMuted(next);
   }, []);
 
+  // Best-effort cleanup quand l'onglet se ferme — évite micro ouvert après
+  // navigation abrupte. Une vraie fermeture propre passe par stop() explicite.
   useEffect(() => {
-    return () => {
-      const c = clientRef.current;
-      clientRef.current = null;
-      if (c) void c.stop();
+    const onBeforeUnload = () => {
+      const c = clientSingleton.current;
+      if (c) {
+        clientSingleton.current = null;
+        void c.stop();
+      }
     };
+    window.addEventListener('beforeunload', onBeforeUnload);
+    return () => window.removeEventListener('beforeunload', onBeforeUnload);
   }, []);
 
   return { start, stop, toggleMute, state, muted, error };

@@ -43,8 +43,14 @@ function makeWrapper() {
     React.createElement(QueryClientProvider, { client: qc }, children);
 }
 
-beforeEach(() => {
+beforeEach(async () => {
   useRealtimeStore.getState().reset();
+  // Clear the module singleton in the hook (public API: renderHook then stop).
+  // Simplest : force un unload event qui nettoie le singleton si présent.
+  const { result } = renderHook(() => useRealtimeVoice('reset-only'), { wrapper: makeWrapper() });
+  await act(async () => {
+    await result.current.stop();
+  });
   FakeClient.instances.length = 0;
 });
 
@@ -97,13 +103,15 @@ describe('useRealtimeVoice', () => {
     expect(useRealtimeStore.getState().error).toBeNull();
   });
 
-  it('unmount appelle stop() du client', async () => {
-    const { result, unmount } = renderHook(() => useRealtimeVoice('s1'), { wrapper: makeWrapper() });
+  it('beforeunload appelle stop() du singleton', async () => {
+    const { result } = renderHook(() => useRealtimeVoice('s1'), { wrapper: makeWrapper() });
     await act(async () => {
       await result.current.start(DEFAULT_OPTS);
     });
     const client = FakeClient.instances[0]!;
-    unmount();
+    act(() => {
+      window.dispatchEvent(new Event('beforeunload'));
+    });
     expect(client.stop).toHaveBeenCalled();
   });
 });
