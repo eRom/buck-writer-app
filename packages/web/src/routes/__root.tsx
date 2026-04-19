@@ -6,6 +6,7 @@ import {
 import type { QueryClient } from '@tanstack/react-query';
 import { Toaster } from 'sonner';
 import { fetchMe } from '@/lib/session';
+import { Notch } from '@/components/live/notch';
 
 export interface RouterCtx {
   queryClient: QueryClient;
@@ -34,6 +35,7 @@ export const Route = createRootRouteWithContext<RouterCtx>()({
   component: () => (
     <>
       <Outlet />
+      <Notch />
       <Toaster theme="dark" position="top-right" />
     </>
   ),
