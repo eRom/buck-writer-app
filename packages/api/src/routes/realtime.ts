@@ -344,6 +344,44 @@ export function createRealtimeRoute(
     return c.json({ inserted });
   });
 
+  // POST /write-to-chat — persist a voice-injected assistant message
+  app.post('/write-to-chat', async (c) => {
+    const userId = c.get('userId');
+    const body = (await c.req.json().catch(() => ({}))) as {
+      sessionId?: string;
+      content?: string;
+    };
+    const sessionId = String(body.sessionId ?? '');
+    const content = String(body.content ?? '').trim();
+    if (!sessionId || !content) {
+      return c.json({ error: { code: 'invalid' } }, 400);
+    }
+
+    const session = deps.db.db
+      .select()
+      .from(chatSessions)
+      .where(and(eq(chatSessions.id, sessionId), eq(chatSessions.userId, userId)))
+      .get();
+    if (!session) return c.json({ error: { code: 'not_found' } }, 404);
+
+    const id = newId();
+    const createdAt = getNow();
+    deps.db.db
+      .insert(messages)
+      .values({
+        id,
+        sessionId,
+        role: 'assistant',
+        contentJson: JSON.stringify(content),
+        model: REALTIME_MODEL,
+        source: 'voice-injected',
+        createdAt,
+      })
+      .run();
+
+    return c.json({ id, createdAt });
+  });
+
   // DELETE /session/:id — flush usage on session close
   app.delete('/session/:id', async (c) => {
     if (!deps.featureFlag) {

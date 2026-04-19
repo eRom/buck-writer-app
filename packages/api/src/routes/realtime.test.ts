@@ -404,6 +404,51 @@ describe('realtime routes', () => {
     });
   });
 
+  // ── Task 9.0 : POST /write-to-chat ───────────────────────────────────────
+
+  describe('POST /api/realtime/write-to-chat', () => {
+    it('happy path : insère le message et retourne id + createdAt', async () => {
+      ctx = await makeCtx();
+      const res = await ctx.app.request('/api/realtime/write-to-chat', {
+        method: 'POST',
+        headers: authHeaders(ctx.sessionJwt),
+        body: JSON.stringify({ sessionId: ctx.chatSessionId, content: 'Voici ma réponse vocale.' }),
+      });
+      expect(res.status).toBe(200);
+      const body = await res.json() as { id: string; createdAt: number };
+      expect(typeof body.id).toBe('string');
+      expect(typeof body.createdAt).toBe('number');
+
+      // Verify row in DB with source='voice-injected'
+      const row = ctx.db.db.select().from(messages).where(require('drizzle-orm').eq(messages.id, body.id)).get();
+      expect(row).toBeDefined();
+      expect(row?.source).toBe('voice-injected');
+      expect(row?.role).toBe('assistant');
+    });
+
+    it('404 si session appartient à un autre user', async () => {
+      ctx = await makeCtx();
+      const res = await ctx.app.request('/api/realtime/write-to-chat', {
+        method: 'POST',
+        headers: authHeaders(ctx.sessionJwt),
+        body: JSON.stringify({ sessionId: 'other-user-session-id', content: 'test' }),
+      });
+      expect(res.status).toBe(404);
+    });
+
+    it('400 si content vide', async () => {
+      ctx = await makeCtx();
+      const res = await ctx.app.request('/api/realtime/write-to-chat', {
+        method: 'POST',
+        headers: authHeaders(ctx.sessionJwt),
+        body: JSON.stringify({ sessionId: ctx.chatSessionId, content: '   ' }),
+      });
+      expect(res.status).toBe(400);
+      const body = await res.json() as { error: { code: string } };
+      expect(body.error.code).toBe('invalid');
+    });
+  });
+
   // ── Task 4.4 : DELETE /session/:id ───────────────────────────────────────
 
   describe('DELETE /api/realtime/session/:id', () => {
