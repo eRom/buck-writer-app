@@ -1,6 +1,49 @@
 # Architecture — Buck Writer
 
-> Derniere mise a jour : 2026-04-19 (M7 — API Responses + MCP remote connectors déployé)
+> Derniere mise a jour : 2026-04-19 (M8 — mode Live vocal OpenAI Realtime + module todos)
+
+## M8 — Mode Live vocal (OpenAI Realtime `gpt-realtime-1.5`)
+
+Buck supporte un mode conversationnel vocal **WebRTC direct browser↔OpenAI**. Le backend ne voit pas l'audio : il ne fait que mint un `client_secret` éphémère via `POST /v1/realtime/client_secrets` (payload strict `{ type:'realtime', model }` — **pas** de voice/instructions, OpenAI rejette en GA).
+
+Flux :
+```
+Browser → Buck /api/realtime/session  → OpenAI mint (server)
+         ← { clientSecret, sessionConfig }
+Browser: RTCPeerConnection → POST SDP → api.openai.com/v1/realtime/calls?model=...
+  (Authorization: Bearer <clientSecret>)
+         ← SDP answer
+DataChannel "oai-events" ouvert → send `session.update` (voice, VAD, tools, instructions)
+Audio streams : micro → OpenAI, remote → <audio> + AudioContext → AnalyserNode → waveform
+```
+
+**Endpoints /api/realtime/*** (flag `REALTIME_ENABLED`) :
+- `POST /session` : ownership + budget guard + mint + build session.update payload
+- `POST /usage` : update monotone du tracker, recalcul `costOfRealtime`, 429 si budget dépassé, persist en `usage_events kind='realtime'`
+- `POST /transcript` : insert messages `source='voice'`, idempotent via toolMeta `voice:${startedAt}:${role}`
+- `POST /write-to-chat` : insert message assistant `source='voice-injected'` (tool local que l'IA appelle en Live)
+- `DELETE /session/:id` : drop tracker + flush usage final
+
+**Prompts** : 4 fichiers dans `workspace/systems/` chargés dans l'ordre SYSTEM → MEMORY → TOOLS → RULES (tous live-editable, chokidar watch). LIVE.md ajouté pour le mode vocal. Bootstrap depuis `packages/api/src/defaults/systems/`.
+
+**Tools Live** : MCP Bible/writing-tools + web_search natif Realtime + `write_to_chat` function local. `require_approval: 'never'` forcé sur tous les MCP (décision produit 12.11, pas d'approval vocal).
+
+**Tracker usage** : `Map<realtimeSessionId, TrackedUsage>` en mémoire, monotone strict, GC setInterval 60s (stale > 2min). `unref()` pour ne pas bloquer shutdown.
+
+**Singleton RealtimeClient** : côté web, `clientSingleton` module-level dans `use-realtime-voice.ts` — une seule instance partagée par Notch/ChatInput/hotkey/index. Cleanup sur `beforeunload`. Sinon stop() no-op entre composants.
+
+**Timeouts client-side** :
+- Silence : reset sur `input_audio_buffer.speech_started` / `response.audio.delta`. Seuil = `userSettings.realtimeSilenceTimeoutSec` (10-60, défaut 30).
+- Warning : 20 min via `emit('warn')`.
+- Close : 25 min via `fail('durée max atteinte')`.
+
+**Pricing** : `gpt-realtime-1.5` = $32/1M audio_input, $0.40/1M cached, $64/1M audio_output, $5/1M text_input, $20/1M text_output. `costOfRealtime(usage, model?)` dans `@buck/shared`.
+
+**DB** : migration 0007 ajoute `messages.source TEXT DEFAULT 'text'`, `usage_events.kind TEXT DEFAULT 'chat'`, `user_settings.realtime_*` (4 colonnes). Indexes `usage_events_kind_idx`, `messages_source_idx`.
+
+**UI** : `<Notch>` fixed top-center avec waveform canvas 32 barres (AnalyserNode `getByteTimeDomainData`), raccourci `Cmd+Shift+L`, bouton mic dans `chat-input.tsx`. Settings > Audio Live : voix (10 options, défaut `coral`), 3 sliders VAD (threshold / prefix_padding / silence_duration), slider timeout silence, toggles MCP/web_search, badge permission micro ("disponible" / "rechecker" via `navigator.permissions.query`).
+
+## M7 — Remote MCP connectors via OpenAI Responses API
 
 ## M7 — Remote MCP connectors via OpenAI Responses API
 

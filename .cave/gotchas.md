@@ -1,6 +1,36 @@
 # Gotchas — Buck Writer
 
-> Derniere mise a jour : 2026-04-19 (QW1 — MCP approval flow + auto-classification)
+> Derniere mise a jour : 2026-04-19 (M8 — OpenAI Realtime vocal)
+
+## M8 — OpenAI Realtime WebRTC (2026-04-19)
+
+### Mint payload strict en GA (contract trap #1)
+`POST /v1/realtime/client_secrets` rejette avec `unknown_parameter 'session.voice'` si le body inclut autre chose que `{ type:'realtime', model }`. Voice, instructions, turn_detection, tools, modalities, input_audio_transcription : **tous à envoyer après via `session.update` sur le DataChannel**. Pas via le mint. Voir `packages/api/src/lib/realtime.ts`.
+
+### Endpoint SDP GA (contract trap #2)
+L'endpoint WebRTC beta était `POST /v1/realtime?model=...`. En GA 2026 c'est **`POST /v1/realtime/calls?model=...`**. Sinon : `api_version_mismatch "You cannot start a Realtime beta session with a GA client secret"`. Voir `packages/web/src/lib/realtime-client.ts:135`.
+
+### Singleton RealtimeClient (architecture trap)
+`useRealtimeVoice` doit **partager un `clientSingleton` module-level**, pas un `useRef` local. Sinon le `stop()` appelé depuis Notch opère sur une ref différente de celle créée par ChatInput/hotkey → la session OpenAI reste ouverte, mic reste allumé, facturation silencieuse. Cleanup via `beforeunload` listener. Voir `packages/web/src/hooks/use-realtime-voice.ts:20-22`.
+
+### `clientSecret` shape flat, pas nested
+Le backend retournait `clientSecret: minted` (object `{value, expiresAt}`) → le front envoyait `Bearer [object Object]` à OpenAI. Fixé : backend retourne `clientSecret: string + expiresAt: number` à plat.
+
+### Tracker usage et idempotence transcript
+Tracker usage = `Map` en mémoire mono-tab. Si l'API redémarre, les sessions en cours perdent leur cumul local → le client re-enverra les agrégats à la prochaine `response.done`. Idempotence transcript via `toolMeta = voice:${startedAt}:${role}`.
+
+### Migration Drizzle : statement breakpoints
+Migrations SQL multi-instructions nécessitent `-->statement-breakpoint` entre chaque ALTER/CREATE (contrainte better-sqlite3). Toutes les migrations générées par `drizzle-kit` les ont ; 0007 écrite à la main a dû être fixée post-hoc. Ajouter aussi une entrée dans `migrations/meta/_journal.json`.
+
+### Prompt découpé en 4 fichiers — ordre respecté
+Ordre : **SYSTEM → MEMORY → TOOLS → RULES** (+ skills list pour chat, + LIVE + snapshot pour realtime). `buildSystemPromptWithMemory(base=system)` injecte les préférences/contexte dynamiques DANS le bloc SYSTEM avant MEMORY (qui est la doc statique de l'outil recall/remember).
+
+### Polling todos désactivé
+`card-todos.tsx` avait `refetchInterval: 8000` → spam `/api/todos` toutes les 8s. Désactivé. Les todos créés par le LLM ne remontent plus automatiquement — à revoir en invalidant `['todos']` dans `chat-stream.tsx` en fin de stream.
+
+---
+
+
 
 ## QW1 — deploy-vps.sh pull depuis origin/main, pas le local (2026-04-19)
 

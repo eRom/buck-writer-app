@@ -1,6 +1,44 @@
 # Fichiers cles — Buck Writer
 
-> Derniere mise a jour : 2026-04-19 (QW1 — MCP approval auto-classifier)
+> Derniere mise a jour : 2026-04-19 (M8 — mode Live vocal)
+
+## M8 — Mode Live vocal
+
+### API
+- `packages/api/src/lib/realtime.ts` — `mintRealtimeClientSecret()`, payload strict `{type,model}`.
+- `packages/api/src/services/realtime/session-config.ts` — build payload `session.update` (voice, VAD, tools avec require_approval=never, write_to_chat function, modalities).
+- `packages/api/src/services/realtime/snapshot.ts` — 20 derniers messages formatés `[role]: text`.
+- `packages/api/src/services/realtime/usage-tracker.ts` — `Map` monotone + GC 2min.
+- `packages/api/src/services/billing/monthly-cost.ts` — helper SUM costUsd période courante.
+- `packages/api/src/routes/realtime.ts` — 5 endpoints (`/session`, `/usage`, `/transcript`, `/write-to-chat`, `DELETE /session/:id`), gated par `REALTIME_ENABLED`.
+- `packages/api/migrations/0007_realtime.sql` — messages.source, usage_events.kind, user_settings realtime_*.
+- `packages/api/src/defaults/systems/{LIVE,MEMORY,TOOLS}.md` — prompts defaults.
+- `packages/api/src/services/prompts.ts` — Prompts étendu `{system, memory, tools, rules, live}`, bootstrap + load des 5 fichiers.
+
+### Web
+- `packages/web/src/lib/realtime-client.ts` — classe WebRTC (PC, DC, AudioContext, AnalyserNode, usage agg, transcript queue, timers silence/duration).
+- `packages/web/src/lib/realtime-api.ts` — `realtimeApi.{createSession,postUsage,postTranscript,writeToChat,closeSession}`.
+- `packages/web/src/stores/realtime-store.ts` — Zustand state vocal + recentTranscripts.
+- `packages/web/src/hooks/use-realtime-voice.ts` — **clientSingleton module-level**, binding events → store.
+- `packages/web/src/hooks/use-realtime-hotkey.ts` — `Cmd+Shift+L` / `Ctrl+Shift+L` toggle.
+- `packages/web/src/components/live/notch.tsx` — pill fixed top-center (`role="status"`, `aria-live="polite"`).
+- `packages/web/src/components/live/waveform.tsx` — canvas 32 barres via `requestAnimationFrame`.
+- `packages/web/src/components/settings/audio-live-section.tsx` — voix, VAD, silence timeout, tools, permission micro.
+- `packages/web/src/test/webrtc-stubs.ts` — stubs happy-dom pour tests.
+
+### Shared
+- `packages/shared/src/voice/voices.ts` — `REALTIME_VOICES` (10), `DEFAULT_VOICE='coral'`.
+- `packages/shared/src/voice/turn-detection.ts` — `TurnDetectionConfig`, `normalizeTurnDetection`.
+- `packages/shared/src/pricing/models.ts` — `REALTIME_MODEL`, `costOfRealtime(usage, model?)`.
+
+### Docs
+- `docs/superpowers/specs/2026-04-19-m8-realtime-voice-design.md` — spec complète (13 sections).
+- `docs/superpowers/plans/2026-04-19-m8-realtime-voice.md` — plan 10 phases TDD.
+- `docs/superpowers/plans/2026-04-19-m8-manual-checklist.md` — checklist test manuel Chrome.
+
+---
+
+## QW1 — Approval flow MCP
 
 ## QW1 — Approval flow MCP
 

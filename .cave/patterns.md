@@ -1,6 +1,27 @@
 # Patterns et conventions — Buck Writer
 
-> Derniere mise a jour : 2026-04-19 (deploy VPS + UX graph + sécu)
+> Derniere mise a jour : 2026-04-19 (M8 — mode Live vocal)
+
+## M8 — Patterns Realtime vocal
+
+### Ephemeral token pattern (mint côté backend)
+Jamais d'`OPENAI_API_KEY` dans le browser. Backend frappe `/v1/realtime/client_secrets` et renvoie `{clientSecret: string, expiresAt: number, sessionConfig}` (shape flat). Le browser utilise ce secret court (~60 min) pour l'auth Bearer sur le POST SDP `/v1/realtime/calls`.
+
+### Singleton module-level pour ressources longue durée
+Pour les ressources partagées entre plusieurs instances de composants React (WebRTC connection, audio stream), utiliser un singleton module-level (`const clientSingleton = { current: null }`) plutôt qu'un `useRef` local. Le `useRef` est local à chaque mount — fatal pour un client qui doit être démarré/arrêté depuis plusieurs endroits (Notch, ChatInput, hotkey).
+
+### Usage tracker monotone en mémoire
+Pour un usage qui arrive en cumulatif depuis le client (Realtime) : `Map<sessionId, TrackedUsage>` avec check monotone strict (throw si valeur décroît) + GC périodique sur `updatedAt`. Pas de persistance intermédiaire — persist uniquement à la fermeture (DELETE) ou à un budget-exceeded.
+
+### Prompt assembly order SYSTEM → MEMORY → TOOLS → RULES
+Les 4 (+ LIVE pour le mode vocal) sont des fichiers markdown dans `workspace/systems/` live-editables via chokidar. Concat dans cet ordre strict : SYSTEM (rôle + injection dynamique de préférences/contexte via `buildSystemPromptWithMemory`) → MEMORY (doc usage recall/remember) → TOOLS (doc tools disponibles) → RULES (contraintes comportementales). Pour chat, append skills list dynamique. Pour realtime, append LIVE + snapshot conversation.
+
+### Stubs happy-dom pour WebRTC
+happy-dom ne fournit pas `RTCPeerConnection`/`AudioContext`/`getUserMedia`. Fichier dédié `packages/web/src/test/webrtc-stubs.ts` avec `installRtcStubs()` à appeler dans les tests. `createDataChannel` simule `onopen` via `queueMicrotask`.
+
+---
+
+## TanStack Router file-based : underscore = non-nested (2026-04-19)
 
 ## TanStack Router file-based : underscore = non-nested (2026-04-19)
 
