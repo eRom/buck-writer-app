@@ -14,10 +14,14 @@ Brainstorm : [plans/2026-04-19-m7-responses-api-mcp-brainstorm.md](../plans/2026
 
 ## Non-goals M7
 
-- `previous_response_id` (état serveur) — rester en mode stateless full-messages.
-- Built-in tools OpenAI (code_interpreter, web_search, file_search, image_gen).
+- Built-in tools OpenAI (code_interpreter, web_search, file_search, image_gen) — activables trivialement plus tard, architecture prête.
 - CRUD UI des serveurs MCP custom (juste defaults hardcodés + toggle).
 - Refactor workspace/memory tools (restent en local function calls).
+- OpenAI "Skills" hosted framework (orthogonal à nos skills workspace markdown).
+
+## In-scope revisé
+
+**`previous_response_id` + `store: true` REQUIS** pour MCP approval (bible write tools). Docs OpenAI explicites : `mcp_approval_response` doit être chaîné via `previous_response_id`. On persiste le dernier `response_id` dans `chat_sessions.lastResponseId` (nouvelle colonne) pour reprendre proprement après approval.
 
 ## Phase 1 — Migration API Responses (iso-feature)
 
@@ -26,13 +30,20 @@ Brainstorm : [plans/2026-04-19-m7-responses-api-mcp-brainstorm.md](../plans/2026
 Réécriture complète. Supprimer : `streamChat`, `chat`, `parseSSEChunks`, `accumulateToolCalls` (chat.completions). Ajouter :
 
 ```ts
-// Input normalisé pour /v1/responses
-export interface ResponsesInput {
-  role: 'system' | 'user' | 'assistant' | 'developer';
-  content: string | Array<{ type: 'input_text' | 'output_text'; text: string }>;
-}
+// Input items pour /v1/responses — peut être :
+// - message classique: { role, content }
+// - tool result: { type: "function_call_output", call_id, content }
+// - MCP approval: { type: "mcp_approval_response", approve, approval_request_id }
+export type ResponsesInputItem =
+  | { role: 'system' | 'user' | 'assistant' | 'developer'; content: string | Array<{ type: 'input_text' | 'input_image' | 'output_text'; text?: string; image_url?: string }> }
+  | { type: 'function_call_output'; call_id: string; output: string }
+  | { type: 'mcp_approval_response'; approve: boolean; approval_request_id: string };
 
 // Function tool (local handlers — workspace, skills, memory)
+// NB: internally-tagged, strict TRUE par défaut côté Responses API.
+// Nos schemas JSON doivent être strict-compliant : tous les champs required,
+// additionalProperties: false, pas de oneOf/anyOf/union flottant.
+// Cas pénibles (args optionnels) → on passe strict: false.
 export interface FunctionToolDef {
   type: 'function';
   name: string;
@@ -61,14 +72,21 @@ export type ToolDef = FunctionToolDef | McpToolDef;
 
 export interface ResponsesRequest {
   model: string;
-  input: ResponsesInput[];
+  /** Top-level instructions (alternative au system message dans input). */
+  instructions?: string;
+  /** Soit une string courte, soit un array d'items (messages + function_call_output + mcp_approval_response). */
+  input: string | ResponsesInputItem[];
   tools?: ToolDef[];
   tool_choice?: 'auto' | 'none' | 'required' | { type: 'mcp'; mcp: { server_label: string; name?: string } };
   stream: true;
+  /** Nécessaire pour MCP approval + continuation. M7 : on stocke le last response_id en DB. */
   previous_response_id?: string;
+  /** Default true. Explicit pour lisibilité. */
   store?: boolean;
-  reasoning?: { effort: 'low' | 'medium' | 'high' };
+  reasoning?: { effort: 'low' | 'medium' | 'high'; summary?: 'auto' | 'concise' | 'detailed' };
   max_output_tokens?: number;
+  /** Structured output. */
+  text?: { format: { type: 'json_schema'; name: string; schema: Record<string, unknown>; strict?: boolean } };
 }
 
 export async function streamResponses(
@@ -157,6 +175,15 @@ export function* parseSSEStream(chunk: string): IterableIterator<ResponsesEvent>
 - `respond` (non-stream) retourne text + usage
 
 ### P1.2 — `packages/api/src/routes/chat.ts`
+
+**Changements clefs** :
+- On ne construit plus un `llmMessages: ChatMessage[]` à la chat.completions. On construit un `inputItems: ResponsesInputItem[]` (items hétérogènes).
+- System prompt → paramètre `instructions` (plus `role:"system"` messages dans input).
+- Tool output = item `{type:"function_call_output", call_id, output: JSON.stringify(result)}` ajouté à `inputItems`.
+- Chaînage continuation : chaque appel stocke le `response_id` reçu dans `response.created`. Au tour suivant on passe `previous_response_id` + seulement les nouveaux items (function_call_output de l'étape précédente) — pas de replay complet.
+- Approval MCP : le SSE `mcp_approval_request` est relayé au client, stream fermé avec `pendingApproval`. Au re-POST /api/chat avec `{mcpApproval: {approvalId, approved}}`, on charge `session.lastResponseId` comme `previous_response_id` et on envoie `input: [{type:"mcp_approval_response", approve, approval_request_id}]`.
+- Approval local function : idem mais avec `function_call_output` comme item de continuation.
+- Persistance : nouvelle colonne `chat_sessions.lastResponseId` (text, nullable). Mise à jour à chaque `response.completed`.
 
 Rewrite du `runLoop` :
 
@@ -300,17 +327,26 @@ Helper `loadEnabledMcpServers(db)` lit `mcp_servers WHERE enabled = 1`.
 
 ### P1.3 — Resume après tool approval
 
-Le body POST /api/chat accepte maintenant :
+Le body POST /api/chat accepte :
 ```ts
 {
-  toolApproval?: { toolCallId, toolName, args, approved },   // local fn approval (existant)
-  mcpApproval?: { approvalId, approved },                    // nouveau — MCP
+  toolApproval?: { callId, approved, args? },        // local fn approval (function_call_output)
+  mcpApproval?: { approvalRequestId, approved },     // MCP (mcp_approval_response)
 }
 ```
 
-`mcpApproval` → injecte dans `input` un `{type: 'mcp_approval_response', approval_request_id, approve: true|false}` avant de re-POST. Nécessite `previous_response_id` pour que OpenAI reprenne le contexte → **hors scope M7**. Alternative : renvoyer le messages array complet avec l'approval in-line. À tester côté OpenAI.
+**Flow local approval** :
+1. Charge `previous_response_id` = `session.lastResponseId`
+2. Si approved : exec handler local → `input: [{type:"function_call_output", call_id: toolApproval.callId, output: JSON.stringify(result)}]`
+3. Si denied : `input: [{type:"function_call_output", call_id, output: JSON.stringify({status:"denied"})}]`
+4. POST /v1/responses avec `{previous_response_id, input, tools: [...]}` — OpenAI reconstitue tout le contexte
 
-**Simplification M7** : on tente le replay stateless. Si ça ne marche pas pour MCP approval, on n'expose que `require_approval: 'never'` côté bible-mcp pour write tools aussi en M7, et on reporte l'approval MCP en M8 avec `previous_response_id`.
+**Flow MCP approval** :
+1. Charge `previous_response_id`
+2. `input: [{type:"mcp_approval_response", approve, approval_request_id}]`
+3. POST /v1/responses — OpenAI fait l'appel MCP si approved
+
+Cette architecture (ne plus envoyer le full messages array au-delà du premier turn) divise drastiquement la conso tokens sur sessions longues. C'est l'un des gains majeurs de Responses API.
 
 ### P1.4 — Tests
 
@@ -550,14 +586,17 @@ Recommandation : option A pour les tests, option C pour la validation end-to-end
 - `README.md` : section MCP servers
 - Vérifier que la compaction / session titles / budget guard marchent toujours (usage_events cachedInputTokens, migration DB)
 
-### P4.1 — Migration DB
+### P4.1 — Migrations DB
 
-`packages/api/migrations/00XX_add_cached_tokens.sql` :
+`packages/api/migrations/00XX_add_cached_tokens_and_response_id.sql` :
 ```sql
-ALTER TABLE usage_events ADD COLUMN cached_input_tokens INTEGER DEFAULT 0;
+ALTER TABLE usage_events ADD COLUMN cached_input_tokens INTEGER NOT NULL DEFAULT 0;
+ALTER TABLE chat_sessions ADD COLUMN last_response_id TEXT;
 ```
 
-+ update schema + seed queries.
++ update `packages/api/src/db/schema.ts` :
+- `usageEvents.cachedInputTokens: integer('cached_input_tokens').notNull().default(0)`
+- `chatSessions.lastResponseId: text('last_response_id')`
 
 ## Ordre d'exécution recommandé
 
@@ -567,6 +606,31 @@ ALTER TABLE usage_events ADD COLUMN cached_input_tokens INTEGER DEFAULT 0;
 4. **P2.1-P2.4** (registry + UI + suppression McpClient) — bascule la logique MCP
 5. **Deploy VPS** — test end-to-end avec bible + writing exposés
 6. **Commit + PR**
+
+## Considérations "fully compliant"
+
+### Strict mode par défaut
+Responses force `strict: true` sur les function tools sauf opt-out. Il faut auditer nos schemas existants (`read_file`, `list_directory`, `create_file`, `delete_file`, `shell_execute`, `activate_skill`, `recall`, `remember`) :
+- Champs optionnels (`cwd` dans shell_execute, `path` dans list_directory) → soit on les rend `required` + nullable, soit on passe `strict: false` sur ces tools.
+- `additionalProperties: false` ajouté partout.
+- Pas d'union/oneOf dans les parameters.
+
+### Instructions vs system in input
+On migre les prompts système (`prompts.current.system` + `prompts.current.rules` + memory preferences) vers le paramètre top-level `instructions`. Plus simple, évite un item `role:"system"` en tête d'input à chaque turn.
+
+Cas à trancher : la liste des skills workspace (injectée actuellement comme 3ème system message). À concaténer dans `instructions`, séparée par `---`.
+
+### Zero Data Retention & `store`
+Par défaut `store: true` + OpenAI garde 30 jours. Pour Buck (données narratives perso), acceptable. Si un jour on veut ZDR : `store: false` + `include: ["reasoning.encrypted_content"]`. Hors scope M7.
+
+### Future-proof built-in tools
+Architecture tools[] accepte trivialement :
+```ts
+{ type: 'web_search' }              // opt-in via setting user
+{ type: 'image_generation' }        // idem
+{ type: 'file_search', vector_store_ids: [...] }  // M8+ avec vector store workspace
+```
+→ prévoir dans `user_settings` des flags `webSearchEnabled`, `imageGenEnabled` (bool, off par défaut) mais **pas** les implémenter en M7.
 
 ## Success criteria
 
@@ -581,6 +645,9 @@ ALTER TABLE usage_events ADD COLUMN cached_input_tokens INTEGER DEFAULT 0;
 - [ ] Toggle `writing-tools` ON dans UI → request chat suivante contient le connector dans `tools`, tool call visible en stream
 - [ ] Toggle OFF → connector absent du body, plus visible
 - [ ] `usage_events.cached_input_tokens` peuplé quand applicable
+- [ ] `chat_sessions.last_response_id` peuplé après chaque completion
+- [ ] Resume après MCP approval : POST avec `mcpApproval` → suite du stream OK
+- [ ] Strict-compliant JSON schemas sur tous les function tools (ou `strict:false` explicite)
 - [ ] `/api/health` OK, `McpClient` supprimé, aucun import orphelin
 
 ## Risques & atténuations
