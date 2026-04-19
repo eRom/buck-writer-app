@@ -1,14 +1,15 @@
 # Architecture — Buck Writer
 
-> Derniere mise a jour : 2026-04-19 (premier deploy VPS prod : https://buck.romain-ecarnot.com + https://bible.buck.romain-ecarnot.com)
+> Derniere mise a jour : 2026-04-19 (SSO Buck → Bible UI via Caddy forward_auth déployé)
 
 ## Production
 
-- **URLs** : `https://buck.romain-ecarnot.com` (auth magic-link), `https://bible.buck.romain-ecarnot.com` (basicauth Caddy, user `romain`, à terme SSO via forward_auth — task gerber 90069226)
+- **URLs** : `https://buck.romain-ecarnot.com` (auth magic-link), `https://bible.buck.romain-ecarnot.com` (SSO via Caddy `forward_auth` → `/api/auth/verify-session` sur `buck-app`, depuis 2026-04-19)
 - **VPS** : Hostinger 72.62.239.98, repo cloné dans `/opt/buck-writer-app` via deploy key GitHub SSH
 - **DNS** : Cloudflare records `buck` + `*.buck` (proxy=DNS only/grey, sinon Caddy ne peut pas faire challenge HTTP)
 - **Réseau Docker** : `caddy-public` (external) partagé entre stack Buck et Caddy Trinity (n8n + voice-agent + qdrant). Caddy attaché aux 2 réseaux.
-- **Caddyfile** : 4 sites — `trinity.romain-ecarnot.com` (n8n), `live.trinity.*` (voice basicauth), **`buck.*` (buck-app:3000)**, **`bible.buck.*` (basicauth → buck-bible-ui:80)**
+- **Caddyfile** : 4 sites — `trinity.romain-ecarnot.com` (n8n), `live.trinity.*` (voice basicauth), **`buck.*` (buck-app:3000)**, **`bible.buck.*` (`forward_auth buck-app:3000 /api/auth/verify-session` + `copy_headers X-User-Id` → buck-bible-ui:80)**. Source : `/opt/trinity-lifeos/caddy/Caddyfile` sur le VPS.
+- **SSO** : cookie `buck_session` set avec `Domain=.romain-ecarnot.com` (env `COOKIE_DOMAIN`) → partagé entre `buck.*` et `bible.buck.*`.
 - **Deploy** : `scripts/deploy-vps.sh` (git pull + scp .env.production + docker compose build/up + healthchecks). Pas de CI/CD.
 
 

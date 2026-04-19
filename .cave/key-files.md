@@ -214,7 +214,7 @@
 | `Dockerfile.bible-mcp` | Multi-stage Node 20 Alpine pour bible-mcp |
 | `Dockerfile.bible-ui` | Multi-stage Node 20 builder + nginx alpine runtime (M7), proxy `/mcp` vers bible-mcp |
 | `docker-compose.yml` | Services buck + bible-mcp + **bible-ui** (M7), networks caddy-public + internal |
-| `docs/deploy/caddy-snippet-bible.md` | Snippet Caddy basicauth pour `bible.buck.romain-ecarnot.com` (M7, deploy differe) |
+| `docs/deploy/caddy-snippet-bible.md` | Snippet Caddy `forward_auth` (SSO) pour `bible.buck.romain-ecarnot.com` + rollback basicauth |
 | `docker-compose.local.yml` | Dev hybride : bible-mcp Docker + buck pnpm dev |
 | `eslint.config.mjs` | ESLint flat config monorepo |
 | `workspace/systems/{SYSTEM,RULES}.md` | Prompts live-editable, committed (dev) |

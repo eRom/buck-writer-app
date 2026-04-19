@@ -1,6 +1,23 @@
 # Gotchas — Buck Writer
 
-> Derniere mise a jour : 2026-04-19 (premier deploy VPS prod + 5 sec fixes + UX graph)
+> Derniere mise a jour : 2026-04-19 (SSO Buck → Bible UI + 2 pièges deploy env var)
+
+## SSO cookie : `.env` VPS n'est PAS re-sync automatiquement par docker compose (2026-04-19)
+
+Ajouter `COOKIE_DOMAIN=.romain-ecarnot.com` à `.env.production` **local** ne suffit pas : tant que `scripts/deploy-vps.sh` n'est pas rejoué (qui fait le `scp .env.production`), le VPS garde l'ancien `.env`. Et même une fois la ligne présente, il faut **recréer** le container (`docker compose up -d buck-app`) — un simple restart ne recharge pas les env vars.
+Symptôme : `docker exec buck-app env | grep COOKIE_DOMAIN` renvoie vide → cookie set sans Domain → bible.buck.* renvoie `{"error":"no session"}`.
+**Fix rapide sans redeploy** : `ssh vps` + `echo 'COOKIE_DOMAIN=...' >> /opt/buck-writer-app/.env && docker compose up -d buck-app`.
+
+## SSO : se relogger après changement du cookie Domain (2026-04-19)
+
+Les cookies déjà présents dans le navigateur gardent leur ancien `Domain` attribute. Changer `COOKIE_DOMAIN` côté serveur ne rétroagit pas sur les sessions en cours. Il faut logout + nouveau magic-link pour que le browser stocke un cookie avec le bon Domain parent.
+Verif côté browser : DevTools → Application → Cookies → colonne `Domain` doit être `.romain-ecarnot.com` (pas `buck.romain-ecarnot.com`).
+
+## SSO : `verify-session` DOIT être monté avant le rate-limiter (2026-04-19)
+
+Bible UI fire 1 req HTTP par asset (HTML + JS + CSS + fonts + API), chacune déclenche un `forward_auth` Caddy → `/api/auth/verify-session`. Si l'endpoint est sous le rate-limiter `/api/auth/*` (5 req/min), la page crash après 5 assets. Le monter explicitement avant `app.use('/api/auth/*', rateLimiter(...))` dans `app.ts`, comme `/api/auth/me` et `/api/auth/webdav-token`.
+
+
 
 ## Bug critique : migrate.ts CLI block re-fired in bundled dist/index.js (2026-04-19)
 
