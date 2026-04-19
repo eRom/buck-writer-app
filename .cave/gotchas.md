@@ -1,6 +1,23 @@
 # Gotchas — Buck Writer
 
-> Derniere mise a jour : 2026-04-19 (M7 Responses API + MCP remote connectors — 9 gotchas deploy/config)
+> Derniere mise a jour : 2026-04-19 (QW1 — MCP approval flow + auto-classification)
+
+## QW1 — deploy-vps.sh pull depuis origin/main, pas le local (2026-04-19)
+
+`scripts/deploy-vps.sh` ligne 89 : `git fetch --all && git reset --hard origin/main`. Le VPS ne récupère PAS ton repo local — il pull la remote. Commit local non pushé = deploy avec l'ancien code. Symptôme : nouveau fichier absent du container (`ls node_modules/@modelcontextprotocol` → No such file), package.json sans la dep fraichement ajoutée. **Toujours `git push` AVANT de lancer deploy-vps.sh**.
+
+## QW1 — Classifier MCP : approval uniquement sur ops destructives (2026-04-19)
+
+Premier jet QW1 taggait tous les writes (`create_/update_/delete_/import_/restore_/reindex_/backup_`) comme `always` approval. Insoutenable pour un écrivain en flow — chaque `create_character` ou `update_event` ouvrait une dialog. Fix final (`mcp-classifier.ts`) : seuls `delete_/restore_/reindex_` déclenchent approval. Mirror du pattern workspace (`create_file` auto, `delete_file` approval). Philosophie : l'user possède ses données, approve seulement les ops **irréversibles**.
+
+## QW1 — Session chat avec mcp_approval_request pendant = crashloop (2026-04-19)
+
+Si le dernier `response.id` d'une session contient un `mcp_approval_request` non résolu et que l'user envoie un nouveau message, OpenAI répond `400: The following MCP approval requests do not have an approval: mcpr_...`. Le chaînage `previous_response_id` exige que toute approval pendante soit résolue avant d'avancer. Workaround : nouvelle session. Fix durable non-scoped QW1 : soit nettoyer l'approval pendante avant de chainer, soit drop `previous_response_id` si une approval traine. À surveiller post-migration `'never'` → classif granulaire.
+
+## QW1 — MCP SDK dans @buck/api nécessaire pour tools/list au boot (2026-04-19)
+
+Le classifier fait un vrai handshake MCP (initialize + tools/list) via `@modelcontextprotocol/sdk` (`StreamableHTTPClientTransport` + `Client`). Pas de raw JSON-RPC, pas d'appel "stateless" — le transport gère session_id, headers, Accept `application/json, text/event-stream`. Fail-soft : si `tools/list` échoue, on garde le seed default (`'never'` global). Auth : header Bearer depuis `env[auth_header_env]` (même pattern que `mcp-registry.ts`).
+
 
 ## M7 — docker compose recreate SANS rebuild = ancien binaire (2026-04-19)
 

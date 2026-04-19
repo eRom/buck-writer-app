@@ -1,6 +1,15 @@
 # Fichiers cles — Buck Writer
 
-> Derniere mise a jour : 2026-04-19 (M7 — Responses API + MCP remote connectors)
+> Derniere mise a jour : 2026-04-19 (QW1 — MCP approval auto-classifier)
+
+## QW1 — Approval flow MCP
+
+| Fichier | Role |
+|---------|------|
+| `packages/api/src/services/mcp-classifier.ts` | Au boot, `tools/list` sur chaque MCP core=1 via `@modelcontextprotocol/sdk`, classifie par préfixe (`delete_/restore_/reindex_` → always, reste → never), patche `mcp_servers.config_json.require_approval`. Fail-soft |
+| `packages/api/src/services/mcp-classifier.test.ts` | 4 tests unitaires de `classifyToolNames` |
+| `packages/web/src/components/chat/chat-stream.tsx` | `PendingApproval.kind: 'local' \| 'mcp'`, handler SSE `mcp_approval`, branching `mcpApproval` vs `toolApproval` sur POST `/api/chat` |
+
 
 ## M7 — Clés de la migration Responses API
 
