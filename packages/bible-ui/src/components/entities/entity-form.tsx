@@ -4,12 +4,20 @@ import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
 import { Label } from '@/components/ui/label';
 import { Button } from '@/components/ui/button';
-import type { AnyEntity, EntityType } from '@/types/entities';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
+import { useMcpQuery } from '@/hooks/use-mcp';
+import type { AnyEntity, EntityType, Location } from '@/types/entities';
 
 interface FieldDef {
   key: string;
   label: string;
-  type: 'text' | 'textarea' | 'number' | 'csv';
+  type: 'text' | 'textarea' | 'number' | 'csv' | 'location-select';
 }
 
 // Field configs aligned with the actual bible-mcp DB schema (cf. types/entities.ts).
@@ -36,7 +44,7 @@ const FIELDS: Record<EntityType, FieldDef[]> = {
     { key: 'description', label: 'Description', type: 'textarea' },
     { key: 'chapter', label: 'Chapitre', type: 'text' },
     { key: 'sort_order', label: 'Ordre', type: 'number' },
-    { key: 'location_id', label: 'ID lieu', type: 'text' },
+    { key: 'location_id', label: 'Lieu', type: 'location-select' },
     { key: 'characters', label: 'Personnages (csv ids)', type: 'csv' },
     { key: 'notes', label: 'Notes', type: 'textarea' },
   ],
@@ -65,6 +73,35 @@ const FIELDS: Record<EntityType, FieldDef[]> = {
     { key: 'notes', label: 'Notes', type: 'textarea' },
   ],
 };
+
+function LocationSelect({
+  value,
+  onChange,
+}: {
+  value: string;
+  onChange: (v: string) => void;
+}) {
+  const { data: raw, isLoading } = useMcpQuery<{ results?: Location[]; locations?: Location[] }>(
+    'list_locations',
+    { limit: 200 },
+  );
+  const locations = raw?.results ?? raw?.locations ?? [];
+
+  return (
+    <Select value={value || undefined} onValueChange={onChange}>
+      <SelectTrigger>
+        <SelectValue placeholder={isLoading ? 'Chargement…' : 'Sélectionner un lieu'} />
+      </SelectTrigger>
+      <SelectContent>
+        {locations.map((l) => (
+          <SelectItem key={l.id} value={l.id}>
+            {l.name ?? l.id}
+          </SelectItem>
+        ))}
+      </SelectContent>
+    </Select>
+  );
+}
 
 export function EntityForm({
   type,
@@ -102,6 +139,11 @@ export function EntityForm({
               value={(values[f.key] as string) ?? ''}
               onChange={(e) => setValues({ ...values, [f.key]: e.target.value })}
               rows={5}
+            />
+          ) : f.type === 'location-select' ? (
+            <LocationSelect
+              value={(values[f.key] as string) ?? ''}
+              onChange={(v) => setValues({ ...values, [f.key]: v })}
             />
           ) : (
             <Input
