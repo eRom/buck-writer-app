@@ -20,9 +20,11 @@ WORKDIR /opt/wtm
 # Sync deps into a local .venv
 RUN uv sync
 
-# Pre-download the spaCy small English model used by passive voice / stylometric
-# analyzers (fails cleanly at runtime otherwise).
-RUN uv run python -m spacy download en_core_web_sm
+# Pre-install the spaCy small English model (used by passive-voice /
+# stylometric analyzers). `spacy download` requires pip which uv-created
+# venvs don't ship with — we install the model wheel directly instead.
+RUN uv pip install --python .venv/bin/python \
+    https://github.com/explosion/spacy-models/releases/download/en_core_web_sm-3.8.0/en_core_web_sm-3.8.0-py3-none-any.whl
 
 # Our HTTP entrypoint: imports the upstream FastMCP instance and runs it with
 # streamable-http transport on port 7802.
