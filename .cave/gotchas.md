@@ -1,6 +1,54 @@
 # Gotchas — Buck Writer
 
-> Derniere mise a jour : 2026-04-19 (SSO Buck → Bible UI + 2 pièges deploy env var)
+> Derniere mise a jour : 2026-04-19 (M7 Responses API + MCP remote connectors — 9 gotchas deploy/config)
+
+## M7 — docker compose recreate SANS rebuild = ancien binaire (2026-04-19)
+
+`docker compose up -d --force-recreate buck-app` **ne rebuild pas l'image** si elle existe déjà. Le container reprend l'ancien binaire → les changements de code (seed, routes, etc.) ne prennent pas effet. Toujours `docker compose build buck-app && docker compose up -d --force-recreate buck-app` après un changement API.
+
+Symptôme : les logs montrent `[api] mcp_servers refreshed` mais la DB garde l'ancien JSON config (parce que le seed embarqué dans le binaire est l'ancien).
+
+## M7 — Caddy `caddy reload` ne relit PAS les env vars (2026-04-19)
+
+`docker compose exec caddy caddy reload --config /etc/caddy/Caddyfile` recharge le Caddyfile mais le process Caddy garde les env vars du démarrage. Les placeholders `{$MCP_SHARED_SECRET}` restent à leur ancienne valeur (ou vides). → **Toujours** `docker compose up -d --force-recreate caddy` quand l'env change, jamais juste reload. Le deploy-vps.sh fait désormais ça.
+
+## M7 — Trinity docker-compose n'expose pas toutes les env vars à Caddy (2026-04-19)
+
+Trinity's Caddy service liste explicitement ses env vars : `N8N_HOST`, `VOICE_USER`, `VOICE_PASSWORD_HASH`, `BUCK_HOST_BASE`. Ajouter une nouvelle var à `.env.trinity` ne suffit pas — il faut ajouter `- MCP_SHARED_SECRET=${MCP_SHARED_SECRET}` au bloc `environment:` de caddy dans `/opt/trinity-lifeos/docker-compose.yml`. Sans ça, le placeholder `{$MCP_SHARED_SECRET}` reste littéralement la string dans le Caddyfile, et tout bearer réel tombe en 401.
+
+Check : `docker exec trinity-lifeos-caddy-1 env | grep MCP`.
+
+## M7 — writing-tools-mcp : upstream a fichier `server.py` ET package `server/` (2026-04-19)
+
+Le repo wdm0006/writing-tools-mcp a les deux. `from server import mcp` résolue → package (`server/__init__.py`) qui n'exporte pas `mcp` → `ImportError`. Fix : charger `server.py` via `importlib.util.spec_from_file_location` directement. Bonus : loader via importlib garde `__name__ != "__main__"` donc le guard stdio de l'upstream ne se déclenche pas.
+
+## M7 — uv-created venvs n'ont PAS pip (2026-04-19)
+
+`uv sync` crée un `.venv/` minimal sans pip. `python -m spacy download en_core_web_sm` crash `No module named pip`. Fix : installer le model wheel directement via `uv pip install --python .venv/bin/python <URL wheel GitHub>`.
+
+## M7 — MCP Streamable HTTP transport exige `Accept: application/json, text/event-stream` (2026-04-19)
+
+Le transport officiel MCP côté serveur renvoie **406 Not Acceptable** si le header `Accept` ne contient pas les DEUX types. OpenAI's Responses connector envoie le bon header ; les clients custom (comme notre ancien bible-ui) doivent être mis à jour. Aussi : le SDK `McpServer` exige **un transport par server** — ne pas partager une instance entre sessions. Utiliser une **factory** `() => createServer(...)` passée à l'http layer.
+
+## M7 — Bearer container-level KO pour bible-mcp (2026-04-19)
+
+Bible UI consomme `/mcp` via un chemin interne (Caddy → bible-ui nginx → bible-mcp:7801) qui n'injecte pas le header Authorization. Un middleware Bearer dans le container bible-mcp lock out l'UI. → **Caddy edge only** pour l'auth publique (bible-mcp.buck.*). Le container reste en trust dans le réseau Docker interne. Le middleware Bearer dans `http.ts` existe toujours mais est désactivé par absence de `MCP_SHARED_SECRET` dans l'env du container (garder pour future migration ZTNA).
+
+## M7 — `require_approval` generic names → OpenAI demande approval pour tout (2026-04-19)
+
+Si `require_approval: {never: {tool_names: [...]}, always: {tool_names: [...]}}` liste des tools qui n'existent PAS côté serveur MCP, OpenAI retombe sur le comportement par défaut = requires approval. Le chat enchaine `mcp_approval_request` → 400 au tour suivant si pas d'approval envoyée. Solution scope M7 : `require_approval: 'never'` global pour les MCP solo-owned (bible). Flow approval UI reporté M7.1.
+
+Ne JAMAIS mettre des noms génériques comme `list_entities`, `create_entity` : les tools bible-mcp sont domain-specific (`list_characters`, `search_fulltext`, `create_character`, etc.).
+
+## M7 — `runSeed` one-shot, `runMcpSeed` idempotent (2026-04-19)
+
+Le seed initial ne tourne qu'à DB vide (gate `userCount === 0`). Donc en prod les changements de config MCP ne se propagent jamais après le premier boot. Fix : `runMcpSeed` (upsert `ON CONFLICT UPDATE config_json`) appelé inconditionnellement au boot de `index.ts`. Users reste first-run only (safe). Le log `[api] mcp_servers refreshed` confirme l'exécution.
+
+## M7 — OpenAI ne peut pas joindre localhost/Docker interne (2026-04-19)
+
+Les MCP remote connectors sont appelés par l'infra OpenAI, PAS par Buck. Donc `MCP_BIBLE_URL=http://bible-mcp:7801` ne marche pas — OpenAI doit recevoir une URL HTTPS publique (`https://bible-mcp.buck.romain-ecarnot.com`). Implication : pas de dev MCP local testable sans tunnel (ngrok) OU tester directement sur VPS. Les tests unitaires mockent `fetch` ; les tests e2e MCP = smoke manuels post-deploy.
+
+
 
 ## SSO cookie : `.env` VPS n'est PAS re-sync automatiquement par docker compose (2026-04-19)
 

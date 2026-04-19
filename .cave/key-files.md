@@ -1,6 +1,27 @@
 # Fichiers cles — Buck Writer
 
-> Derniere mise a jour : 2026-04-19 (deploy VPS prod + UX graph + 5 sec fixes)
+> Derniere mise a jour : 2026-04-19 (M7 — Responses API + MCP remote connectors)
+
+## M7 — Clés de la migration Responses API
+
+| Fichier | Role |
+|---------|------|
+| `packages/api/src/lib/openai.ts` | Client `/v1/responses` : `streamResponses`, `respond` (non-stream titre), `createSSEBuffer`, `parseResponsesEventBlock`. Types internally-tagged (`FunctionToolDef`, `McpToolDef`, `ResponsesInputItem`, `ResponsesEvent`) |
+| `packages/api/src/routes/chat.ts` | Run loop Responses SSE : accumule function_call_arguments, handle MCP events, chaîne `previous_response_id` sur `chat_sessions.lastResponseId`, exec continuations via `function_call_output` items |
+| `packages/api/src/services/mcp-registry.ts` | Lit `mcp_servers` DB → construit `McpToolDef[]` pour `tools[]`. Bearer via env var name (`auth_header_env`) résolu à request time |
+| `packages/api/src/routes/mcp.ts` | GET /api/mcp (liste) + PATCH /api/mcp/:id (toggle enabled) |
+| `packages/api/src/db/seed.ts` | `runSeed` (first run) + `runMcpSeed` (idempotent upsert au boot) |
+| `packages/api/migrations/0006_responses_api_fields.sql` | `chat_sessions.last_response_id` + `usage_events.cached_input_tokens` |
+| `packages/web/src/lib/mcp.ts` | `fetchMcpServers`, `setMcpEnabled`, `useBibleStatus` (derive de la liste) |
+| `packages/web/src/components/panel-right/card-mcp.tsx` | UI badge on/off cliquable (disabled si core=1) |
+| `packages/bible-mcp/src/http.ts` | Streamable HTTP transport officiel (@modelcontextprotocol/sdk), factory `McpServerFactory`, sessions stateful + fallback stateless |
+| `Dockerfile.writing-tools-mcp` | Fork git wdm0006 + patch entrypoint FastMCP streamable-http port 7802 |
+| `docker/writing-tools-mcp/entrypoint.py` | Load upstream server.py via importlib (contourne collision avec package server/) |
+| `Caddyfile` | Blocs `bible-mcp.buck.*` + `writing-mcp.buck.*` avec matcher Bearer |
+| `docs/deploy/mcp-public-caddy.md` | Guide rotation secret, DNS, sanity checks |
+| `docs/superpowers/specs/2026-04-19-m7-responses-api-mcp.md` | Spec détaillée (fichier par fichier, event mapping, tests) |
+
+
 
 ## Deploy / Infra
 

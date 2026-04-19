@@ -1,6 +1,29 @@
 # Architecture — Buck Writer
 
-> Derniere mise a jour : 2026-04-19 (SSO Buck → Bible UI via Caddy forward_auth déployé)
+> Derniere mise a jour : 2026-04-19 (M7 — API Responses + MCP remote connectors déployé)
+
+## M7 — Remote MCP connectors via OpenAI Responses API
+
+Buck est passé de `/v1/chat/completions` à `/v1/responses`. Les serveurs MCP (bible, writing-tools) ne sont plus appelés par Buck : ils sont déclarés dans `tools: [{type:"mcp", server_label, server_url, headers}]`, OpenAI les joint directement. Zéro McpClient local.
+
+Flux :
+```
+Chat → Buck /api/chat → OpenAI Responses (stream SSE)
+                            ↓  (appel direct, avec Bearer)
+                        Caddy (bible-mcp.buck.* / writing-mcp.buck.*)
+                            ↓  (reverse_proxy si Bearer OK)
+                        buck-bible-mcp:7801 / buck-writing-tools-mcp:7802
+```
+
+Événements SSE relayés au browser : `content`, `mcp_call_started/done/error`, `mcp_approval`, `tool_approval` (local fn), `tool_result`, `done`, `error`. Voir `packages/api/src/lib/openai.ts` + `routes/chat.ts`.
+
+Stateful : chaque session persiste `last_response_id` (DB), chaque tour suivant chaîne via `previous_response_id`. Le front n'envoie que le NOUVEAU message user à partir du 2e tour — économie tokens massive.
+
+Sidecar writing-tools-mcp : Dockerfile fork git de wdm0006/writing-tools-mcp, patch entrypoint streamable-http (FastMCP 2.14), image ~3 GB (torch + transformers + spacy). Seed DB en `enabled=1`, toggle via UI (badge cliquable dans card-mcp). Bible en `core=1`, badge figé.
+
+Auth MCP publique : Caddy matcher `@auth header Authorization "Bearer {$MCP_SHARED_SECRET}"` → reverse_proxy si match, sinon 401. Container-level Bearer désactivé sur bible-mcp (conflit UI interne, cf gotchas).
+
+
 
 ## Production
 
