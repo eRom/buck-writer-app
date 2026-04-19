@@ -1,4 +1,12 @@
-import { PanelRightClose, PanelRight as PanelRightIcon, Sliders, Folder, BookOpen, Plug, ListChecks } from 'lucide-react';
+import {
+  PanelRightClose,
+  PanelRight as PanelRightIcon,
+  Sliders,
+  Folder,
+  BookOpen,
+  Plug,
+  ListChecks,
+} from 'lucide-react';
 import { CardParametres } from '@/components/panel-right/card-parametres';
 import { CardWorkspace } from '@/components/panel-right/card-workspace';
 import { CardReferentiel } from '@/components/panel-right/card-referentiel';
@@ -13,8 +21,8 @@ interface Props {
 
 const COLLAPSED_ICONS = [
   { key: 'todos', icon: ListChecks, label: 'Todos' },
-  { key: 'parametres', icon: Sliders, label: 'Parametres' },
   { key: 'workspace', icon: Folder, label: 'Workspace' },
+  { key: 'parametres', icon: Sliders, label: 'Parametres' },
   { key: 'referentiel', icon: BookOpen, label: 'Referentiel' },
   { key: 'mcp', icon: Plug, label: 'MCP' },
 ];
@@ -56,8 +64,8 @@ export function PanelRight({ collapsed, onToggle, sessionId }: Props) {
       </div>
       <div className="flex-1 space-y-3 overflow-y-auto px-3 pb-3">
         <CardTodos />
-        <CardParametres sessionId={sessionId} />
         <CardWorkspace />
+        <CardParametres sessionId={sessionId} />
         <CardReferentiel />
         <CardMcp />
       </div>
