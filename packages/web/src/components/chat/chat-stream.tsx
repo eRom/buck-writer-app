@@ -39,6 +39,7 @@ interface ChatMessage {
 }
 
 interface PendingApproval {
+  kind: 'local' | 'mcp';
   toolCallId: string;
   toolName: string;
   args: Record<string, unknown>;
@@ -288,9 +289,26 @@ export function ChatStream({ sessionId, onSessionCreated }: ChatStreamProps) {
             useMemoryStatus.getState().setDegraded(Boolean(parsed.degraded));
           } else if (event === 'tool_approval') {
             setPendingApproval({
+              kind: 'local',
               toolCallId: String(parsed.toolCallId ?? `call_${Date.now()}`),
               toolName: String(parsed.toolName ?? ''),
               args: (parsed.args as Record<string, unknown>) ?? {},
+              messageHistory: allMessages,
+            });
+          } else if (event === 'mcp_approval') {
+            setPendingApproval({
+              kind: 'mcp',
+              toolCallId: String(parsed.approvalRequestId ?? `mcp_${Date.now()}`),
+              toolName: `${String(parsed.serverLabel ?? 'mcp')}:${String(parsed.toolName ?? '')}`,
+              args: (() => {
+                try {
+                  return typeof parsed.arguments === 'string'
+                    ? (JSON.parse(parsed.arguments) as Record<string, unknown>)
+                    : ((parsed.arguments as Record<string, unknown>) ?? {});
+                } catch {
+                  return { raw: String(parsed.arguments ?? '') };
+                }
+              })(),
               messageHistory: allMessages,
             });
           } else if (event === 'error') {
@@ -344,7 +362,7 @@ export function ChatStream({ sessionId, onSessionCreated }: ChatStreamProps) {
   const handleApproval = useCallback(
     async (approved: boolean) => {
       if (!pendingApproval) return;
-      const { toolName, args, messageHistory, toolCallId } = pendingApproval;
+      const { kind, toolName, args, messageHistory, toolCallId } = pendingApproval;
       setPendingApproval(null);
       setIsLoading(true);
 
@@ -367,7 +385,9 @@ export function ChatStream({ sessionId, onSessionCreated }: ChatStreamProps) {
             sessionId: sessionIdRef.current,
             model,
             messages: messageHistory,
-            toolApproval: { toolCallId, toolName, args, approved },
+            ...(kind === 'mcp'
+              ? { mcpApproval: { approvalRequestId: toolCallId, approved } }
+              : { toolApproval: { toolCallId, toolName, args, approved } }),
           }),
         });
 
@@ -404,9 +424,26 @@ export function ChatStream({ sessionId, onSessionCreated }: ChatStreamProps) {
               useMemoryStatus.getState().setDegraded(Boolean(parsed.degraded));
             } else if (event === 'tool_approval') {
               setPendingApproval({
+                kind: 'local',
                 toolCallId: String(parsed.toolCallId ?? `call_${Date.now()}`),
                 toolName: String(parsed.toolName ?? ''),
                 args: (parsed.args as Record<string, unknown>) ?? {},
+                messageHistory,
+              });
+            } else if (event === 'mcp_approval') {
+              setPendingApproval({
+                kind: 'mcp',
+                toolCallId: String(parsed.approvalRequestId ?? `mcp_${Date.now()}`),
+                toolName: `${String(parsed.serverLabel ?? 'mcp')}:${String(parsed.toolName ?? '')}`,
+                args: (() => {
+                  try {
+                    return typeof parsed.arguments === 'string'
+                      ? (JSON.parse(parsed.arguments) as Record<string, unknown>)
+                      : ((parsed.arguments as Record<string, unknown>) ?? {});
+                  } catch {
+                    return { raw: String(parsed.arguments ?? '') };
+                  }
+                })(),
                 messageHistory,
               });
             } else if (event === 'error' && parsed.message) {

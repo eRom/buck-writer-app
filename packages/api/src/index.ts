@@ -16,6 +16,7 @@ import {
 } from './services/email.js';
 import { loadPrompts, bootstrapPrompts, createPromptsWatcher, type PromptsRef } from './services/prompts.js';
 import { loadSkills, createSkillsWatcher } from './services/skills.js';
+import { applyMcpToolClassifications } from './services/mcp-classifier.js';
 import { bootstrapMemory } from './services/memory/bootstrap.js';
 import { usageEvents, userSettings } from './db/schema.js';
 import { eq } from 'drizzle-orm';
@@ -110,6 +111,14 @@ if (process.env.NODE_ENV !== 'test') {
 }
 
 const handles = openDb(env.DATABASE_URL);
+
+// Classify core MCP tools (read vs write) — patches require_approval so OpenAI
+// only asks approval for write tools. Runs best-effort; falls back to seed
+// default on failure. Don't block boot.
+void applyMcpToolClassifications(handles).catch((err: unknown) => {
+  console.warn('[api] mcp classification skipped:', (err as Error).message);
+});
+
 const jwt = createJwtService({
   secret: env.AUTH_JWT_SECRET,
   issuer: 'buck',
