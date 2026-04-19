@@ -14,18 +14,13 @@ import { eq } from 'drizzle-orm';
 import type { DbHandles } from '../db/client.js';
 import { mcpServers } from '../db/schema.js';
 
-const WRITE_PREFIXES = [
-  'create_',
-  'update_',
-  'delete_',
-  'import_',
-  'restore_',
-  'reindex_',
-  'backup_',
-];
+// Only truly destructive / irréversible ops need approval. Writer flow must
+// stay frictionless for create_/update_/import_/backup_ — mirrors the local
+// workspace pattern (create_file auto, delete_file approval).
+const DESTRUCTIVE_PREFIXES = ['delete_', 'restore_', 'reindex_'];
 
-function isWriteTool(name: string): boolean {
-  return WRITE_PREFIXES.some((p) => name.startsWith(p));
+function isDestructiveTool(name: string): boolean {
+  return DESTRUCTIVE_PREFIXES.some((p) => name.startsWith(p));
 }
 
 export interface McpClassification {
@@ -56,7 +51,7 @@ export function classifyToolNames(names: string[]): McpClassification {
   const never: string[] = [];
   const always: string[] = [];
   for (const n of names) {
-    if (isWriteTool(n)) always.push(n);
+    if (isDestructiveTool(n)) always.push(n);
     else never.push(n);
   }
   return { never, always };
@@ -107,7 +102,7 @@ export async function applyMcpToolClassifications(
         .where(eq(mcpServers.id, row.id))
         .run();
       console.warn(
-        `[mcp-classifier] ${row.name}: ${never.length} read, ${always.length} write`,
+        `[mcp-classifier] ${row.name}: ${never.length} auto, ${always.length} destructive`,
       );
     } catch (err) {
       console.warn(
