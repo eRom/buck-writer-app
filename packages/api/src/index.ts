@@ -17,6 +17,7 @@ import {
 import { loadPrompts, bootstrapPrompts, createPromptsWatcher, type PromptsRef } from './services/prompts.js';
 import { loadSkills, createSkillsWatcher } from './services/skills.js';
 import { applyMcpToolClassifications } from './services/mcp-classifier.js';
+import { createUsageTracker } from './services/realtime/usage-tracker.js';
 import { bootstrapMemory } from './services/memory/bootstrap.js';
 import { usageEvents, userSettings } from './db/schema.js';
 import { eq } from 'drizzle-orm';
@@ -111,6 +112,14 @@ if (process.env.NODE_ENV !== 'test') {
 }
 
 const handles = openDb(env.DATABASE_URL);
+
+// Realtime usage tracker + periodic GC
+const usageTracker = createUsageTracker({ nowMs: Date.now, staleMs: 120_000 });
+const realtimeGc = setInterval(() => {
+  const dropped = usageTracker.gc();
+  if (dropped.length) console.warn('[api] realtime.usage.gc', { dropped });
+}, 60_000);
+realtimeGc.unref?.();
 
 // Classify core MCP tools (read vs write) — patches require_approval so OpenAI
 // only asks approval for write tools. Runs best-effort; falls back to seed
@@ -208,6 +217,8 @@ const app = buildApp({
   buckUserId: env.BUCK_USER_ID,
   trustProxy: env.TRUST_PROXY,
   cookieDomain: env.COOKIE_DOMAIN,
+  realtimeEnabled: process.env.REALTIME_ENABLED === '1',
+  usageTracker,
 });
 
 serve({ fetch: app.fetch, port: env.PORT, hostname: '0.0.0.0' }, (info) => {

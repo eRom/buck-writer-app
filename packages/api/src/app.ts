@@ -18,10 +18,14 @@ import type { MemoryServices } from './services/memory/bootstrap.js';
 import { createSettingsRoutes } from './routes/settings.js';
 import { createUsageRoutes } from './routes/usage.js';
 import { createMcpRoutes } from './routes/mcp.js';
+import { createTodosRoutes } from './routes/todos.js';
 import { createWorkspaceRoutes } from './routes/workspace.js';
 import { createAttachmentRoutes } from './routes/attachments.js';
 import { createWebDAVRoutes } from './services/webdav.js';
 import type { PromptsRef } from './services/prompts.js';
+import { createRealtimeRoute } from './routes/realtime.js';
+import type { UsageTracker } from './services/realtime/usage-tracker.js';
+import type { mintRealtimeClientSecret } from './lib/realtime.js';
 import { authGuard } from './middleware/auth.js';
 import { securityHeaders } from './middleware/security-headers.js';
 import { csrfMiddleware } from './middleware/csrf.js';
@@ -59,6 +63,18 @@ export interface AppDeps extends AuthRoutesDeps, SessionRoutesDeps {
    * authenticated user id when omitted.
    */
   buckUserId?: string;
+  /**
+   * Whether realtime voice routes are enabled. Set via REALTIME_ENABLED=1.
+   */
+  realtimeEnabled?: boolean;
+  /**
+   * In-memory usage tracker for realtime sessions.
+   */
+  usageTracker?: UsageTracker;
+  /**
+   * Override mint function (tests injection).
+   */
+  mintFn?: typeof mintRealtimeClientSecret;
   /**
    * Whether the API runs behind a trusted reverse proxy that rewrites
    * X-Forwarded-For. Defaults to false (safe). See env.TRUST_PROXY.
@@ -163,6 +179,23 @@ export function buildApp(deps: AppDeps) {
     }));
   }
 
+  // Realtime routes (protected, only if openaiApiKey + prompts available)
+  if (deps.prompts && deps.openaiApiKey && deps.usageTracker) {
+    app.use(
+      '/api/realtime/*',
+      authGuard({ db: deps.db, jwt: deps.jwt, nowMs: deps.nowMs }),
+    );
+    app.route('/api/realtime', createRealtimeRoute({
+      db: deps.db,
+      openaiApiKey: deps.openaiApiKey,
+      prompts: deps.prompts,
+      usageTracker: deps.usageTracker,
+      nowMs: deps.nowMs,
+      featureFlag: deps.realtimeEnabled ?? false,
+      mintFn: deps.mintFn,
+    }));
+  }
+
   // Settings routes (protected)
   app.use('/api/settings', authGuard({ db: deps.db, jwt: deps.jwt, nowMs: deps.nowMs }));
   app.route('/api/settings', createSettingsRoutes({ db: deps.db }));
@@ -170,6 +203,11 @@ export function buildApp(deps: AppDeps) {
   // Usage routes (protected)
   app.use('/api/usage/*', authGuard({ db: deps.db, jwt: deps.jwt, nowMs: deps.nowMs }));
   app.route('/api/usage', createUsageRoutes({ db: deps.db, nowMs: deps.nowMs }));
+
+  // Todos routes (protected)
+  app.use('/api/todos/*', authGuard({ db: deps.db, jwt: deps.jwt, nowMs: deps.nowMs }));
+  app.use('/api/todos', authGuard({ db: deps.db, jwt: deps.jwt, nowMs: deps.nowMs }));
+  app.route('/api/todos', createTodosRoutes({ db: deps.db, nowMs: deps.nowMs }));
 
   // MCP routes (protected) — registry of remote MCP connectors.
   app.use('/api/mcp/*', authGuard({ db: deps.db, jwt: deps.jwt, nowMs: deps.nowMs }));

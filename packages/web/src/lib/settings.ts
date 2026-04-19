@@ -1,6 +1,6 @@
 // packages/web/src/lib/settings.ts
 import { apiFetch } from './api';
-import type { SettingsResponse, UsageResponse } from '@buck/shared';
+import type { SettingsResponse, UpdateSettingsInput, UsageResponse } from '@buck/shared';
 
 export type { SettingsResponse, UsageResponse };
 
@@ -9,13 +9,7 @@ export async function fetchSettings(): Promise<SettingsResponse> {
 }
 
 export async function updateSettings(
-  data: Partial<{
-    monthlyCostLimitUsd: number;
-    hardStop: boolean;
-    billingResetDay: number;
-    defaultModel: string;
-    defaultReasoningEffort: string;
-  }>,
+  data: Partial<UpdateSettingsInput>,
 ): Promise<SettingsResponse> {
   return apiFetch<SettingsResponse>('/api/settings', {
     method: 'PATCH',

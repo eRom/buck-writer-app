@@ -19,6 +19,10 @@ function formatSettings(row: UserSettingsRow) {
     alertThresholds: JSON.parse(row.alertThresholdsJson) as number[],
     hardStop: row.hardStop === 1,
     billingResetDay: row.billingResetDay,
+    realtimeDefaultVoice: row.realtimeDefaultVoice,
+    realtimeTurnDetection: JSON.parse(row.realtimeTurnDetectionJson),
+    realtimeSilenceTimeoutSec: row.realtimeSilenceTimeoutSec,
+    realtimeTools: JSON.parse(row.realtimeToolsJson),
   };
 }
 
@@ -81,6 +85,18 @@ export function createSettingsRoutes(
     }
     if (data.defaultReasoningEffort !== undefined) {
       updates.defaultReasoningEffort = data.defaultReasoningEffort;
+    }
+    if (data.realtimeDefaultVoice !== undefined) {
+      updates.realtimeDefaultVoice = data.realtimeDefaultVoice;
+    }
+    if (data.realtimeTurnDetection !== undefined) {
+      updates.realtimeTurnDetectionJson = JSON.stringify(data.realtimeTurnDetection);
+    }
+    if (data.realtimeSilenceTimeoutSec !== undefined) {
+      updates.realtimeSilenceTimeoutSec = data.realtimeSilenceTimeoutSec;
+    }
+    if (data.realtimeTools !== undefined) {
+      updates.realtimeToolsJson = JSON.stringify(data.realtimeTools);
     }
 
     if (Object.keys(updates).length > 0) {

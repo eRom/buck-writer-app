@@ -6,6 +6,19 @@ import type { Skill } from '../services/skills.js';
 import { assertSafePath } from '../utils/path-safe.js';
 import { validateShellCommand, listAllowedBins } from '../lib/kill-switch.js';
 import type { FunctionToolDef } from '../lib/openai.js';
+import type { DbHandles } from '../db/client.js';
+import {
+  createTodo,
+  deleteTodo,
+  listTodos,
+  updateTodo,
+} from './todos.js';
+
+export interface TodosToolCtx {
+  db: DbHandles;
+  userId: string;
+  nowMs: () => number;
+}
 
 const execFileAsync = promisify(execFile);
 
@@ -29,7 +42,54 @@ export function buildToolDefinitions(
   workspaceDir: string | undefined,
   skills: Map<string, Skill> | undefined,
 ): FunctionToolDef[] {
-  const defs: FunctionToolDef[] = [];
+  const defs: FunctionToolDef[] = [
+    {
+      type: 'function',
+      name: 'todos_list',
+      description: "Liste tous les todos de l'utilisateur (liste unique).",
+      parameters: { type: 'object', properties: {}, additionalProperties: false },
+      strict: false,
+    },
+    {
+      type: 'function',
+      name: 'todos_create',
+      description: "Créer un nouvel item todo.",
+      parameters: {
+        type: 'object',
+        properties: { text: { type: 'string' } },
+        required: ['text'],
+        additionalProperties: false,
+      },
+      strict: true,
+    },
+    {
+      type: 'function',
+      name: 'todos_update',
+      description: "Mettre à jour le texte et/ou l'état done d'un todo.",
+      parameters: {
+        type: 'object',
+        properties: {
+          id: { type: 'string' },
+          text: { type: 'string' },
+          done: { type: 'boolean' },
+        },
+        required: ['id'],
+      },
+      strict: false,
+    },
+    {
+      type: 'function',
+      name: 'todos_delete',
+      description: "Supprimer un todo par id.",
+      parameters: {
+        type: 'object',
+        properties: { id: { type: 'string' } },
+        required: ['id'],
+        additionalProperties: false,
+      },
+      strict: true,
+    },
+  ];
 
   if (workspaceDir) {
     defs.push(
@@ -136,8 +196,33 @@ export function buildToolDefinitions(
 export function buildToolHandlers(
   workspaceDir: string | undefined,
   skills: Map<string, Skill> | undefined,
+  todosCtx?: TodosToolCtx,
 ): Record<string, ToolHandler> {
   const handlers: Record<string, ToolHandler> = {};
+
+  if (todosCtx) {
+    const { db, userId, nowMs } = todosCtx;
+    handlers.todos_list = async () => ({ todos: listTodos(db, userId) });
+    handlers.todos_create = async ({ text }) => {
+      const t = String(text ?? '').trim();
+      if (!t) return { error: 'text required' };
+      const todo = createTodo(db, userId, t, nowMs());
+      return { todo };
+    };
+    handlers.todos_update = async ({ id, text, done }) => {
+      const patch: { text?: string; done?: boolean } = {};
+      if (typeof text === 'string') patch.text = text.trim();
+      if (typeof done === 'boolean') patch.done = done;
+      const todo = updateTodo(db, userId, String(id), patch, nowMs());
+      if (!todo) return { error: 'todo not found' };
+      return { todo };
+    };
+    handlers.todos_delete = async ({ id }) => {
+      const ok = deleteTodo(db, userId, String(id));
+      if (!ok) return { error: 'todo not found' };
+      return { ok: true };
+    };
+  }
 
   if (workspaceDir) {
     const wd = workspaceDir;

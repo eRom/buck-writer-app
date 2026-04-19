@@ -96,10 +96,12 @@ export const messages = sqliteTable(
     contentJson: text('content_json').notNull(),
     model: text('model'),
     toolMeta: text('tool_meta'),
+    source: text('source').notNull().default('text'),
     createdAt: integer('created_at').notNull(),
   },
   (t) => ({
     sessionIdx: index('messages_session_idx').on(t.sessionId),
+    sourceIdx: index('messages_source_idx').on(t.sessionId, t.source),
   }),
 );
 
@@ -147,10 +149,12 @@ export const usageEvents = sqliteTable(
     audioOutputSeconds: real('audio_output_seconds').notNull().default(0),
     costUsd: real('cost_usd').notNull(),
     reasoningEffort: text('reasoning_effort'),
+    kind: text('kind').notNull().default('chat'),
   },
   (t) => ({
     userMonthIdx: index('usage_user_created_idx').on(t.userId, t.createdAt),
     sessionIdx: index('usage_session_idx').on(t.sessionId),
+    kindIdx: index('usage_events_kind_idx').on(t.userId, t.kind, t.createdAt),
   }),
 );
 
@@ -191,7 +195,34 @@ export const userSettings = sqliteTable('user_settings', {
     .default('low'),
   billingResetDay: integer('billing_reset_day').notNull().default(1),
   memoryUsageSyncCursor: integer('memory_usage_sync_cursor', { mode: 'timestamp_ms' }),
+  realtimeDefaultVoice: text('realtime_default_voice').notNull().default('coral'),
+  realtimeTurnDetectionJson: text('realtime_turn_detection_json')
+    .notNull()
+    .default('{"mode":"server_vad","threshold":0.5,"prefix_padding_ms":500,"silence_duration_ms":500,"interrupt_response":true}'),
+  realtimeSilenceTimeoutSec: integer('realtime_silence_timeout_sec').notNull().default(30),
+  realtimeToolsJson: text('realtime_tools_json')
+    .notNull()
+    .default('{"bible":true,"writingTools":true,"webSearch":true}'),
 });
+
+// ---------- todos ----------
+
+export const todos = sqliteTable(
+  'todos',
+  {
+    id: text('id').primaryKey(),
+    userId: text('user_id')
+      .notNull()
+      .references(() => users.id, { onDelete: 'cascade' }),
+    text: text('text').notNull(),
+    done: integer('done').notNull().default(0),
+    createdAt: integer('created_at').notNull(),
+    updatedAt: integer('updated_at').notNull(),
+  },
+  (t) => ({
+    userIdx: index('todos_user_idx').on(t.userId, t.createdAt),
+  }),
+);
 
 // ---------- mcp ----------
 

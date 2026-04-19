@@ -5,6 +5,28 @@ import type { DbHandles } from '../db/client.js';
 import { usageEvents, alertTriggers } from '../db/schema.js';
 import { getOrCreateSettings } from '../services/user-settings.js';
 
+function sumByKind(
+  db: DbHandles,
+  userId: string,
+  periodStart: number,
+  periodEnd: number,
+  kind: string,
+): number {
+  const result = db.db
+    .select({ total: sql<number>`COALESCE(SUM(${usageEvents.costUsd}), 0)` })
+    .from(usageEvents)
+    .where(
+      and(
+        eq(usageEvents.userId, userId),
+        eq(usageEvents.kind, kind),
+        gte(usageEvents.createdAt, periodStart),
+        lt(usageEvents.createdAt, periodEnd),
+      ),
+    )
+    .get();
+  return result?.total ?? 0;
+}
+
 export interface UsageRouteDeps {
   db: DbHandles;
   nowMs?: () => number;
@@ -63,6 +85,9 @@ export function createUsageRoutes(
       triggeredAt: triggeredMap.get(pct) ?? null,
     }));
 
+    const chatUsd = Math.round(sumByKind(deps.db, userId, period.periodStart, period.periodEnd, 'chat') * 100) / 100;
+    const realtimeUsd = Math.round(sumByKind(deps.db, userId, period.periodStart, period.periodEnd, 'realtime') * 100) / 100;
+
     return c.json({
       totalUsd,
       limitUsd,
@@ -72,6 +97,7 @@ export function createUsageRoutes(
       daysRemaining: period.daysRemaining,
       resetDay: settings.billingResetDay,
       alerts,
+      byKind: { chat: chatUsd, realtime: realtimeUsd },
     });
   });
 
