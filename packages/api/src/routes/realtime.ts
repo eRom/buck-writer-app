@@ -174,7 +174,15 @@ export function createRealtimeRoute(
       writingTools: body.tools?.writingTools ?? true,
       webSearch: body.tools?.webSearch ?? true,
     };
-    const systemPrompt = `${deps.prompts.current.system}\n\n${deps.prompts.current.rules}`;
+    // Ordre : SYSTEM → MEMORY → TOOLS → RULES (concat tous les blocs non vides).
+    const systemPrompt = [
+      deps.prompts.current.system,
+      deps.prompts.current.memory,
+      deps.prompts.current.tools,
+      deps.prompts.current.rules,
+    ]
+      .filter((s) => s.length > 0)
+      .join('\n\n');
     const livePrompt = deps.prompts.current.live;
     const sessionSnapshot = buildSessionSnapshot(snapshot, { maxMessages: 20 });
 

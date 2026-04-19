@@ -205,7 +205,8 @@ export function createChatRoute(
       ? await deps.memory.buildContext(memoryUserId)
       : { preferences: {}, activeContext: {}, degraded: false };
 
-    // Build `instructions` (system) — concat base + rules + skills list + memory.
+    // Build `instructions` — concat dans l'ordre SYSTEM → MEMORY → TOOLS → RULES → skills.
+    // SYSTEM reçoit l'injection dynamique des préférences/contexte via buildSystemPromptWithMemory.
     const instructionsParts: string[] = [];
     instructionsParts.push(
       buildSystemPromptWithMemory({
@@ -214,6 +215,12 @@ export function createChatRoute(
         activeContext: memoryContext.activeContext,
       }),
     );
+    if (deps.prompts.current.memory.length > 0) {
+      instructionsParts.push(deps.prompts.current.memory);
+    }
+    if (deps.prompts.current.tools.length > 0) {
+      instructionsParts.push(deps.prompts.current.tools);
+    }
     if (deps.prompts.current.rules.length > 0) {
       instructionsParts.push(deps.prompts.current.rules);
     }
