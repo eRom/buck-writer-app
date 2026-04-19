@@ -30,7 +30,14 @@ export function runMigrations(opts: MigrateOptions): void {
 }
 
 // CLI entry: `node dist/db/migrate.js`
-if (import.meta.url === `file://${process.argv[1]}`) {
+// NB: also gate on filename so the bundler (tsup) doesn't accidentally
+// re-fire this block when the module is bundled INTO another entry like
+// dist/index.js — without the suffix check, both index.js and the inlined
+// CLI bootstrap would match `file://${process.argv[1]}` at app boot.
+if (
+  import.meta.url === `file://${process.argv[1]}` &&
+  import.meta.url.endsWith('/migrate.js')
+) {
   const { loadDotenv } = await import('../utils/find-up.js');
   loadDotenv();
   const url = process.env.DATABASE_URL;
