@@ -1,5 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { renderHook, act } from '@testing-library/react';
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import React from 'react';
 
 vi.mock('@/lib/realtime-client', () => {
   class FakeClient extends EventTarget {
@@ -35,6 +37,12 @@ const DEFAULT_OPTS = {
   tools: { bible: true, writingTools: true, webSearch: true },
 };
 
+function makeWrapper() {
+  const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+  return ({ children }: { children: React.ReactNode }) =>
+    React.createElement(QueryClientProvider, { client: qc }, children);
+}
+
 beforeEach(() => {
   useRealtimeStore.getState().reset();
   FakeClient.instances.length = 0;
@@ -42,7 +50,7 @@ beforeEach(() => {
 
 describe('useRealtimeVoice', () => {
   it('start() instancie le client si chatSessionId fourni', async () => {
-    const { result } = renderHook(() => useRealtimeVoice('s1'));
+    const { result } = renderHook(() => useRealtimeVoice('s1'), { wrapper: makeWrapper() });
     await act(async () => {
       await result.current.start(DEFAULT_OPTS);
     });
@@ -51,7 +59,7 @@ describe('useRealtimeVoice', () => {
   });
 
   it('start() ne crée pas de client si chatSessionId null', async () => {
-    const { result } = renderHook(() => useRealtimeVoice(null));
+    const { result } = renderHook(() => useRealtimeVoice(null), { wrapper: makeWrapper() });
     await act(async () => {
       await result.current.start(DEFAULT_OPTS);
     });
@@ -59,7 +67,7 @@ describe('useRealtimeVoice', () => {
   });
 
   it('start() ne crée pas un second client si déjà actif', async () => {
-    const { result } = renderHook(() => useRealtimeVoice('s1'));
+    const { result } = renderHook(() => useRealtimeVoice('s1'), { wrapper: makeWrapper() });
     await act(async () => {
       await result.current.start(DEFAULT_OPTS);
       await result.current.start(DEFAULT_OPTS);
@@ -68,7 +76,7 @@ describe('useRealtimeVoice', () => {
   });
 
   it('toggleMute flip muted dans le store', async () => {
-    const { result } = renderHook(() => useRealtimeVoice('s1'));
+    const { result } = renderHook(() => useRealtimeVoice('s1'), { wrapper: makeWrapper() });
     await act(async () => {
       await result.current.start(DEFAULT_OPTS);
     });
@@ -80,7 +88,7 @@ describe('useRealtimeVoice', () => {
   });
 
   it('stop() reset store', async () => {
-    const { result } = renderHook(() => useRealtimeVoice('s1'));
+    const { result } = renderHook(() => useRealtimeVoice('s1'), { wrapper: makeWrapper() });
     useRealtimeStore.getState().setError('x');
     await act(async () => {
       await result.current.stop();
@@ -90,7 +98,7 @@ describe('useRealtimeVoice', () => {
   });
 
   it('unmount appelle stop() du client', async () => {
-    const { result, unmount } = renderHook(() => useRealtimeVoice('s1'));
+    const { result, unmount } = renderHook(() => useRealtimeVoice('s1'), { wrapper: makeWrapper() });
     await act(async () => {
       await result.current.start(DEFAULT_OPTS);
     });

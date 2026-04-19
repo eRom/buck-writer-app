@@ -1,6 +1,8 @@
 import { useCallback, useEffect, useRef } from 'react';
+import { useQueryClient } from '@tanstack/react-query';
 import { RealtimeClient, type StartOpts } from '@/lib/realtime-client';
 import { useRealtimeStore, type RealtimeState } from '@/stores/realtime-store';
+import { realtimeApi } from '@/lib/realtime-api';
 
 export interface UseRealtimeVoiceReturn {
   start: (config: StartOpts, silenceTimeoutSec?: number) => Promise<void>;
@@ -16,6 +18,7 @@ export function useRealtimeVoice(chatSessionId: string | null): UseRealtimeVoice
   const muted = useRealtimeStore((s) => s.muted);
   const error = useRealtimeStore((s) => s.error);
   const clientRef = useRef<RealtimeClient | null>(null);
+  const queryClient = useQueryClient();
 
   const stop = useCallback(async () => {
     const client = clientRef.current;
@@ -58,6 +61,15 @@ export function useRealtimeVoice(chatSessionId: string | null): UseRealtimeVoice
       client.addEventListener('transcript', (e) => {
         const t = (e as CustomEvent<{ role: 'user' | 'assistant'; text: string; startedAt: number }>).detail;
         useRealtimeStore.getState().addTranscript(t);
+      });
+      client.addEventListener('write_to_chat', (e) => {
+        const { content } = (e as CustomEvent<{ content?: string }>).detail;
+        if (!content || !chatSessionId) return;
+        void realtimeApi.writeToChat(chatSessionId, content).then(() => {
+          void queryClient.invalidateQueries({ queryKey: ['messages', chatSessionId] });
+        }).catch(() => {
+          // log silencieux — on continue
+        });
       });
 
       try {
