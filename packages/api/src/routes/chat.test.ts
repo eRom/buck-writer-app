@@ -13,13 +13,15 @@ import { newId } from '@buck/shared';
 import { sha256Hex } from '../utils/crypto.js';
 import { users, sessionsAuth, chatSessions } from '../db/schema.js';
 
-// Mock OpenAI fetch — returns a minimal streaming SSE payload with a final
-// chunk carrying usage + finish_reason. Non-streaming requests (title
-// generation) return a plain JSON body.
+// Mock OpenAI /v1/responses — streaming SSE with a text delta + completed.
+// Non-streaming title call returns an `output_text` shortcut.
 const STREAM_SSE =
-  'data: {"choices":[{"delta":{"content":"Hello! I am Buck."},"finish_reason":null}]}\n\n' +
-  'data: {"choices":[{"delta":{},"finish_reason":"stop"}],"usage":{"prompt_tokens":10,"completion_tokens":5}}\n\n' +
-  'data: [DONE]\n\n';
+  'event: response.created\n' +
+  'data: {"type":"response.created","response":{"id":"resp_test_1"}}\n\n' +
+  'event: response.output_text.delta\n' +
+  'data: {"type":"response.output_text.delta","output_index":0,"item_id":"msg_1","delta":"Hello! I am Buck."}\n\n' +
+  'event: response.completed\n' +
+  'data: {"type":"response.completed","response":{"id":"resp_test_1","status":"completed","output":[],"usage":{"input_tokens":10,"output_tokens":5,"total_tokens":15}}}\n\n';
 
 beforeEach(() => {
   vi.spyOn(globalThis, 'fetch').mockImplementation(async (input: RequestInfo | URL, init?: RequestInit) => {
@@ -42,8 +44,9 @@ beforeEach(() => {
     }
     return new Response(
       JSON.stringify({
-        choices: [{ message: { content: 'Test title' } }],
-        usage: { prompt_tokens: 5, completion_tokens: 3 },
+        id: 'resp_title_1',
+        output_text: 'Test title',
+        usage: { input_tokens: 5, output_tokens: 3, total_tokens: 8 },
       }),
       { headers: { 'content-type': 'application/json' } },
     );

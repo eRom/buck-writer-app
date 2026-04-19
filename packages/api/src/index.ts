@@ -16,7 +16,6 @@ import {
 } from './services/email.js';
 import { loadPrompts, bootstrapPrompts, createPromptsWatcher, type PromptsRef } from './services/prompts.js';
 import { loadSkills, createSkillsWatcher } from './services/skills.js';
-import { createMcpClient } from './services/mcp-client.js';
 import { bootstrapMemory } from './services/memory/bootstrap.js';
 import { usageEvents, userSettings } from './db/schema.js';
 import { eq } from 'drizzle-orm';
@@ -74,29 +73,10 @@ const promptsRef: PromptsRef = { current: promptsData };
 const skills = await loadSkills(env.WORKSPACE_DIR);
 console.warn(`[api] skills loaded (${skills.size})`);
 
-// Init bible MCP client — best-effort, non-blocking if unreachable.
-// Retry up to 5 times with 2s backoff to win the startup race against
-// bible-mcp (which may still be booting in parallel under `pnpm dev`).
-const mcpClient = createMcpClient({
-  url: process.env.MCP_BIBLE_URL ?? 'http://bible-mcp:7801',
-  healthPollMs: Number(process.env.MCP_HEALTH_POLL_MS ?? 30_000),
-});
-{
-  const maxAttempts = 5;
-  for (let attempt = 1; attempt <= maxAttempts; attempt++) {
-    try {
-      await mcpClient.listTools();
-      console.warn(`[api] bible-mcp ok (${mcpClient.cachedTools().length} tools)`);
-      break;
-    } catch (err) {
-      if (attempt === maxAttempts) {
-        console.warn('[api] bible-mcp unreachable, running in degraded mode:', (err as Error).message);
-      } else {
-        await new Promise((r) => setTimeout(r, 2000));
-      }
-    }
-  }
-}
+// MCP servers are now remote connectors declared via tools[] in each
+// Responses API request (see packages/api/src/services/mcp-registry.ts).
+// No startup health check — OpenAI handles the roundtrip and propagates
+// mcp_call.failed events back if a server is unreachable.
 
 if (process.env.NODE_ENV !== 'test') {
   const skillsWatcher = createSkillsWatcher(env.WORKSPACE_DIR, (reloaded) => {
@@ -110,8 +90,10 @@ if (process.env.NODE_ENV !== 'test') {
     promptsRef.current = p;
   });
 
-  // Graceful shutdown
-  const shutdown = () => { skillsWatcher.close().catch(() => {}); stopPromptsWatcher(); mcpClient.stop(); };
+  const shutdown = (): void => {
+    skillsWatcher.close().catch(() => {});
+    stopPromptsWatcher();
+  };
   process.on('SIGINT', shutdown);
   process.on('SIGTERM', shutdown);
 }
@@ -202,7 +184,6 @@ const app = buildApp({
   openaiApiKey: env.OPENAI_API_KEY,
   workspaceDir: env.WORKSPACE_DIR,
   skills,
-  mcpClient,
   memory,
   buckUserId: env.BUCK_USER_ID,
   trustProxy: env.TRUST_PROXY,

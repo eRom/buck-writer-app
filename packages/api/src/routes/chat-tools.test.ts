@@ -1,54 +1,60 @@
-import { describe, it, expect, vi } from 'vitest';
+import { describe, it, expect } from 'vitest';
 import { buildToolDefinitions, buildToolHandlers } from './chat-tools.js';
-import type { McpClient } from '../services/mcp-client.js';
-import type { McpTool } from '../services/mcp-client.js';
 
-function fakeMcpClient(tools: McpTool[], healthy = true): McpClient {
-  return {
-    listTools: vi.fn().mockResolvedValue(tools),
-    callTool: vi.fn().mockResolvedValue({ ok: true }),
-    isHealthy: () => healthy,
-    cachedTools: () => tools,
-    onStatusChange: () => () => undefined,
-    stop: () => undefined,
-  };
-}
+describe('buildToolDefinitions', () => {
+  it('returns workspace tools when workspaceDir is set', () => {
+    const defs = buildToolDefinitions('/tmp/ws', undefined);
+    const names = defs.map((d) => d.name);
+    expect(names).toContain('read_file');
+    expect(names).toContain('list_directory');
+    expect(names).toContain('create_file');
+    expect(names).toContain('delete_file');
+    expect(names).toContain('shell_execute');
+  });
 
-describe('buildToolDefinitions with bible', () => {
-  it('prefixes bible tools with bible_', () => {
-    const mcp = fakeMcpClient([
-      { name: 'search_fulltext', description: 'FTS', inputSchema: { type: 'object' } },
+  it('uses Responses API shape (internally-tagged: type+name+parameters)', () => {
+    const defs = buildToolDefinitions('/tmp/ws', undefined);
+    for (const d of defs) {
+      expect(d.type).toBe('function');
+      expect(typeof d.name).toBe('string');
+      expect(d.parameters).toBeTruthy();
+      // chat.completions-style `function` wrapper should NOT exist
+      expect((d as unknown as { function?: unknown }).function).toBeUndefined();
+    }
+  });
+
+  it('adds activate_skill when skills are provided', () => {
+    const skills = new Map([
+      ['test', { name: 'test', description: 'X', body: 'Y', path: '' }],
     ]);
-    const defs = buildToolDefinitions(undefined, undefined, mcp);
-    expect(defs.map((d) => d.function.name)).toContain('bible_search_fulltext');
+    const defs = buildToolDefinitions(undefined, skills);
+    expect(defs.map((d) => d.name)).toContain('activate_skill');
   });
 
-  it('skips bible tools if unhealthy', () => {
-    const mcp = fakeMcpClient([{ name: 'x', description: 'y', inputSchema: {} }], false);
-    const defs = buildToolDefinitions(undefined, undefined, mcp);
-    expect(defs).toHaveLength(0);
+  it('returns empty when nothing provided', () => {
+    expect(buildToolDefinitions(undefined, undefined)).toEqual([]);
   });
 
-  it('returns empty when no workspace + no skills + no mcp', () => {
-    const defs = buildToolDefinitions(undefined, undefined, undefined);
-    expect(defs).toEqual([]);
+  it('marks strict where schemas are strict-compliant', () => {
+    const defs = buildToolDefinitions('/tmp/ws', undefined);
+    const readFile = defs.find((d) => d.name === 'read_file');
+    expect(readFile?.strict).toBe(true);
+    const shell = defs.find((d) => d.name === 'shell_execute');
+    expect(shell?.strict).toBe(false);
   });
 });
 
-describe('buildToolHandlers with bible', () => {
-  it('routes bible_X to mcpClient.callTool(X, args)', async () => {
-    const mcp = fakeMcpClient([{ name: 'search_fulltext', description: '', inputSchema: {} }]);
-    const handlers = buildToolHandlers(undefined, undefined, mcp);
-    const result = await handlers['bible_search_fulltext']!({ query: 'bob' });
-    expect(mcp.callTool).toHaveBeenCalledWith('search_fulltext', { query: 'bob' });
-    expect(result).toEqual({ ok: true });
+describe('buildToolHandlers', () => {
+  it('returns workspace handlers when workspaceDir is set', () => {
+    const handlers = buildToolHandlers('/tmp/ws', undefined);
+    expect(typeof handlers.read_file).toBe('function');
+    expect(typeof handlers.list_directory).toBe('function');
+    expect(typeof handlers.create_file).toBe('function');
+    expect(typeof handlers.delete_file).toBe('function');
+    expect(typeof handlers.shell_execute).toBe('function');
   });
 
-  it('returns error shape when callTool throws', async () => {
-    const mcp = fakeMcpClient([{ name: 'x', description: '', inputSchema: {} }]);
-    (mcp.callTool as ReturnType<typeof vi.fn>).mockRejectedValueOnce(new Error('boom'));
-    const handlers = buildToolHandlers(undefined, undefined, mcp);
-    const result = await handlers['bible_x']!({});
-    expect(result).toEqual({ error: expect.stringContaining('boom') });
+  it('returns empty when nothing provided', () => {
+    expect(Object.keys(buildToolHandlers(undefined, undefined))).toEqual([]);
   });
 });

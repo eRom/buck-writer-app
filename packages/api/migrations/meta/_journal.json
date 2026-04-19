@@ -43,6 +43,13 @@
       "when": 1776516828940,
       "tag": "0005_spicy_nightshade",
       "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "6",
+      "when": 1776600000000,
+      "tag": "0006_responses_api_fields",
+      "breakpoints": true
     }
   ]
 }
