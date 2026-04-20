@@ -3,7 +3,7 @@
 # be declared as a remote MCP connector from the OpenAI Responses API.
 # Heavy deps (torch, transformers, spacy) — first build is slow (~5 min).
 
-FROM python:3.11-slim AS base
+FROM python:3.14-slim AS base
 RUN apt-get update && \
     apt-get install -y --no-install-recommends git build-essential wget && \
     rm -rf /var/lib/apt/lists/*
