@@ -1,5 +1,6 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { Sliders } from 'lucide-react';
+import { ChevronDown, ChevronRight, Sliders } from 'lucide-react';
+import { useState } from 'react';
 import { type ChatModel } from '@buck/shared';
 import { fetchSettings, updateSettings, fetchUsageCurrent } from '@/lib/settings';
 import {
@@ -29,6 +30,7 @@ const EFFORT_LABELS: Record<ReasoningEffort, string> = {
 
 export function CardParametres({ sessionId }: Props) {
   const qc = useQueryClient();
+  const [open, setOpen] = useState(false);
   const { data: settings } = useQuery({ queryKey: ['settings'], queryFn: fetchSettings });
   const { data: usage } = useQuery({ queryKey: ['usage-current'], queryFn: fetchUsageCurrent });
   const { data: sessionsData } = useQuery({
@@ -100,11 +102,24 @@ export function CardParametres({ sessionId }: Props) {
 
   return (
     <section className="rounded-lg border border-card-border bg-card p-3">
-      <header className="mb-2 flex items-center gap-1.5">
+      <header className="flex items-center gap-1.5">
+        <button
+          type="button"
+          onClick={() => setOpen((v) => !v)}
+          aria-label={open ? 'Replier' : 'Deployer'}
+          className="hover-elevate rounded-md p-0.5 text-muted-foreground"
+        >
+          {open ? (
+            <ChevronDown className="size-3.5" />
+          ) : (
+            <ChevronRight className="size-3.5" />
+          )}
+        </button>
         <Sliders className="size-3.5 text-muted-foreground" />
         <h3 className="text-[13px] font-semibold">Parametres</h3>
       </header>
-      <div className="space-y-1.5">
+      {open && (
+      <div className="mt-2 space-y-1.5">
         <label className="flex items-center justify-between rounded-md border border-border bg-background/40 px-2 py-1.5">
           <span className="text-xs text-muted-foreground">Modèle</span>
           <select
@@ -150,6 +165,7 @@ export function CardParametres({ sessionId }: Props) {
           </div>
         </div>
       </div>
+      )}
     </section>
   );
 }
