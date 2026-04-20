@@ -11,6 +11,7 @@ import { eq, and } from 'drizzle-orm';
 import * as fs from 'node:fs/promises';
 import * as path from 'node:path';
 import { HttpError } from '../utils/http-error.js';
+import { assertSafePath } from '../utils/path-safe.js';
 
 export interface AttachmentRouteDeps {
   db: DbHandles;
@@ -176,7 +177,9 @@ export function createAttachmentRoutes(
       const ext = extFromMime(mime);
       const uuidFilename = `${id}${ext}`;
       const relPath = `.attachments/${userId}/${uuidFilename}`;
-      const absPath = path.join(workspaceDir, relPath);
+      // Defense-in-depth: userId is a signed JWT claim, but if a future
+      // change ever lets a `..` leak through, assertSafePath will catch it.
+      const absPath = await assertSafePath(workspaceDir, relPath);
 
       // Ensure directory exists
       await fs.mkdir(path.dirname(absPath), { recursive: true });

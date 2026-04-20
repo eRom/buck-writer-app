@@ -27,7 +27,7 @@ RUN pnpm deploy --filter @buck/api --prod /deploy
 FROM node:20-alpine AS runtime
 WORKDIR /app
 ENV NODE_ENV=production
-RUN apk add --no-cache sqlite
+RUN apk add --no-cache sqlite=3.51.2-r0
 COPY --from=build /deploy /app
 COPY --from=build /repo/packages/api/migrations /app/migrations
 COPY --from=build /repo/packages/web/dist /app/web-dist

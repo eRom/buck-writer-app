@@ -282,7 +282,8 @@ export function buildApp(deps: AppDeps) {
         expiresAt: ts + SESSION_TTL_MS, createdAt: ts,
       }).run();
       const domainAttr = deps.cookieDomain ? `; Domain=${deps.cookieDomain}` : '';
-      const cookie = `buck_session=${sessionJwt}; Path=/; HttpOnly; SameSite=Lax; Max-Age=${SESSION_TTL_SECONDS}${domainAttr}`;
+      const secureAttr = process.env.NODE_ENV === 'production' ? '; Secure' : '';
+      const cookie = `buck_session=${sessionJwt}; Path=/; HttpOnly; SameSite=Lax${secureAttr}; Max-Age=${SESSION_TTL_SECONDS}${domainAttr}`;
       c.header('Set-Cookie', cookie);
       return c.redirect('/');
     });

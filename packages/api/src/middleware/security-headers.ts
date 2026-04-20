@@ -7,9 +7,12 @@ const CSP = [
   "style-src 'self' 'unsafe-inline'",
   "connect-src 'self' https://api.openai.com https://*.openai.com",
   "font-src 'self' data:",
+  "object-src 'none'",
   "frame-ancestors 'none'",
   "base-uri 'self'",
   "form-action 'self'",
+  // Chromium-only; graceful degradation elsewhere.
+  "require-trusted-types-for 'script'",
 ].join('; ');
 
 export function securityHeaders(): MiddlewareHandler {

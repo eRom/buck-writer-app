@@ -28,4 +28,11 @@ describe('security-headers', () => {
     expect(csp).toContain("default-src 'self'");
     expect(csp).toContain('https://api.openai.com');
   });
+
+  it("CSP includes object-src 'none' and Trusted Types directive", async () => {
+    const res = await mkApp().request('/');
+    const csp = res.headers.get('content-security-policy') ?? '';
+    expect(csp).toContain("object-src 'none'");
+    expect(csp).toContain("require-trusted-types-for 'script'");
+  });
 });
