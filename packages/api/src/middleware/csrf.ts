@@ -1,5 +1,6 @@
 import type { MiddlewareHandler } from 'hono';
 import crypto from 'node:crypto';
+import { parseCookies } from '../utils/cookies.js';
 
 export const CSRF_COOKIE = 'buck_csrf';
 export const CSRF_HEADER = 'x-csrf-token';
@@ -9,20 +10,20 @@ function randomToken(): string {
   return crypto.randomBytes(24).toString('hex');
 }
 
-function parseCookies(
-  raw: string | null | undefined,
-): Record<string, string> {
-  if (!raw) return {};
-  return Object.fromEntries(
-    raw.split(';').map((p) => {
-      const [k, ...v] = p.trim().split('=');
-      return [k ?? '', decodeURIComponent((v.join('=') ?? '').trim())];
-    }),
-  );
+export interface CsrfOptions {
+  /**
+   * Expected Origin value for state-changing requests (defense-in-depth
+   * against XSS-elevation-to-CSRF). When set, non-safe methods carrying an
+   * Origin header that doesn't match are rejected. Missing Origin is
+   * allowed because non-browser clients (curl, Caddy health probes) omit
+   * it.
+   */
+  expectedOrigin?: string;
 }
 
-export function csrfMiddleware(): MiddlewareHandler {
+export function csrfMiddleware(opts: CsrfOptions = {}): MiddlewareHandler {
   const secure = process.env.NODE_ENV === 'production' ? '; Secure' : '';
+  const expectedOrigin = opts.expectedOrigin?.replace(/\/+$/, '');
   return async (c, next) => {
     const cookies = parseCookies(c.req.header('cookie'));
     const method = c.req.method.toUpperCase();
@@ -41,6 +42,19 @@ export function csrfMiddleware(): MiddlewareHandler {
         );
       }
       return next();
+    }
+
+    // Origin check — closes the XSS→CSRF elevation path partially. An Origin
+    // header set by a browser cannot be spoofed by attacker JS running on a
+    // third-party origin. Missing Origin is tolerated (non-browser clients).
+    if (expectedOrigin) {
+      const origin = c.req.header('origin');
+      if (origin && origin.replace(/\/+$/, '') !== expectedOrigin) {
+        return c.json(
+          { error: { code: 'bad_origin', message: 'unexpected origin' } },
+          403,
+        );
+      }
     }
 
     const cookie = cookies[CSRF_COOKIE];

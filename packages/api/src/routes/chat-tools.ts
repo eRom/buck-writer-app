@@ -229,19 +229,28 @@ export function buildToolHandlers(
     const wd = workspaceDir;
 
     handlers.read_file = async ({ path: filePath }) => {
+      let absPath: string;
       try {
-        const absPath = await assertSafePath(wd, String(filePath));
-        const stat = await fsp.stat(absPath);
+        absPath = await assertSafePath(wd, String(filePath));
+      } catch {
+        return { error: 'path outside workspace' };
+      }
+      let fh;
+      try {
+        fh = await fsp.open(absPath, 'r');
+      } catch {
+        return { error: `file not found: ${filePath}` };
+      }
+      try {
+        const stat = await fh.stat();
         if (stat.isDirectory())
           return { error: 'path is a directory, use list_directory instead' };
         if (stat.size > 1024 * 1024)
           return { error: 'file too large (max 1MB for context)' };
-        const content = await fsp.readFile(absPath, 'utf8');
+        const content = await fh.readFile({ encoding: 'utf8' });
         return { content, path: filePath };
-      } catch (err) {
-        if (err instanceof Error && 'status' in err)
-          return { error: 'path outside workspace' };
-        return { error: `file not found: ${filePath}` };
+      } finally {
+        await fh.close();
       }
     };
 

@@ -1,6 +1,6 @@
 import { Hono } from 'hono';
 import fs from 'node:fs/promises';
-import type { Dirent, Stats } from 'node:fs';
+import type { Dirent } from 'node:fs';
 import path from 'node:path';
 import type { DbHandles } from '../db/client.js';
 import { assertSafePath } from '../utils/path-safe.js';
@@ -92,18 +92,24 @@ export function createWorkspaceRoutes(
 
     const abs = await assertSafePath(workspaceDir, filePath);
 
-    let stat: Stats;
+    // Open once, fstat + read on the same descriptor → no TOCTOU race.
+    let fh;
     try {
-      stat = await fs.stat(abs);
+      fh = await fs.open(abs, 'r');
     } catch {
       throw new HttpError(404, 'not_found', 'file not found');
     }
 
-    if (stat.isDirectory()) {
-      throw new HttpError(422, 'is_directory', 'path is a directory');
+    let content: Buffer;
+    try {
+      const stat = await fh.stat();
+      if (stat.isDirectory()) {
+        throw new HttpError(422, 'is_directory', 'path is a directory');
+      }
+      content = await fh.readFile();
+    } finally {
+      await fh.close();
     }
-
-    const content = await fs.readFile(abs);
     // Attempt to derive a content-type
     const ext = path.extname(abs).toLowerCase();
     const mimeMap: Record<string, string> = {
@@ -123,7 +129,7 @@ export function createWorkspaceRoutes(
     };
     const contentType = mimeMap[ext] ?? 'application/octet-stream';
 
-    return new Response(content, {
+    return new Response(new Uint8Array(content), {
       status: 200,
       headers: { 'content-type': contentType },
     });

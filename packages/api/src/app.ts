@@ -95,7 +95,7 @@ export function buildApp(deps: AppDeps) {
   const app = new Hono<{ Variables: { userId: string } }>();
   const ipKey = createIpKey(deps.trustProxy ?? false);
   app.use('*', securityHeaders());
-  app.use('*', csrfMiddleware());
+  app.use('*', csrfMiddleware({ expectedOrigin: deps.publicBaseUrl }));
 
   app.route('/api/health', healthRoute);
 

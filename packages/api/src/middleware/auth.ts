@@ -4,23 +4,12 @@ import type { DbHandles } from '../db/client.js';
 import type { JwtService } from '../services/jwt.js';
 import { sessionsAuth } from '../db/schema.js';
 import { sha256Hex } from '../utils/crypto.js';
+import { parseCookies } from '../utils/cookies.js';
 
 export interface AuthGuardDeps {
   db: DbHandles;
   jwt: JwtService;
   nowMs?: () => number;
-}
-
-function parseCookies(
-  raw: string | null | undefined,
-): Record<string, string> {
-  if (!raw) return {};
-  return Object.fromEntries(
-    raw.split(';').map((p) => {
-      const [k, ...v] = p.trim().split('=');
-      return [k ?? '', decodeURIComponent((v.join('=') ?? '').trim())];
-    }),
-  );
 }
 
 export function authGuard(deps: AuthGuardDeps): MiddlewareHandler {

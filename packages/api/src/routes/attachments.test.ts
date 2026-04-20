@@ -179,6 +179,47 @@ describe('POST /api/attachments', () => {
     expect(body.error.code).toBe('unsupported_mime_type');
   });
 
+  it('rejects files whose magic bytes do not match declared MIME (image/png with HTML body)', async () => {
+    const ctx = await makeCtx();
+    const form = new FormData();
+    form.append(
+      'files',
+      new Blob(['<html>not a png</html>'], { type: 'image/png' }),
+      'fake.png',
+    );
+
+    const res = await ctx.app.request('/', {
+      method: 'POST',
+      body: form,
+      headers: authHeaders(ctx.token, ctx.csrfToken),
+    });
+
+    expect(res.status).toBe(422);
+    const body = (await res.json()) as { error: { code: string } };
+    expect(body.error.code).toBe('mime_mismatch');
+  });
+
+  it('accepts a PNG with correct magic bytes', async () => {
+    const ctx = await makeCtx();
+    // Minimal PNG signature
+    const png = Buffer.from([
+      0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0x00, 0x00, 0x00, 0x0d,
+    ]);
+    const form = new FormData();
+    form.append(
+      'files',
+      new Blob([png], { type: 'image/png' }),
+      'ok.png',
+    );
+
+    const res = await ctx.app.request('/', {
+      method: 'POST',
+      body: form,
+      headers: authHeaders(ctx.token, ctx.csrfToken),
+    });
+    expect(res.status).toBe(201);
+  });
+
   it('rejects files exceeding 20MB size limit (422)', async () => {
     const ctx = await makeCtx();
     // Create a blob just over 20MB

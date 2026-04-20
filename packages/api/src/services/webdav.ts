@@ -223,31 +223,34 @@ ${entries.join('\n')}
     });
   });
 
-  // GET — download file
+  // GET — download file (open+fstat+read on the same fd, no TOCTOU race)
   app.get('*', async (c) => {
     const relative = extractRelativePath(c.req.path);
     const abs = await assertSafePath(workspaceDir, relative);
 
-    let stat: Stats;
+    let fh;
     try {
-      stat = await fs.stat(abs);
+      fh = await fs.open(abs, 'r');
     } catch {
       return new Response('Not Found', { status: 404 });
     }
-
-    if (stat.isDirectory()) {
-      return new Response('Is a directory', { status: 405 });
+    try {
+      const stat = await fh.stat();
+      if (stat.isDirectory()) {
+        return new Response('Is a directory', { status: 405 });
+      }
+      const content = await fh.readFile();
+      return new Response(content, {
+        status: 200,
+        headers: {
+          'Content-Type': guessMime(abs),
+          'Content-Length': String(stat.size),
+          'Last-Modified': httpDate(stat.mtime),
+        },
+      });
+    } finally {
+      await fh.close();
     }
-
-    const content = await fs.readFile(abs);
-    return new Response(content, {
-      status: 200,
-      headers: {
-        'Content-Type': guessMime(abs),
-        'Content-Length': String(stat.size),
-        'Last-Modified': httpDate(stat.mtime),
-      },
-    });
   });
 
   // HEAD — file metadata without body
