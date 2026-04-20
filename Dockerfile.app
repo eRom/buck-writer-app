@@ -1,7 +1,7 @@
 # syntax=docker/dockerfile:1.7
 
 # ── Stage 1: deps ───────────────────────────────────────────────
-FROM node:20-alpine AS deps
+FROM node:25-alpine AS deps
 WORKDIR /repo
 RUN corepack enable
 COPY pnpm-lock.yaml pnpm-workspace.yaml package.json ./
@@ -24,7 +24,7 @@ RUN pnpm --filter @buck/shared build \
 RUN pnpm deploy --filter @buck/api --prod /deploy
 
 # ── Stage 3: runtime ────────────────────────────────────────────
-FROM node:20-alpine AS runtime
+FROM node:25-alpine AS runtime
 WORKDIR /app
 ENV NODE_ENV=production
 RUN apk add --no-cache sqlite=3.51.2-r0
