@@ -5,6 +5,7 @@ import {
   real,
   index,
   uniqueIndex,
+  primaryKey,
 } from 'drizzle-orm/sqlite-core';
 
 // ---------- auth ----------
@@ -206,7 +207,30 @@ export const userSettings = sqliteTable('user_settings', {
   chatToolsJson: text('chat_tools_json')
     .notNull()
     .default('{"webSearch":false}'),
+  vectorStoreId: text('vector_store_id'),
+  vectorStoreLastSyncAt: integer('vector_store_last_sync_at', { mode: 'timestamp_ms' }),
 });
+
+// ---------- workspace vector files (M8A file_search) ----------
+
+export const workspaceVectorFiles = sqliteTable(
+  'workspace_vector_files',
+  {
+    userId: text('user_id')
+      .notNull()
+      .references(() => users.id, { onDelete: 'cascade' }),
+    workspacePath: text('workspace_path').notNull(),
+    openaiFileId: text('openai_file_id').notNull(),
+    mtimeMs: integer('mtime_ms').notNull(),
+    sha256: text('sha256').notNull(),
+    sizeBytes: integer('size_bytes').notNull(),
+    uploadedAt: integer('uploaded_at').notNull(),
+  },
+  (t) => ({
+    pk: primaryKey({ columns: [t.userId, t.workspacePath] }),
+    fileIdIdx: index('workspace_vector_files_file_id_idx').on(t.openaiFileId),
+  }),
+);
 
 // ---------- todos ----------
 

@@ -286,6 +286,8 @@ describe('settings routes', () => {
         webSearch: true,
       });
       expect(body.chatTools).toEqual({ webSearch: false });
+      expect(body.vectorStoreId).toBeNull();
+      expect(body.vectorStoreLastSyncAt).toBeNull();
     });
 
     it('round-trips chatTools JSON', async () => {

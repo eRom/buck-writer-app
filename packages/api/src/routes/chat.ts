@@ -200,8 +200,8 @@ export function createChatRoute(
       resolvedModel = settingsRow.defaultModel;
     }
 
-    const chatTools: { webSearch?: boolean } = settingsRow?.chatToolsJson
-      ? (JSON.parse(settingsRow.chatToolsJson) as { webSearch?: boolean })
+    const chatTools: { webSearch?: boolean; fileSearch?: boolean } = settingsRow?.chatToolsJson
+      ? (JSON.parse(settingsRow.chatToolsJson) as { webSearch?: boolean; fileSearch?: boolean })
       : {};
 
     // Memory context — fail-soft.
@@ -297,6 +297,13 @@ export function createChatRoute(
     const toolDefs: ToolDef[] = [...localFunctionDefs, ...mcpConnectorDefs];
     if (chatTools.webSearch) {
       toolDefs.push({ type: 'web_search_preview' });
+    }
+    if (chatTools.fileSearch && settingsRow?.vectorStoreId) {
+      toolDefs.push({
+        type: 'file_search',
+        vector_store_ids: [settingsRow.vectorStoreId],
+        max_num_results: 5,
+      });
     }
 
     // Decide what goes into `input` for the first request.

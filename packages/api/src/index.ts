@@ -73,6 +73,12 @@ const defaultsDir = path.resolve(here, 'defaults', 'systems');
 
 bootstrapPrompts(systemsDir, defaultsDir);
 
+// Ensure workspace/knowledge/ exists — cible du file_search M8A.
+const knowledgeDir = path.resolve(env.WORKSPACE_DIR, 'knowledge');
+if (!fs.existsSync(knowledgeDir)) {
+  fs.mkdirSync(knowledgeDir, { recursive: true });
+}
+
 let promptsData;
 try {
   promptsData = loadPrompts(systemsDir);

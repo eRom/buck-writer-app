@@ -24,6 +24,10 @@ function formatSettings(row: UserSettingsRow) {
     realtimeSilenceTimeoutSec: row.realtimeSilenceTimeoutSec,
     realtimeTools: JSON.parse(row.realtimeToolsJson),
     chatTools: JSON.parse(row.chatToolsJson),
+    vectorStoreId: row.vectorStoreId,
+    vectorStoreLastSyncAt: row.vectorStoreLastSyncAt
+      ? row.vectorStoreLastSyncAt.getTime()
+      : null,
   };
 }
 

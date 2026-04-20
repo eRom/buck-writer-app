@@ -71,6 +71,13 @@
       "when": 1777680000000,
       "tag": "0009_chat_tools",
       "breakpoints": true
+    },
+    {
+      "idx": 10,
+      "version": "6",
+      "when": 1777680060000,
+      "tag": "0010_vector_store",
+      "breakpoints": true
     }
   ]
 }

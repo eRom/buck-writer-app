@@ -19,7 +19,9 @@ const mockSettings = {
   },
   realtimeSilenceTimeoutSec: 30,
   realtimeTools: { bible: true, writingTools: true, webSearch: true },
-  chatTools: { webSearch: false },
+  chatTools: { webSearch: false, fileSearch: false },
+  vectorStoreId: null,
+  vectorStoreLastSyncAt: null,
 };
 
 const { mockFetchSettings, mockUpdateSettings } = vi.hoisted(() => ({

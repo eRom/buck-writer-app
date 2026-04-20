@@ -1,8 +1,9 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { ChevronDown, ChevronRight, Sliders } from 'lucide-react';
+import { ChevronDown, ChevronRight, RefreshCw, Sliders } from 'lucide-react';
 import { useState } from 'react';
 import { type ChatModel } from '@buck/shared';
 import { fetchSettings, updateSettings, fetchUsageCurrent } from '@/lib/settings';
+import { syncVectorStore } from '@/lib/vector-store';
 import {
   fetchSessions,
   updateSession,
@@ -48,9 +49,12 @@ export function CardParametres({ sessionId }: Props) {
   const spent = usage?.totalUsd ?? 0;
   const percent = usage?.percent ?? 0;
   const webSearch = settings?.chatTools?.webSearch ?? false;
+  const fileSearch = settings?.chatTools?.fileSearch ?? false;
+  const vectorStoreId = settings?.vectorStoreId ?? null;
+  const lastSyncAt = settings?.vectorStoreLastSyncAt ?? null;
 
   const chatToolsMutation = useMutation({
-    mutationFn: (next: { webSearch: boolean }) =>
+    mutationFn: (next: { webSearch: boolean; fileSearch?: boolean }) =>
       updateSettings({ chatTools: next }),
     onMutate: async (next) => {
       await qc.cancelQueries({ queryKey: ['settings'] });
@@ -63,6 +67,11 @@ export function CardParametres({ sessionId }: Props) {
     onError: (_err, _vars, ctx) => {
       if (ctx?.prev) qc.setQueryData(['settings'], ctx.prev);
     },
+    onSettled: () => qc.invalidateQueries({ queryKey: ['settings'] }),
+  });
+
+  const syncMutation = useMutation({
+    mutationFn: syncVectorStore,
     onSettled: () => qc.invalidateQueries({ queryKey: ['settings'] }),
   });
 
@@ -190,6 +199,59 @@ export function CardParametres({ sessionId }: Props) {
             {webSearch ? 'on' : 'off'}
           </button>
         </label>
+        <div className="rounded-md border border-border bg-background/40 px-2 py-1.5">
+          <div className="flex items-center justify-between">
+            <span className="text-xs text-muted-foreground">Recherche knowledge</span>
+            <button
+              type="button"
+              role="switch"
+              aria-checked={fileSearch}
+              disabled={chatToolsMutation.isPending || !vectorStoreId}
+              onClick={() =>
+                chatToolsMutation.mutate({
+                  ...(settings?.chatTools ?? { webSearch: false }),
+                  fileSearch: !fileSearch,
+                })
+              }
+              title={!vectorStoreId ? 'Synchronise d\'abord le workspace' : undefined}
+              className={`inline-flex items-center rounded-md px-2 py-0.5 text-[10px] font-medium transition-colors disabled:opacity-50 ${
+                fileSearch
+                  ? 'bg-emerald-500/10 text-emerald-400 hover:brightness-125'
+                  : 'bg-gray-500/10 text-gray-400 hover:brightness-125'
+              }`}
+            >
+              {fileSearch ? 'on' : 'off'}
+            </button>
+          </div>
+          <div className="mt-1 flex items-center justify-between text-[10px] text-muted-foreground">
+            <span className="font-mono">
+              {vectorStoreId
+                ? lastSyncAt
+                  ? `Sync : ${new Date(lastSyncAt).toLocaleString('fr-FR', { dateStyle: 'short', timeStyle: 'short' })}`
+                  : 'Jamais synchronise'
+                : 'workspace/knowledge/'}
+            </span>
+            <button
+              type="button"
+              onClick={() => syncMutation.mutate()}
+              disabled={syncMutation.isPending}
+              aria-label="Resynchroniser le workspace"
+              className="hover-elevate rounded-md p-0.5 text-muted-foreground disabled:opacity-50"
+            >
+              <RefreshCw
+                className={`size-3 ${syncMutation.isPending ? 'animate-spin' : ''}`}
+              />
+            </button>
+          </div>
+          {syncMutation.data && (
+            <p className="mt-1 font-mono text-[10px] text-emerald-400/80">
+              +{syncMutation.data.added} ~{syncMutation.data.updated} -{syncMutation.data.removed}
+            </p>
+          )}
+          {syncMutation.isError && (
+            <p className="mt-1 text-[10px] text-red-400/80">Sync echouee</p>
+          )}
+        </div>
         <div className="rounded-md border border-border bg-background/40 px-2 py-1.5">
           <div className="flex items-center justify-between text-xs">
             <span className="text-muted-foreground">Budget mensuel</span>

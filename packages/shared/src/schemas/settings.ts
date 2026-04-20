@@ -19,6 +19,7 @@ const RealtimeTools = z.object({
 
 const ChatTools = z.object({
   webSearch: z.boolean(),
+  fileSearch: z.boolean().optional(),
 });
 
 export const UpdateSettingsInput = z.object({
@@ -47,6 +48,8 @@ export const SettingsResponse = z.object({
   realtimeSilenceTimeoutSec: z.number(),
   realtimeTools: RealtimeTools,
   chatTools: ChatTools,
+  vectorStoreId: z.string().nullable(),
+  vectorStoreLastSyncAt: z.number().nullable(),
 });
 export type SettingsResponse = z.infer<typeof SettingsResponse>;
 

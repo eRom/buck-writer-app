@@ -20,6 +20,7 @@ import { createUsageRoutes } from './routes/usage.js';
 import { createMcpRoutes } from './routes/mcp.js';
 import { createTodosRoutes } from './routes/todos.js';
 import { createWorkspaceRoutes } from './routes/workspace.js';
+import { createVectorStoreRoutes } from './routes/vector-store.js';
 import { createAttachmentRoutes } from './routes/attachments.js';
 import { createWebDAVRoutes } from './services/webdav.js';
 import type { PromptsRef } from './services/prompts.js';
@@ -227,6 +228,21 @@ export function buildApp(deps: AppDeps) {
 
     // WebDAV routes — own auth (Bearer/Basic JWT with scope=webdav), CSRF bypassed in csrf.ts
     app.route('/webdav', createWebDAVRoutes({ workspaceDir: deps.workspaceDir, jwt: deps.jwt }));
+
+    // Vector store routes (M8A file_search) — need openaiApiKey
+    if (deps.openaiApiKey) {
+      app.use('/api/vector-store/*', authGuard({ db: deps.db, jwt: deps.jwt, nowMs: deps.nowMs }));
+      app.use('/api/vector-store', authGuard({ db: deps.db, jwt: deps.jwt, nowMs: deps.nowMs }));
+      app.route(
+        '/api/vector-store',
+        createVectorStoreRoutes({
+          db: deps.db,
+          workspaceDir: deps.workspaceDir,
+          openaiApiKey: deps.openaiApiKey,
+          nowMs: deps.nowMs,
+        }),
+      );
+    }
   }
 
   // E2E-only helpers. Triple-gated: E2E=1 AND NODE_ENV !== 'production' AND
