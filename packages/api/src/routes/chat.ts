@@ -13,6 +13,7 @@ import {
   userSettings,
   alertTriggers,
   attachments,
+  mcpCallEvents,
 } from '../db/schema.js';
 import { isImage, isExtractable, extractText } from '../services/extractor.js';
 import {
@@ -406,6 +407,10 @@ export function createChatRoute(
 
           const pendingFnCalls = new Map<string, PendingFnCall>();
           const stepFnCallsDone: PendingFnCall[] = [];
+          const mcpInFlight = new Map<
+            string,
+            { serverLabel: string; toolName: string; startedAt: number }
+          >();
           let stepDone = false;
           let approvalRequestedInStep = false;
 
@@ -434,6 +439,12 @@ export function createChatRoute(
                       callId: item.call_id ?? '',
                       name: item.name ?? '',
                       args: '',
+                    });
+                  } else if (item.type === 'mcp_call') {
+                    mcpInFlight.set(item.id, {
+                      serverLabel: item.server_label ?? 'unknown',
+                      toolName: item.name ?? 'unknown',
+                      startedAt: now(),
                     });
                   }
                   break;
@@ -484,17 +495,70 @@ export function createChatRoute(
                   break;
                 }
 
-                case 'response.mcp_call.in_progress':
-                  sendEvent('mcp_call_started', { itemId: ev.item_id });
+                case 'response.mcp_call.in_progress': {
+                  const info = mcpInFlight.get(ev.item_id);
+                  sendEvent('mcp_call_started', {
+                    itemId: ev.item_id,
+                    serverLabel: info?.serverLabel ?? 'mcp',
+                    toolName: info?.toolName ?? '',
+                  });
                   break;
+                }
 
-                case 'response.mcp_call.completed':
-                  sendEvent('mcp_call_done', { itemId: ev.item_id });
+                case 'response.mcp_call.completed': {
+                  const info = mcpInFlight.get(ev.item_id);
+                  sendEvent('mcp_call_done', {
+                    itemId: ev.item_id,
+                    serverLabel: info?.serverLabel,
+                    toolName: info?.toolName,
+                  });
+                  if (info) {
+                    deps.db.db.insert(mcpCallEvents).values({
+                      id: newId(),
+                      userId,
+                      sessionId: finalSessionId,
+                      serverLabel: info.serverLabel,
+                      toolName: info.toolName,
+                      status: 'completed',
+                      durationMs: Math.max(0, now() - info.startedAt),
+                      errorMessage: null,
+                      createdAt: now(),
+                    }).run();
+                    mcpInFlight.delete(ev.item_id);
+                  }
                   break;
+                }
 
-                case 'response.mcp_call.failed':
-                  sendEvent('mcp_call_error', { itemId: ev.item_id, error: ev.error });
+                case 'response.mcp_call.failed': {
+                  const info = mcpInFlight.get(ev.item_id);
+                  const errMsg =
+                    typeof ev.error === 'string'
+                      ? ev.error
+                      : ev.error
+                        ? JSON.stringify(ev.error).slice(0, 500)
+                        : null;
+                  sendEvent('mcp_call_error', {
+                    itemId: ev.item_id,
+                    serverLabel: info?.serverLabel,
+                    toolName: info?.toolName,
+                    error: ev.error,
+                  });
+                  if (info) {
+                    deps.db.db.insert(mcpCallEvents).values({
+                      id: newId(),
+                      userId,
+                      sessionId: finalSessionId,
+                      serverLabel: info.serverLabel,
+                      toolName: info.toolName,
+                      status: 'failed',
+                      durationMs: Math.max(0, now() - info.startedAt),
+                      errorMessage: errMsg,
+                      createdAt: now(),
+                    }).run();
+                    mcpInFlight.delete(ev.item_id);
+                  }
                   break;
+                }
 
                 case 'response.completed': {
                   const u = ev.response.usage;
@@ -559,6 +623,11 @@ export function createChatRoute(
                 break;
               }
 
+              sendEvent('tool_started', {
+                callId: fc.callId,
+                toolCallId: fc.callId,
+                toolName: fc.name,
+              });
               const handler = toolHandlers[fc.name];
               const result = handler
                 ? await handler(args)

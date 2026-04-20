@@ -232,6 +232,29 @@ export const workspaceVectorFiles = sqliteTable(
   }),
 );
 
+// ---------- mcp_call_events (QW2 observability) ----------
+
+export const mcpCallEvents = sqliteTable(
+  'mcp_call_events',
+  {
+    id: text('id').primaryKey(),
+    userId: text('user_id')
+      .notNull()
+      .references(() => users.id, { onDelete: 'cascade' }),
+    sessionId: text('session_id'),
+    serverLabel: text('server_label').notNull(),
+    toolName: text('tool_name').notNull(),
+    status: text('status').notNull(), // 'completed' | 'failed'
+    durationMs: integer('duration_ms').notNull(),
+    errorMessage: text('error_message'),
+    createdAt: integer('created_at').notNull(),
+  },
+  (t) => ({
+    userCreatedIdx: index('mcp_call_events_user_created_idx').on(t.userId, t.createdAt),
+    serverIdx: index('mcp_call_events_server_idx').on(t.userId, t.serverLabel, t.createdAt),
+  }),
+);
+
 // ---------- todos ----------
 
 export const todos = sqliteTable(

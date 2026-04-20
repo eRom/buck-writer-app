@@ -58,6 +58,47 @@ function localId() {
   return `local-${++msgCounter}-${Date.now()}`;
 }
 
+const LOCAL_TOOL_LABELS: Record<string, string> = {
+  read_file: 'Lecture fichier',
+  list_directory: 'Lecture dossier',
+  create_file: 'Ecriture fichier',
+  delete_file: 'Suppression fichier',
+  shell_execute: 'Execution commande',
+  recall: 'Recherche en memoire',
+  remember: 'Enregistrement en memoire',
+  todos_list: 'Lecture des todos',
+  todos_create: 'Ajout todo',
+  todos_update: 'Mise a jour todo',
+  todos_delete: 'Suppression todo',
+  activate_skill: 'Chargement skill',
+};
+
+const SERVER_LABELS: Record<string, string> = {
+  bible: 'Consultation de la bible',
+  'writing-tools': 'Analyse du texte',
+};
+
+function toolActivityLabel(args: {
+  kind: 'local' | 'mcp' | 'web_search' | 'file_search';
+  toolName?: string;
+  serverLabel?: string;
+}): string {
+  if (args.kind === 'web_search') return 'Recherche web';
+  if (args.kind === 'file_search') return 'Recherche dans knowledge';
+  if (args.kind === 'mcp') {
+    return (
+      SERVER_LABELS[args.serverLabel ?? ''] ??
+      `MCP ${args.serverLabel ?? ''}`.trim()
+    );
+  }
+  return LOCAL_TOOL_LABELS[args.toolName ?? ''] ?? `Outil ${args.toolName ?? ''}`;
+}
+
+interface ToolActivity {
+  id: string;
+  label: string;
+}
+
 interface SSEFrame {
   event: string;
   data: string;
@@ -105,6 +146,7 @@ export function ChatStream({ sessionId, onSessionCreated }: ChatStreamProps) {
   const [isLoading, setIsLoading] = useState(false);
   const [references, setReferences] = useState<Array<{ path: string; content: string }>>([]);
   const [pendingApproval, setPendingApproval] = useState<PendingApproval | null>(null);
+  const [toolActivity, setToolActivity] = useState<ToolActivity | null>(null);
   const [budgetExceeded, setBudgetExceeded] = useState<boolean>(false);
   const scrollRef = useRef<HTMLDivElement>(null);
   const abortRef = useRef<AbortController | null>(null);
@@ -324,6 +366,27 @@ export function ChatStream({ sessionId, onSessionCreated }: ChatStreamProps) {
               })(),
               messageHistory: allMessages,
             });
+          } else if (event === 'tool_started') {
+            setToolActivity({
+              id: String(parsed.toolCallId ?? parsed.callId ?? ''),
+              label: toolActivityLabel({
+                kind: 'local',
+                toolName: String(parsed.toolName ?? ''),
+              }),
+            });
+          } else if (event === 'tool_result') {
+            setToolActivity(null);
+          } else if (event === 'mcp_call_started') {
+            setToolActivity({
+              id: String(parsed.itemId ?? ''),
+              label: toolActivityLabel({
+                kind: 'mcp',
+                serverLabel: String(parsed.serverLabel ?? ''),
+                toolName: String(parsed.toolName ?? ''),
+              }),
+            });
+          } else if (event === 'mcp_call_done' || event === 'mcp_call_error') {
+            setToolActivity(null);
           } else if (event === 'error') {
             const err = parsed as { code?: string; message?: string; link?: string };
             if (err.code === 'provider_rate_limit') {
@@ -364,6 +427,7 @@ export function ChatStream({ sessionId, onSessionCreated }: ChatStreamProps) {
       console.error('[chat] streaming error:', err);
     } finally {
       setIsLoading(false);
+      setToolActivity(null);
       abortRef.current = null;
     }
   }, [input, isLoading, messages, model, onSessionCreated, budgetExceeded, pendingAttachments, references]);
@@ -459,6 +523,27 @@ export function ChatStream({ sessionId, onSessionCreated }: ChatStreamProps) {
                 })(),
                 messageHistory,
               });
+            } else if (event === 'tool_started') {
+              setToolActivity({
+                id: String(parsed.toolCallId ?? parsed.callId ?? ''),
+                label: toolActivityLabel({
+                  kind: 'local',
+                  toolName: String(parsed.toolName ?? ''),
+                }),
+              });
+            } else if (event === 'tool_result') {
+              setToolActivity(null);
+            } else if (event === 'mcp_call_started') {
+              setToolActivity({
+                id: String(parsed.itemId ?? ''),
+                label: toolActivityLabel({
+                  kind: 'mcp',
+                  serverLabel: String(parsed.serverLabel ?? ''),
+                  toolName: String(parsed.toolName ?? ''),
+                }),
+              });
+            } else if (event === 'mcp_call_done' || event === 'mcp_call_error') {
+              setToolActivity(null);
             } else if (event === 'error' && parsed.message) {
               toast.error(String(parsed.message));
             }
@@ -526,9 +611,17 @@ export function ChatStream({ sessionId, onSessionCreated }: ChatStreamProps) {
                   {toolCallNodes}
                 </ToolCallsCollapsible>
               ) : null;
+              const showActivity = isLoading && isLastAssistant && toolActivity;
               return (
                 <MessageAssistant key={m.id} toolCalls={toolCalls}>
-                  <MarkdownRenderer content={m.content || (isLoading && isLastAssistant ? '...' : '')} />
+                  {showActivity ? (
+                    <span className="inline-flex items-center gap-2 text-xs text-muted-foreground">
+                      <span className="inline-block size-2 animate-pulse rounded-full bg-primary" />
+                      {toolActivity.label}...
+                    </span>
+                  ) : (
+                    <MarkdownRenderer content={m.content || (isLoading && isLastAssistant ? '...' : '')} />
+                  )}
                 </MessageAssistant>
               );
             })}
