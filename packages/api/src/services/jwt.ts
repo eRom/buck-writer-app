@@ -29,6 +29,11 @@ export function createJwtService(opts: JwtOptions) {
       const { payload } = await jwtVerify(token, key, {
         issuer: opts.issuer,
         audience: opts.audience,
+        // Pin signing algorithm explicitly. jose v5 already rejects 'none',
+        // but an attacker could try to downgrade to 'RS256'/'ES256' with a
+        // public-key-as-HMAC-secret confusion. Locking to HS256 is defence
+        // in depth and matches the symmetric secret we sign with.
+        algorithms: ['HS256'],
       });
       return payload as JwtPayload;
     },
