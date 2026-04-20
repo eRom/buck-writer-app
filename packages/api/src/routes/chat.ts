@@ -185,19 +185,24 @@ export function createChatRoute(
       sessionRow = { ...inserted, isFavorite: 0, deletedAt: null, lastMessageAt: null, lastResponseId: null };
     }
 
+    const settingsRow = deps.db.db
+      .select()
+      .from(userSettings)
+      .where(eq(userSettings.userId, userId))
+      .get();
+
     let resolvedModel: string = 'gpt-5.4-mini';
     if (modelIn) {
       resolvedModel = modelIn;
     } else if (sessionRow?.model) {
       resolvedModel = sessionRow.model;
-    } else {
-      const settings = deps.db.db
-        .select()
-        .from(userSettings)
-        .where(eq(userSettings.userId, userId))
-        .get();
-      if (settings?.defaultModel) resolvedModel = settings.defaultModel;
+    } else if (settingsRow?.defaultModel) {
+      resolvedModel = settingsRow.defaultModel;
     }
+
+    const chatTools: { webSearch?: boolean } = settingsRow?.chatToolsJson
+      ? (JSON.parse(settingsRow.chatToolsJson) as { webSearch?: boolean })
+      : {};
 
     // Memory context — fail-soft.
     const memoryUserId = deps.buckUserId ?? userId;
@@ -290,6 +295,9 @@ export function createChatRoute(
 
     const mcpConnectorDefs = buildMcpConnectorTools(deps.db);
     const toolDefs: ToolDef[] = [...localFunctionDefs, ...mcpConnectorDefs];
+    if (chatTools.webSearch) {
+      toolDefs.push({ type: 'web_search_preview' });
+    }
 
     // Decide what goes into `input` for the first request.
     // - Approval resume : just the continuation item + previous_response_id.

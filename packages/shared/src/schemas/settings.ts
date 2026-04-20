@@ -17,6 +17,10 @@ const RealtimeTools = z.object({
   webSearch: z.boolean(),
 });
 
+const ChatTools = z.object({
+  webSearch: z.boolean(),
+});
+
 export const UpdateSettingsInput = z.object({
   monthlyCostLimitUsd: z.number().min(1).max(10000).optional(),
   hardStop: z.boolean().optional(),
@@ -27,6 +31,7 @@ export const UpdateSettingsInput = z.object({
   realtimeTurnDetection: TurnDetection.optional(),
   realtimeSilenceTimeoutSec: z.number().int().min(10).max(60).optional(),
   realtimeTools: RealtimeTools.optional(),
+  chatTools: ChatTools.optional(),
 });
 export type UpdateSettingsInput = z.infer<typeof UpdateSettingsInput>;
 
@@ -41,6 +46,7 @@ export const SettingsResponse = z.object({
   realtimeTurnDetection: TurnDetection,
   realtimeSilenceTimeoutSec: z.number(),
   realtimeTools: RealtimeTools,
+  chatTools: ChatTools,
 });
 export type SettingsResponse = z.infer<typeof SettingsResponse>;
 

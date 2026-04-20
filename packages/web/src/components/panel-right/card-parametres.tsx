@@ -47,6 +47,24 @@ export function CardParametres({ sessionId }: Props) {
   const limit = settings?.monthlyCostLimitUsd ?? 0;
   const spent = usage?.totalUsd ?? 0;
   const percent = usage?.percent ?? 0;
+  const webSearch = settings?.chatTools?.webSearch ?? false;
+
+  const chatToolsMutation = useMutation({
+    mutationFn: (next: { webSearch: boolean }) =>
+      updateSettings({ chatTools: next }),
+    onMutate: async (next) => {
+      await qc.cancelQueries({ queryKey: ['settings'] });
+      const prev = qc.getQueryData<typeof settings>(['settings']);
+      if (prev) {
+        qc.setQueryData(['settings'], { ...prev, chatTools: next });
+      }
+      return { prev };
+    },
+    onError: (_err, _vars, ctx) => {
+      if (ctx?.prev) qc.setQueryData(['settings'], ctx.prev);
+    },
+    onSettled: () => qc.invalidateQueries({ queryKey: ['settings'] }),
+  });
 
   const modelMutation = useMutation({
     mutationFn: async (nextModel: ChatModel) => {
@@ -149,6 +167,28 @@ export function CardParametres({ sessionId }: Props) {
               </option>
             ))}
           </select>
+        </label>
+        <label className="flex items-center justify-between rounded-md border border-border bg-background/40 px-2 py-1.5">
+          <span className="text-xs text-muted-foreground">Recherche web</span>
+          <button
+            type="button"
+            role="switch"
+            aria-checked={webSearch}
+            disabled={chatToolsMutation.isPending}
+            onClick={() =>
+              chatToolsMutation.mutate({
+                ...(settings?.chatTools ?? { webSearch: false }),
+                webSearch: !webSearch,
+              })
+            }
+            className={`inline-flex items-center rounded-md px-2 py-0.5 text-[10px] font-medium transition-colors ${
+              webSearch
+                ? 'bg-emerald-500/10 text-emerald-400 hover:brightness-125'
+                : 'bg-gray-500/10 text-gray-400 hover:brightness-125'
+            }`}
+          >
+            {webSearch ? 'on' : 'off'}
+          </button>
         </label>
         <div className="rounded-md border border-border bg-background/40 px-2 py-1.5">
           <div className="flex items-center justify-between text-xs">

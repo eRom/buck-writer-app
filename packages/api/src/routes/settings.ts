@@ -23,6 +23,7 @@ function formatSettings(row: UserSettingsRow) {
     realtimeTurnDetection: JSON.parse(row.realtimeTurnDetectionJson),
     realtimeSilenceTimeoutSec: row.realtimeSilenceTimeoutSec,
     realtimeTools: JSON.parse(row.realtimeToolsJson),
+    chatTools: JSON.parse(row.chatToolsJson),
   };
 }
 
@@ -97,6 +98,9 @@ export function createSettingsRoutes(
     }
     if (data.realtimeTools !== undefined) {
       updates.realtimeToolsJson = JSON.stringify(data.realtimeTools);
+    }
+    if (data.chatTools !== undefined) {
+      updates.chatToolsJson = JSON.stringify(data.chatTools);
     }
 
     if (Object.keys(updates).length > 0) {

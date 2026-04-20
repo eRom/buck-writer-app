@@ -285,6 +285,19 @@ describe('settings routes', () => {
         writingTools: true,
         webSearch: true,
       });
+      expect(body.chatTools).toEqual({ webSearch: false });
+    });
+
+    it('round-trips chatTools JSON', async () => {
+      ctx = await makeCtx();
+      const res = await ctx.app.request('/api/settings', {
+        method: 'PATCH',
+        headers: authMutHeaders(ctx.sessionJwt),
+        body: JSON.stringify({ chatTools: { webSearch: true } }),
+      });
+      expect(res.status).toBe(200);
+      const body = await res.json() as Record<string, unknown>;
+      expect(body.chatTools).toEqual({ webSearch: true });
     });
   });
 });

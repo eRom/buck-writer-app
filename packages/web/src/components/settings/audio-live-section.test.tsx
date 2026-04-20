@@ -19,6 +19,7 @@ const mockSettings = {
   },
   realtimeSilenceTimeoutSec: 30,
   realtimeTools: { bible: true, writingTools: true, webSearch: true },
+  chatTools: { webSearch: false },
 };
 
 const { mockFetchSettings, mockUpdateSettings } = vi.hoisted(() => ({

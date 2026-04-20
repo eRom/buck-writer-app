@@ -203,6 +203,9 @@ export const userSettings = sqliteTable('user_settings', {
   realtimeToolsJson: text('realtime_tools_json')
     .notNull()
     .default('{"bible":true,"writingTools":true,"webSearch":true}'),
+  chatToolsJson: text('chat_tools_json')
+    .notNull()
+    .default('{"webSearch":false}'),
 });
 
 // ---------- todos ----------
