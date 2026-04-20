@@ -251,6 +251,53 @@ describe('workspace routes', () => {
     });
   });
 
+  describe('protected roots — write surfaces', () => {
+    for (const dir of ['prompts', 'skills', 'systems']) {
+      it(`POST /file refuses ${dir}/*`, async () => {
+        ctx = await makeCtx();
+        const form = new FormData();
+        form.append('file', new Blob(['malicious']), 'x.md');
+        form.append('path', `${dir}/pwn.md`);
+        const res = await ctx.app.request('/api/workspace/file', {
+          method: 'POST',
+          headers: {
+            cookie: `buck_session=${ctx.sessionJwt}; buck_csrf=${CSRF_TOKEN}`,
+            'x-csrf-token': CSRF_TOKEN,
+          },
+          body: form,
+        });
+        expect(res.status).toBe(403);
+        expect(fs.existsSync(path.join(ctx.workspaceDir, dir, 'pwn.md'))).toBe(false);
+      });
+
+      it(`POST /directory refuses ${dir}/*`, async () => {
+        ctx = await makeCtx();
+        const res = await ctx.app.request('/api/workspace/directory', {
+          method: 'POST',
+          headers: authMutHeaders(ctx.sessionJwt),
+          body: JSON.stringify({ path: `${dir}/nested` }),
+        });
+        expect(res.status).toBe(403);
+      });
+
+      it(`PATCH /file refuses renaming INTO ${dir}/*`, async () => {
+        ctx = await makeCtx();
+        await fsp.writeFile(path.join(ctx.workspaceDir, 'source.md'), 'x');
+        await fsp.mkdir(path.join(ctx.workspaceDir, dir), { recursive: true });
+        const res = await ctx.app.request(
+          `/api/workspace/file?path=${dir}/source.md`,
+          {
+            method: 'PATCH',
+            headers: authMutHeaders(ctx.sessionJwt),
+            body: JSON.stringify({ newName: 'pwn.md' }),
+          },
+        );
+        // Source path is protected → 403 before any rename happens
+        expect(res.status).toBe(403);
+      });
+    }
+  });
+
   describe('DELETE /api/workspace/file', () => {
     it('deletes a file', async () => {
       ctx = await makeCtx();
@@ -316,6 +363,24 @@ describe('workspace routes', () => {
       expect(res.status).toBe(403);
       expect(
         fs.existsSync(path.join(ctx.workspaceDir, 'prompts', 'system.md')),
+      ).toBe(true);
+    });
+
+    it('refuses to delete protected directory: systems', async () => {
+      ctx = await makeCtx();
+      await fsp.mkdir(path.join(ctx.workspaceDir, 'systems'), { recursive: true });
+      await fsp.writeFile(path.join(ctx.workspaceDir, 'systems', 'SYSTEM.md'), 'x');
+
+      const res = await ctx.app.request(
+        '/api/workspace/file?path=systems/SYSTEM.md',
+        {
+          method: 'DELETE',
+          headers: authMutHeaders(ctx.sessionJwt),
+        },
+      );
+      expect(res.status).toBe(403);
+      expect(
+        fs.existsSync(path.join(ctx.workspaceDir, 'systems', 'SYSTEM.md')),
       ).toBe(true);
     });
 

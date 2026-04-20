@@ -4,6 +4,7 @@ import type { Stats } from 'node:fs';
 import path from 'node:path';
 import { assertSafePath } from '../utils/path-safe.js';
 import { HttpError } from '../utils/http-error.js';
+import { isProtectedPath } from '../utils/protected-paths.js';
 import type { JwtService } from './jwt.js';
 
 export interface WebDAVDeps {
@@ -77,6 +78,15 @@ ${contentType}
 
 function escapeXml(s: string): string {
   return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+}
+
+function forbidProtected(relative: string): Response | null {
+  const dir = isProtectedPath(relative);
+  if (!dir) return null;
+  return new Response(
+    `Forbidden — cannot write inside protected directory: ${dir}`,
+    { status: 403 },
+  );
 }
 
 const DAV_METHODS = 'OPTIONS, PROPFIND, GET, HEAD, PUT, DELETE, MKCOL, MOVE, COPY';
@@ -265,6 +275,8 @@ ${entries.join('\n')}
   // PUT — upload/create file
   app.put('*', async (c) => {
     const relative = extractRelativePath(c.req.path);
+    const blocked = forbidProtected(relative);
+    if (blocked) return blocked;
     const abs = await assertSafePath(workspaceDir, relative);
 
     // Create parent directories
@@ -279,6 +291,8 @@ ${entries.join('\n')}
   // MKCOL — create directory
   app.on('MKCOL', '*', async (c) => {
     const relative = extractRelativePath(c.req.path);
+    const blocked = forbidProtected(relative);
+    if (blocked) return blocked;
     const abs = await assertSafePath(workspaceDir, relative);
 
     // Check parent exists
@@ -304,6 +318,8 @@ ${entries.join('\n')}
   // DELETE — delete file or directory
   app.delete('*', async (c) => {
     const relative = extractRelativePath(c.req.path);
+    const blocked = forbidProtected(relative);
+    if (blocked) return blocked;
     const abs = await assertSafePath(workspaceDir, relative);
 
     try {
@@ -319,6 +335,8 @@ ${entries.join('\n')}
   // MOVE — rename/move
   app.on('MOVE', '*', async (c) => {
     const relative = extractRelativePath(c.req.path);
+    const blockedSrc = forbidProtected(relative);
+    if (blockedSrc) return blockedSrc;
     const abs = await assertSafePath(workspaceDir, relative);
 
     const destination = c.req.header('destination');
@@ -335,6 +353,8 @@ ${entries.join('\n')}
       destPath = extractRelativePath(destination);
     }
 
+    const blockedDest = forbidProtected(destPath);
+    if (blockedDest) return blockedDest;
     const destAbs = await assertSafePath(workspaceDir, destPath);
 
     // Check source exists
@@ -381,6 +401,8 @@ ${entries.join('\n')}
       destPath = extractRelativePath(destination);
     }
 
+    const blockedDest = forbidProtected(destPath);
+    if (blockedDest) return blockedDest;
     const destAbs = await assertSafePath(workspaceDir, destPath);
 
     try {

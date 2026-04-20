@@ -5,6 +5,7 @@ import path from 'node:path';
 import type { DbHandles } from '../db/client.js';
 import { assertSafePath } from '../utils/path-safe.js';
 import { HttpError } from '../utils/http-error.js';
+import { isProtectedPath } from '../utils/protected-paths.js';
 import {
   CreateDirectoryInput,
   RenameInput,
@@ -16,14 +17,15 @@ export interface WorkspaceRouteDeps {
   workspaceDir: string;
 }
 
-/** Directories that cannot themselves be deleted (root-level protected dirs). */
-const PROTECTED_ROOT_DIRS = ['prompts', 'skills'] as const;
-
-function isProtectedPath(normalized: string): string | null {
-  for (const dir of PROTECTED_ROOT_DIRS) {
-    if (normalized === dir || normalized.startsWith(dir + '/')) return dir;
+function throwIfProtected(relPath: string): void {
+  const dir = isProtectedPath(relPath);
+  if (dir) {
+    throw new HttpError(
+      403,
+      'protected_directory',
+      `cannot write inside protected directory: ${dir}`,
+    );
   }
-  return null;
 }
 
 async function buildTree(
@@ -140,6 +142,7 @@ export function createWorkspaceRoutes(
       throw new HttpError(422, 'missing_path', 'path field required');
     }
 
+    throwIfProtected(filePath);
     const abs = await assertSafePath(workspaceDir, filePath);
     // Create parent dirs
     await fs.mkdir(path.dirname(abs), { recursive: true });
@@ -158,6 +161,7 @@ export function createWorkspaceRoutes(
       throw new HttpError(422, 'validation_error', parsed.error.message);
     }
 
+    throwIfProtected(parsed.data.path);
     const abs = await assertSafePath(workspaceDir, parsed.data.path);
     await fs.mkdir(abs, { recursive: true });
 
@@ -177,6 +181,7 @@ export function createWorkspaceRoutes(
       throw new HttpError(422, 'validation_error', parsed.error.message);
     }
 
+    throwIfProtected(filePath);
     const absOld = await assertSafePath(workspaceDir, filePath);
 
     // Check old path exists
@@ -188,6 +193,7 @@ export function createWorkspaceRoutes(
 
     // Build new path: same parent dir, new name
     const newRelative = path.join(path.dirname(filePath), parsed.data.newName);
+    throwIfProtected(newRelative);
     const absNew = await assertSafePath(workspaceDir, newRelative);
 
     await fs.rename(absOld, absNew);
@@ -202,15 +208,8 @@ export function createWorkspaceRoutes(
       throw new HttpError(422, 'missing_path', 'path query parameter required');
     }
 
+    throwIfProtected(filePath);
     const abs = await assertSafePath(workspaceDir, filePath);
-
-    // Block deletion of any path inside a protected root (prompts/, skills/, …),
-    // not just the root directories themselves.
-    const normalized = filePath.replace(/\\/g, '/').replace(/^\/+/, '').replace(/\/+$/, '');
-    const protectedDir = isProtectedPath(normalized);
-    if (protectedDir) {
-      throw new HttpError(403, 'protected_directory', `cannot delete inside protected directory: ${protectedDir}`);
-    }
 
     // Check exists
     try {

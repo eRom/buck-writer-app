@@ -4,6 +4,7 @@ import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
 import type { Skill } from '../services/skills.js';
 import { assertSafePath } from '../utils/path-safe.js';
+import { isProtectedPath } from '../utils/protected-paths.js';
 import { validateShellCommand, listAllowedBins } from '../lib/kill-switch.js';
 import type { FunctionToolDef } from '../lib/openai.js';
 import type { DbHandles } from '../db/client.js';
@@ -265,8 +266,9 @@ export function buildToolHandlers(
 
     handlers.create_file = async ({ path: filePath, content }) => {
       const fp = String(filePath);
-      if (fp.startsWith('prompts/') || fp === 'prompts') {
-        return { error: 'cannot write to prompts/ directory (reserved)' };
+      const protectedDir = isProtectedPath(fp);
+      if (protectedDir) {
+        return { error: `cannot write inside protected directory: ${protectedDir}` };
       }
       try {
         const absPath = await assertSafePath(wd, fp);
@@ -279,8 +281,13 @@ export function buildToolHandlers(
     };
 
     handlers.delete_file = async ({ path: filePath }) => {
+      const fp = String(filePath);
+      const protectedDir = isProtectedPath(fp);
+      if (protectedDir) {
+        return { error: `cannot delete inside protected directory: ${protectedDir}` };
+      }
       try {
-        const absPath = await assertSafePath(wd, String(filePath));
+        const absPath = await assertSafePath(wd, fp);
         await fsp.rm(absPath, { recursive: true });
         return { ok: true, deleted: filePath };
       } catch {

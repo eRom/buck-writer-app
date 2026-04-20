@@ -1,4 +1,8 @@
 import { describe, it, expect } from 'vitest';
+import fs from 'node:fs';
+import fsp from 'node:fs/promises';
+import path from 'node:path';
+import os from 'node:os';
 import { buildToolDefinitions, buildToolHandlers } from './chat-tools.js';
 
 describe('buildToolDefinitions', () => {
@@ -60,5 +64,61 @@ describe('buildToolHandlers', () => {
 
   it('returns empty when nothing provided and no todos ctx', () => {
     expect(Object.keys(buildToolHandlers(undefined, undefined))).toEqual([]);
+  });
+});
+
+describe('workspace tools — protected directories', () => {
+  function mkTmp() {
+    return fs.mkdtempSync(path.join(os.tmpdir(), 'buck-chat-tools-'));
+  }
+
+  for (const dir of ['prompts', 'skills', 'systems']) {
+    it(`create_file refuses to write inside ${dir}/`, async () => {
+      const wd = mkTmp();
+      try {
+        const handlers = buildToolHandlers(wd, undefined);
+        const result = (await handlers.create_file!({
+          path: `${dir}/pwn.md`,
+          content: 'hijacked',
+        })) as { error?: string; ok?: boolean };
+        expect(result.error).toMatch(/protected directory/);
+        expect(result.ok).toBeUndefined();
+        expect(fs.existsSync(path.join(wd, dir, 'pwn.md'))).toBe(false);
+      } finally {
+        await fsp.rm(wd, { recursive: true, force: true });
+      }
+    });
+
+    it(`delete_file refuses to remove anything inside ${dir}/`, async () => {
+      const wd = mkTmp();
+      try {
+        await fsp.mkdir(path.join(wd, dir), { recursive: true });
+        await fsp.writeFile(path.join(wd, dir, 'keep.md'), 'keep me');
+        const handlers = buildToolHandlers(wd, undefined);
+        const result = (await handlers.delete_file!({
+          path: `${dir}/keep.md`,
+        })) as { error?: string; ok?: boolean };
+        expect(result.error).toMatch(/protected directory/);
+        expect(result.ok).toBeUndefined();
+        expect(fs.existsSync(path.join(wd, dir, 'keep.md'))).toBe(true);
+      } finally {
+        await fsp.rm(wd, { recursive: true, force: true });
+      }
+    });
+  }
+
+  it('delete_file still works on unprotected paths', async () => {
+    const wd = mkTmp();
+    try {
+      await fsp.writeFile(path.join(wd, 'draft.md'), 'bye');
+      const handlers = buildToolHandlers(wd, undefined);
+      const result = (await handlers.delete_file!({ path: 'draft.md' })) as {
+        ok?: boolean;
+      };
+      expect(result.ok).toBe(true);
+      expect(fs.existsSync(path.join(wd, 'draft.md'))).toBe(false);
+    } finally {
+      await fsp.rm(wd, { recursive: true, force: true });
+    }
   });
 });

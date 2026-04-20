@@ -281,3 +281,38 @@ describe('path traversal protection', () => {
     expect(res.status).toBe(403);
   });
 });
+
+describe('protected roots (prompts/skills/systems) — write surfaces', () => {
+  for (const dir of ['prompts', 'skills', 'systems']) {
+    it(`PUT refuses ${dir}/*`, async () => {
+      const res = await authedReq('PUT', `/webdav/${dir}/pwn.md`, {
+        body: 'hijacked',
+      });
+      expect(res.status).toBe(403);
+      // File should not exist
+      await expect(fs.stat(path.join(tmpDir, dir, 'pwn.md'))).rejects.toThrow();
+    });
+
+    it(`MKCOL refuses ${dir}/nested`, async () => {
+      const res = await authedReq('MKCOL', `/webdav/${dir}/nested`);
+      expect(res.status).toBe(403);
+    });
+
+    it(`DELETE refuses ${dir}/keep.md`, async () => {
+      await fs.mkdir(path.join(tmpDir, dir), { recursive: true });
+      await fs.writeFile(path.join(tmpDir, dir, 'keep.md'), 'keep');
+      const res = await authedReq('DELETE', `/webdav/${dir}/keep.md`);
+      expect(res.status).toBe(403);
+      expect(await fs.readFile(path.join(tmpDir, dir, 'keep.md'), 'utf8')).toBe('keep');
+    });
+
+    it(`MOVE refuses renaming INTO ${dir}/*`, async () => {
+      await fs.writeFile(path.join(tmpDir, 'src.md'), 'x');
+      await fs.mkdir(path.join(tmpDir, dir), { recursive: true });
+      const res = await authedReq('MOVE', '/webdav/src.md', {
+        headers: { Destination: `/webdav/${dir}/pwn.md` },
+      });
+      expect(res.status).toBe(403);
+    });
+  }
+});
