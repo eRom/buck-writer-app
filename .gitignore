@@ -45,3 +45,7 @@ __pycache__/
 
 # Superpowers brainstorm
 .superpowers/
+
+# Security audit artefacts (scanner outputs + markdown reports)
+reports/
+security-audit-*.md
