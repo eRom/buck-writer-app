@@ -10,13 +10,10 @@ RUN pnpm install --frozen-lockfile --filter @buck/bible-ui...
 COPY packages/bible-ui ./packages/bible-ui
 RUN pnpm -F @buck/bible-ui build
 
-# Stage 2 : nginx alpine
-# NOTE: master runs as root to bind :80. Switching to
-# nginxinc/nginx-unprivileged (UID 101, port 8080) requires a coordinated
-# Caddy upstream change — deferred. Worker processes already drop to
-# unprivileged user `nginx`.
-FROM nginx:1.27-alpine
+# Stage 2 : rootless nginx — master + workers run as UID 101 (nginx),
+# bind on unprivileged port 8080. Caddyfile must target :8080.
+FROM nginxinc/nginx-unprivileged:1.27-alpine
 COPY packages/bible-ui/nginx.conf /etc/nginx/conf.d/default.conf
 COPY --from=builder /app/packages/bible-ui/dist /usr/share/nginx/html
-EXPOSE 80
-HEALTHCHECK --interval=30s --timeout=3s CMD wget -q -O - http://127.0.0.1/index.html || exit 1
+EXPOSE 8080
+HEALTHCHECK --interval=30s --timeout=3s CMD wget -q -O - http://127.0.0.1:8080/index.html || exit 1

@@ -22,7 +22,7 @@ bible.buck.{$BUCK_HOST_BASE} {
     uri /api/auth/verify-session
     copy_headers X-User-Id
   }
-  reverse_proxy buck-bible-ui:80
+  reverse_proxy buck-bible-ui:8080
 }
 
 # Bible MCP — remote connector pour l'API Responses OpenAI.
