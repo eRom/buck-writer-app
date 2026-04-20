@@ -4,7 +4,6 @@ import chokidar from 'chokidar';
 
 export interface Prompts {
   system: string;
-  memory: string;
   tools: string;
   rules: string;
   live: string;
@@ -23,18 +22,17 @@ export function loadPrompts(systemsDir: string): Prompts {
   if (!system) {
     throw new Error(`SYSTEM.md missing in ${systemsDir}`);
   }
-  const memory = readIfExists(path.join(systemsDir, 'MEMORY.md'));
   const tools = readIfExists(path.join(systemsDir, 'TOOLS.md'));
   const rules = readIfExists(path.join(systemsDir, 'RULES.md'));
   const live = readIfExists(path.join(systemsDir, 'LIVE.md'));
-  return { system, memory, tools, rules, live };
+  return { system, tools, rules, live };
 }
 
 export function bootstrapPrompts(systemsDir: string, defaultsDir: string): void {
   if (!fs.existsSync(systemsDir)) {
     fs.mkdirSync(systemsDir, { recursive: true });
   }
-  for (const file of ['SYSTEM.md', 'MEMORY.md', 'TOOLS.md', 'RULES.md', 'LIVE.md']) {
+  for (const file of ['SYSTEM.md', 'TOOLS.md', 'RULES.md', 'LIVE.md']) {
     const target = path.join(systemsDir, file);
     const source = path.join(defaultsDir, file);
     if (!fs.existsSync(target) && fs.existsSync(source)) {

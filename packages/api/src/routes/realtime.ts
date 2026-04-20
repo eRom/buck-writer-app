@@ -174,10 +174,9 @@ export function createRealtimeRoute(
       writingTools: body.tools?.writingTools ?? true,
       webSearch: body.tools?.webSearch ?? true,
     };
-    // Ordre : SYSTEM → MEMORY → TOOLS → RULES (concat tous les blocs non vides).
+    // Ordre : SYSTEM → TOOLS → RULES (concat tous les blocs non vides).
     const systemPrompt = [
       deps.prompts.current.system,
-      deps.prompts.current.memory,
       deps.prompts.current.tools,
       deps.prompts.current.rules,
     ]
