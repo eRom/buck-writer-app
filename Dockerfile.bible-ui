@@ -15,7 +15,7 @@ RUN pnpm -F @buck/bible-ui build
 # nginxinc/nginx-unprivileged (UID 101, port 8080) requires a coordinated
 # Caddy upstream change — deferred. Worker processes already drop to
 # unprivileged user `nginx`.
-FROM nginx:1.27-alpine
+FROM nginx:1.29-alpine
 COPY packages/bible-ui/nginx.conf /etc/nginx/conf.d/default.conf
 COPY --from=builder /app/packages/bible-ui/dist /usr/share/nginx/html
 EXPOSE 80
