@@ -23,7 +23,8 @@ WORKDIR /app
 COPY --from=builder /deploy/dist ./dist
 COPY --from=builder /deploy/node_modules ./node_modules
 COPY --from=builder /deploy/package.json ./
-RUN mkdir -p /app/data
+RUN mkdir -p /app/data && chown -R node:node /app
 ENV NODE_ENV=production
 EXPOSE 7801
+USER node
 CMD ["node", "dist/server.js"]

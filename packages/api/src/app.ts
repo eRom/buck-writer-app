@@ -126,10 +126,14 @@ export function buildApp(deps: AppDeps) {
     authGuard({ db: deps.db, jwt: deps.jwt, nowMs: deps.nowMs }),
   );
 
-  // SSO endpoint for Caddy forward_auth — mounted BEFORE the rate limiter
-  // (bible-ui fires one request per asset). Returns 204 + X-User-Id when the
-  // buck_session cookie is valid, 401 otherwise. Caddy copies X-User-Id to
-  // the upstream request via `copy_headers`.
+  // SSO endpoint for Caddy forward_auth — mounted BEFORE the /api/auth/*
+  // magic-link rate limiter (bible-ui fires one request per asset). High
+  // per-IP ceiling (60/min) gates unauthed floods that would force a
+  // jose.jwtVerify + DB lookup on every hit.
+  app.use(
+    '/api/auth/verify-session',
+    createRateLimiter({ windowMs: 60_000, max: 60, keyBy: ipKey }),
+  );
   app.get(
     '/api/auth/verify-session',
     authGuard({ db: deps.db, jwt: deps.jwt, nowMs: deps.nowMs }),

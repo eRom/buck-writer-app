@@ -3,12 +3,15 @@
 //   GET  /api/mcp        → list all servers with enabled flag
 //   PATCH /api/mcp/:id   → toggle enabled { enabled: boolean }
 import { Hono } from 'hono';
+import { z } from 'zod';
 import type { DbHandles } from '../db/client.js';
 import { listMcpServers, setMcpEnabled } from '../services/mcp-registry.js';
 
 export interface McpRoutesDeps {
   db: DbHandles;
 }
+
+const PatchInput = z.object({ enabled: z.boolean() }).strict();
 
 export function createMcpRoutes(deps: McpRoutesDeps): Hono {
   const app = new Hono();
@@ -30,9 +33,22 @@ export function createMcpRoutes(deps: McpRoutesDeps): Hono {
   app.patch('/:id', async (c) => {
     const id = c.req.param('id');
     const body = await c.req.json().catch(() => ({}));
-    const enabled = Boolean((body as { enabled?: unknown }).enabled);
-    setMcpEnabled(deps.db, id, enabled);
-    return c.json({ ok: true, id, enabled });
+    const parsed = PatchInput.safeParse(body);
+    if (!parsed.success) {
+      return c.json(
+        { error: { code: 'validation_error', message: parsed.error.message } },
+        422,
+      );
+    }
+    const exists = listMcpServers(deps.db).some((s) => s.id === id);
+    if (!exists) {
+      return c.json(
+        { error: { code: 'not_found', message: `mcp server not found: ${id}` } },
+        404,
+      );
+    }
+    setMcpEnabled(deps.db, id, parsed.data.enabled);
+    return c.json({ ok: true, id, enabled: parsed.data.enabled });
   });
 
   return app;
