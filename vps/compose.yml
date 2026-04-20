@@ -1,8 +1,8 @@
 services:
   bible-mcp:
     build:
-      context: .
-      dockerfile: Dockerfile.bible-mcp
+      context: ..
+      dockerfile: vps/Dockerfile.bible-mcp
     container_name: buck-bible-mcp
     networks:
       # caddy-public = public access for the OpenAI Responses MCP connector
@@ -20,13 +20,13 @@ services:
       # bible-mcp) that doesn't inject the Bearer, so a container-level
       # check would lock the UI out of its own backend.
     volumes:
-      - ./data/bible:/app/data
+      - ../data/bible:/app/data
     restart: unless-stopped
 
   writing-tools-mcp:
     build:
-      context: .
-      dockerfile: Dockerfile.writing-tools-mcp
+      context: ..
+      dockerfile: vps/Dockerfile.writing-tools-mcp
     container_name: buck-writing-tools-mcp
     networks:
       - caddy-public
@@ -46,8 +46,8 @@ services:
 
   bible-ui:
     build:
-      context: .
-      dockerfile: Dockerfile.bible-ui
+      context: ..
+      dockerfile: vps/Dockerfile.bible-ui
     container_name: buck-bible-ui
     restart: unless-stopped
     networks:
@@ -59,13 +59,13 @@ services:
   buck-app:
     image: buck-writer:local
     build:
-      context: .
-      dockerfile: Dockerfile.app
+      context: ..
+      dockerfile: vps/Dockerfile.app
       args:
         VITE_BIBLE_UI_URL: ${VITE_BIBLE_UI_URL:-https://bible.buck.romain-ecarnot.com}
     container_name: buck-app
     restart: unless-stopped
-    env_file: .env
+    env_file: ../.env
     environment:
       - WEB_DIST_ROOT=/app/web-dist
       - WORKSPACE_DIR=/app/workspace
@@ -76,8 +76,8 @@ services:
       - MCP_WRITING_TOOLS_URL=${MCP_WRITING_TOOLS_URL:-https://writing-mcp.buck.romain-ecarnot.com}
       - MCP_SHARED_SECRET=${MCP_SHARED_SECRET}
     volumes:
-      - ./data/db:/app/data
-      - ./data/workspace:/app/workspace
+      - ../data/db:/app/data
+      - ../data/workspace:/app/workspace
     networks:
       - caddy-public
       - internal

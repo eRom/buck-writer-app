@@ -31,7 +31,7 @@ RUN apk add --no-cache sqlite=3.51.2-r0
 COPY --from=build /deploy /app
 COPY --from=build /repo/packages/api/migrations /app/migrations
 COPY --from=build /repo/packages/web/dist /app/web-dist
-COPY scripts/docker-entrypoint.sh /app/docker-entrypoint.sh
+COPY vps/docker-entrypoint.sh /app/docker-entrypoint.sh
 RUN mkdir -p /app/data /app/workspace \
  && chmod +x /app/docker-entrypoint.sh \
  && chown -R node:node /app

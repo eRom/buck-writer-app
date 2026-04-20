@@ -13,6 +13,8 @@ build/
 .env.*.local
 .env.production
 .env.trinity
+vps/.env.production
+vps/.env.trinity
 
 # Data (local dev)
 data/

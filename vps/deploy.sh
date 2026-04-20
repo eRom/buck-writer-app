@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 # Buck Writer — VPS deployment (Trinity-aware).
 # Deploys Buck + syncs Trinity's Caddyfile/.env for MCP remote connectors.
+# Lives in vps/ — chdir to vps/ so all relative paths are predictable.
 #
 # What this script does, in order :
 #   1. git fetch + hard reset on VPS Buck repo to latest main
@@ -16,9 +17,9 @@
 #   - Trinity repo cloned at /opt/trinity-lifeos with Caddy stack running
 #   - docker network "caddy-public" created on VPS
 #   - /opt/buck-writer-app cloned + (first run) .env bootstrapped
-#   - Local files present : .env.production, .env.trinity, Caddyfile
+#   - Local files present : vps/.env.production, vps/.env.trinity, vps/Caddyfile
 #
-# Usage   :  ./scripts/deploy-vps.sh
+# Usage   :  ./vps/deploy.sh   (or from vps/: ./deploy.sh)
 # Env vars (override defaults) :
 #   REMOTE_USER=root
 #   REMOTE_IP=72.62.239.98
@@ -32,6 +33,10 @@
 #   SKIP_TRINITY=1        # deploy only Buck, don't touch Trinity
 
 set -euo pipefail
+
+# Always run from the vps/ directory, regardless of where the user invoked us.
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+cd "$SCRIPT_DIR"
 
 REMOTE_USER="${REMOTE_USER:-root}"
 REMOTE_IP="${REMOTE_IP:-72.62.239.98}"
@@ -119,10 +124,10 @@ if [ "$SKIP_BUCK_BUILD" = "1" ]; then
 else
   log "Building Buck images (bible-mcp, writing-tools-mcp, bible-ui, buck-app)"
   warn "First build of writing-tools-mcp takes ~5 min (torch + transformers + spacy)"
-  $SSH "cd $REMOTE_DIR && docker compose build"
+  $SSH "cd $REMOTE_DIR/vps && docker compose build"
 
   log "Starting / updating Buck containers"
-  $SSH "cd $REMOTE_DIR && docker compose up -d"
+  $SSH "cd $REMOTE_DIR/vps && docker compose up -d"
 fi
 
 # ---------- 6. Caddy reload ----------
@@ -142,7 +147,7 @@ log "Waiting 10s for containers to settle"
 sleep 10
 
 log "Container status (Buck)"
-$SSH "cd $REMOTE_DIR && docker compose ps"
+$SSH "cd $REMOTE_DIR/vps && docker compose ps"
 
 log "Sanity HTTPS checks"
 printf "\n  buck.romain-ecarnot.com/api/health → "
@@ -196,6 +201,6 @@ $SSH "docker system df" || true
 
 echo
 ok "Deploy done."
-echo "  Tail Buck logs   :  $SSH 'cd $REMOTE_DIR && docker compose logs -f --tail=50'"
+echo "  Tail Buck logs   :  $SSH 'cd $REMOTE_DIR/vps && docker compose logs -f --tail=50'"
 echo "  Tail bible-mcp   :  $SSH 'docker logs -f buck-bible-mcp --tail=50'"
 echo "  Tail writing-mcp :  $SSH 'docker logs -f buck-writing-tools-mcp --tail=50'"

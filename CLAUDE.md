@@ -35,7 +35,7 @@ Les prompts systèmes (SYSTEM.md + RULES.md) vivent dans `$WORKSPACE_DIR/systems
 - **Frontend** : React 19, Vite 6, Tailwind CSS 4.2, shadcn/ui (style radix-mira, baseColor stone), TanStack Router (file-based), TanStack Query, Zustand, Lucide icons, font Figtree
 - **Tests** : Vitest (unit, tous packages), Playwright (e2e, `packages/web/tests/e2e/`), Testing Library (composants)
 - **Build** : tsup (api + shared), Vite (web)
-- **Docker** : Dockerfile.app mono-stage, docker-compose avec volume data/db + data/workspace
+- **Docker** : `vps/Dockerfile.app` mono-stage, `vps/compose.yml` avec volume data/db + data/workspace. Tout ce qui concerne le VPS (dockerfiles, compose, Caddyfile, deploy.sh, envs) vit dans `vps/`.
 
 ## Commandes
 
@@ -49,9 +49,10 @@ pnpm typecheck        # tsc --noEmit tous les packages
 pnpm db:generate      # drizzle-kit generate (migrations)
 pnpm db:migrate       # Applique les migrations
 pnpm db:seed          # Seed initial
-pnpm docker:build     # Build image locale
-pnpm docker:up        # docker compose up -d --build
-docker compose -f docker-compose.local.yml up -d bible-mcp   # dev hybride (bible en Docker, buck pnpm dev)
+pnpm docker:build     # Build image locale (vps/Dockerfile.app)
+pnpm docker:up        # docker compose -f vps/compose.yml up -d --build
+pnpm deploy           # ./vps/deploy.sh (git pull + scp envs + build + healthchecks)
+docker compose -f vps/compose.local.yml up -d bible-mcp   # dev hybride (bible en Docker, buck pnpm dev)
 ```
 
 ## Dev mode

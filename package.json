@@ -18,10 +18,11 @@
     "db:migrate": "pnpm --filter @buck/api db:migrate",
     "db:generate": "pnpm --filter @buck/api db:generate",
     "db:seed": "pnpm --filter @buck/api db:seed",
-    "docker:build": "docker build -f Dockerfile.app -t buck-writer:local .",
-    "docker:up": "docker compose up -d --build",
-    "docker:down": "docker compose down",
-    "docker:logs": "docker compose logs -f"
+    "docker:build": "docker build -f vps/Dockerfile.app -t buck-writer:local .",
+    "docker:up": "docker compose -f vps/compose.yml up -d --build",
+    "docker:down": "docker compose -f vps/compose.yml down",
+    "docker:logs": "docker compose -f vps/compose.yml logs -f",
+    "deploy": "./vps/deploy.sh"
   },
   "devDependencies": {
     "typescript": "^5.6.3",

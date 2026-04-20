@@ -1,9 +1,9 @@
-# docker-compose.local.yml — dev hybride : bible-mcp en Docker, buck en pnpm dev
+# compose.local.yml — dev hybride : bible-mcp en Docker, buck en pnpm dev
 services:
   bible-mcp:
     build:
-      context: .
-      dockerfile: Dockerfile.bible-mcp
+      context: ..
+      dockerfile: vps/Dockerfile.bible-mcp
     ports:
       - "7801:7801"
     environment:
