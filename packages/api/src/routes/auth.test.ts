@@ -10,6 +10,8 @@ import { openDb } from '../db/client.js';
 import { runMigrations } from '../db/migrate.js';
 import { runSeed } from '../db/seed.js';
 import { createJwtService } from '../services/jwt.js';
+import { users } from '../db/schema.js';
+import { eq } from 'drizzle-orm';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const migrationsDir = path.resolve(here, '..', '..', 'migrations');
@@ -25,18 +27,20 @@ interface TestCtx {
   emailsSent: Array<{ to: string; magicUrl: string }>;
   mockEmail: { sendMagicLink: ReturnType<typeof vi.fn> };
   jwt: ReturnType<typeof createJwtService>;
+  handles: ReturnType<typeof openDb>;
 }
 
 function makeApp(
   allowed: string[] = ['alice@example.com'],
   nowMs?: () => number,
+  seedEmails?: string[],
 ): TestCtx {
   const dbPath = tmp();
   const url = `file:${dbPath}`;
   runMigrations({ databaseUrl: url, migrationsFolder: migrationsDir });
   runSeed({
     databaseUrl: url,
-    allowedEmails: allowed,
+    allowedEmails: seedEmails ?? allowed,
     mcpBibleUrl: 'http://bible-mcp:7801',
   });
   const handles = openDb(url);
@@ -70,7 +74,7 @@ function makeApp(
       unknownEmailDelayMs: 0,
     }),
   );
-  return { dbPath, app, emailsSent, mockEmail, jwt };
+  return { dbPath, app, emailsSent, mockEmail, jwt, handles };
 }
 
 describe('auth routes', () => {
@@ -104,6 +108,55 @@ describe('auth routes', () => {
       const body = (await res.json()) as { sent: boolean };
       expect(body.sent).toBe(true);
       expect(ctx.mockEmail.sendMagicLink).not.toHaveBeenCalled();
+    });
+
+    it('auto-provisions whitelisted email absent from users table', async () => {
+      ctx = makeApp(
+        ['alice@example.com', 'newclient@example.com'],
+        undefined,
+        ['alice@example.com'],
+      );
+      const before = ctx.handles.db
+        .select()
+        .from(users)
+        .where(eq(users.email, 'newclient@example.com'))
+        .get();
+      expect(before).toBeUndefined();
+
+      const res = await ctx.app.request('/api/auth/request', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ email: 'newclient@example.com' }),
+      });
+      expect(res.status).toBe(200);
+      expect(ctx.mockEmail.sendMagicLink).toHaveBeenCalledTimes(1);
+      expect(ctx.emailsSent[0]!.to).toBe('newclient@example.com');
+
+      const after = ctx.handles.db
+        .select()
+        .from(users)
+        .where(eq(users.email, 'newclient@example.com'))
+        .get();
+      expect(after).toBeDefined();
+      expect(after?.email).toBe('newclient@example.com');
+    });
+
+    it('does NOT auto-provision when email is not whitelisted', async () => {
+      ctx = makeApp(['alice@example.com']);
+      const res = await ctx.app.request('/api/auth/request', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ email: 'attacker@evil.com' }),
+      });
+      expect(res.status).toBe(200);
+      expect(ctx.mockEmail.sendMagicLink).not.toHaveBeenCalled();
+
+      const row = ctx.handles.db
+        .select()
+        .from(users)
+        .where(eq(users.email, 'attacker@evil.com'))
+        .get();
+      expect(row).toBeUndefined();
     });
 
     it('returns 400 on invalid email', async () => {

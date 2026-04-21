@@ -54,17 +54,21 @@ export function createAuthRoutes(deps: AuthRoutesDeps): Hono {
       return c.json({ sent: true });
     }
 
-    const existing = deps.db.db
+    let existing = deps.db.db
       .select()
       .from(users)
       .where(eq(users.email, email))
       .get();
     if (!existing) {
-      // Whitelisted but not in DB (seed missed?) — same timing as unknown
-      if (unknownDelay > 0) {
-        await new Promise((r) => setTimeout(r, unknownDelay));
-      }
-      return c.json({ sent: true });
+      // Whitelisted but absent from users table — auto-provision.
+      // Security: this branch is unreachable unless whitelist.has(email).
+      const id = newId();
+      deps.db.db
+        .insert(users)
+        .values({ id, email, createdAt: ts })
+        .run();
+      console.warn(`[auth] auto-provisioned user ${id} (whitelist hit, DB miss)`);
+      existing = { id, email, createdAt: ts, lastLoginAt: null };
     }
 
     const token = randomTokenHex(32);
