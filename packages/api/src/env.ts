@@ -33,6 +33,16 @@ const Schema = z.object({
   OPENAI_EMBEDDING_MODEL: z.string().default('text-embedding-3-large'),
   EDGE_INVOKE_KEY: z.string().min(1).optional(),
   /**
+   * Cosine similarity floor for `recall`. Values below this are filtered out
+   * by the `match_memories` RPC. text-embedding-3-large on short French
+   * prompts tops out around 0.7–0.8 even for semantic matches, so 0.7 was
+   * too strict (empirical fail: "Quel est mon langage préféré ?" vs "Le
+   * langage préféré de Philippe est X" measured at ~0.65). 0.5 keeps noise
+   * out while letting legitimate recalls through. Raise in prod if false
+   * positives surface.
+   */
+  MEMORY_RECALL_THRESHOLD: z.coerce.number().min(0).max(1).default(0.5),
+  /**
    * Set to true ONLY when the API sits behind a trusted reverse proxy
    * (Caddy on the same VPS) that overwrites X-Forwarded-For with the real
    * client IP. When false, X-Forwarded-For is ignored for rate-limit keys

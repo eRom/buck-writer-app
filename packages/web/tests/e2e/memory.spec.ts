@@ -1,22 +1,9 @@
 import { test, expect } from '@playwright/test';
 
-// TODO(M5-V2): this spec currently produces FAUX-VERT in dev.
-//
-// Dev proxy topology (Vite :5173/5175 → API :3000) means the browser sends
-// Origin=http://localhost:5175 but csrfMiddleware expects PUBLIC_BASE_URL=
-// http://localhost:3000, so every POST mutation is rejected 403. The UI
-// still echoes the user's prompt in the DOM, and getByText() matches that
-// echo instead of Buck's actual reply — test passes without any round-trip
-// to Supabase.
-//
-// Two fixes to unblock:
-//   a) align PUBLIC_BASE_URL with the Vite dev port in .env.development, or
-//   b) drive the test against a prod-style build (WEB_DIST_ROOT set, Hono
-//      serves the SPA on :3000, no Vite proxy in the loop).
-//
-// Skipping unconditionally until one of the above lands — better an
-// obviously-missing test than a silently-misleading one.
-test.skip(true, 'Origin/CSRF mismatch in dev proxy — see TODO above');
+// Requires: MEMORY_E2E=1 + Supabase creds + dev stack running on the port
+// declared by PUBLIC_BASE_URL in .env.development (currently 5173, so the
+// browser Origin matches csrfMiddleware's expectedOrigin and POSTs clear).
+test.skip(({}, _testInfo) => !process.env.MEMORY_E2E, 'requires MEMORY_E2E=1 and Supabase creds');
 
 const INPUT = 'textarea[placeholder="Envoyer un message..."]';
 const SEND = 'button[aria-label="Envoyer"]';
@@ -38,12 +25,28 @@ test('Buck remembers a fact across sessions', async ({ page }) => {
   await stopBtn.waitFor({ state: 'visible', timeout: 5_000 }).catch(() => {});
   await stopBtn.waitFor({ state: 'hidden', timeout: 30_000 });
 
+  // Capture session 1 URL so we can assert the "Nouvelle session" click
+  // really navigated. TanStack Router encodes the id in ?session=<uuid>.
+  const session1Url = page.url();
+
   // Session 2 — new chat, recall
   await page.locator(NEW).first().click();
+  // Must have navigated to a distinct session — prevents the recall assertion
+  // from matching the prompt echo left over from session 1.
+  await expect
+    .poll(() => page.url(), { timeout: 10_000 })
+    .not.toBe(session1Url);
+
   await page.locator(INPUT).first().fill('Quel est mon langage préféré ?');
   await page.locator(SEND).first().click();
 
+  // Wait until the second streaming turn ends.
+  await stopBtn.waitFor({ state: 'visible', timeout: 5_000 }).catch(() => {});
+  await stopBtn.waitFor({ state: 'hidden', timeout: 30_000 });
+
+  // The recall must have resurfaced the fact in Buck's reply. Scope the
+  // assertion to the chat scroll area so we don't pick up sidebar titles.
   await expect(
-    page.getByText(new RegExp(FACT, 'i')),
-  ).toBeVisible({ timeout: 30_000 });
+    page.locator('main').getByText(new RegExp(FACT, 'i')),
+  ).toBeVisible({ timeout: 5_000 });
 });

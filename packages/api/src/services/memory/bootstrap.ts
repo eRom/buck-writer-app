@@ -56,7 +56,12 @@ export function bootstrapMemory(deps: BootstrapDeps): MemoryServices {
   });
 
   const remember = createRememberService({ supabase, embed, userId, bufferCap: 100 });
-  const recall = createRecallService({ supabase, embed, userId, threshold: 0.7 });
+  const recall = createRecallService({
+    supabase,
+    embed,
+    userId,
+    threshold: deps.env.MEMORY_RECALL_THRESHOLD,
+  });
 
   const compact = async (args: CompactArgs): Promise<string> => {
     const res = await fetch(`${deps.env.SUPABASE_URL}/functions/v1/compact-state`, {
