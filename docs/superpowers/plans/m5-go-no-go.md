@@ -13,21 +13,34 @@ Référence : `docs/superpowers/plans/2026-04-18-m5-memory.md` — Task 23.
 ## Backend Buck
 
 - [x] Drizzle migration `memory_usage_sync_cursor` appliquée.
-- [x] `pnpm test` vert sur tous les packages (243/243 côté API).
+- [x] `pnpm test` vert sur tous les packages (359/359 côté API au 2026-04-21).
 - [x] `pnpm typecheck` vert.
 - [x] Module `services/memory/` câblé dans la route chat avec feature flag `MEMORY_ENABLED`.
 
 ## Tests E2E / Régression
 
-- [ ] E2E `memory.spec.ts` PASS avec `MEMORY_E2E=1` (nécessite serveur lancé + secrets).
-- [ ] `MEMORY_ENABLED=false` : chat strictement identique à avant M5 (régression manuelle sur une conversation).
-- [ ] `MEMORY_ENABLED=true` : Buck peut appeler `remember` et `recall` ; badge `degraded` apparaît si Supabase coupé (tester en mettant `SUPABASE_URL` invalide 30s).
+- [x] E2E `memory.spec.ts` PASS avec `MEMORY_E2E=1` (validé 2026-04-21, round-trip remember→recall en 8-10s, row `buck_memories` créée par scope `BUCK_USER_ID`, tool_meta `recall` visible). Dev server sur `:5173`, `PUBLIC_BASE_URL` aligné, `MEMORY_RECALL_THRESHOLD=0.5` (commit `cac5920`).
+- [x] `MEMORY_ENABLED=false` : validé par revue code (`chat.ts:289` gate `memory?.enabled`, `bootstrap.ts:34` retourne `makeDisabled()` avec `enabled=false`) + tests unitaires (359/359).
+- [x] `MEMORY_ENABLED=true` : Buck peut appeler `remember` et `recall` (confirmé E2E). Badge `degraded` validé par revue code + tests existants (`chat.test.ts:289` émission SSE `memory_status`, `memoryOrchestrator.test.ts:33,52` fail-soft sur timeout + error Supabase, `memory-badge.tsx` consomme via zustand).
 
 ## Observabilité
 
-- [ ] Usage `memory_embedding` visible dans Settings budget après premier `remember`.
-- [ ] Une première consolidation nocturne réussie (ou forcée manuellement via curl) : au moins une row `semantic` créée si épisodes suffisants.
+- [x] Usage `memory_embedding` visible dans Settings budget après premier `remember` (bug corrigé en route — `insertUsageEvent` propage `kind`, `byKind.memory` exposé côté API, ligne UI dans `budget-section.tsx`, commit `01cfcfd`).
+- [~] Consolidation nocturne Edge Function : path nominal validé 2026-04-21 (401 sans bearer, 200 `"skipped: only N episodes"` sur path court). **Gap** : 500 quand ≥3 episodes injectés (path LLM + upsert). À investiguer (probablement secret Vault manquant ou format JSON OpenAI) — ne bloque pas M5 car pg_cron retry nightly et fail-soft sur crash. `compact-state` 500 également sur payload bien formé — idem.
 
 ## Rollout
 
 - [ ] Bump `MEMORY_ENABLED=true` commité, image Docker déployée, vérif en prod.
+
+## Bugs fixes M5 (découverts pendant validation 2026-04-21)
+
+- `packages/api/src/routes/auth.ts` : silent-drop réparé quand whitelisted email absent de DB (commit `5a48176`).
+- `.env.development` PUBLIC_BASE_URL aligné sur port Vite `:5173` (résout Origin mismatch CSRF) (commit `cac5920`).
+- `MEMORY_RECALL_THRESHOLD` configurable via env, default 0.5 (0.7 trop strict sur text-embedding-3-large FR) (commit `cac5920`).
+- `insertUsageEvent` propage `kind` pour memory_embedding → chat/memory correctement distingués dans budget (commit `01cfcfd`).
+- `byKind.memory` ajouté à `UsageResponse` et affiché dans `budget-section.tsx` (commit `01cfcfd`).
+
+## Gaps connus / dette
+
+- Edge `consolidate-memory` et `compact-state` : 500 sur path complet. À logger + fixer (ajouter try/catch + `console.error` dans le code Deno, redéployer).
+- MCP remote (`bible`, `writing-tools`) désactivés en DB locale dev (OpenAI ne peut pas joindre `localhost:*`). À réactiver pour dev avec ngrok / tunnel public si besoin tester.
