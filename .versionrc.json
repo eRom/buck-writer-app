@@ -1,0 +1,23 @@
+{
+  "header": "# Changelog\n\nAll notable changes to this project will be documented in this file.\n",
+  "types": [
+    { "type": "feat", "section": "Features" },
+    { "type": "fix", "section": "Bug Fixes" },
+    { "type": "perf", "section": "Performance Improvements" },
+    { "type": "refactor", "section": "Refactors" },
+    { "type": "docs", "hidden": true },
+    { "type": "chore", "hidden": true },
+    { "type": "test", "hidden": true },
+    { "type": "build", "hidden": true },
+    { "type": "ci", "hidden": true },
+    { "type": "style", "hidden": true },
+    { "type": "merge", "hidden": true }
+  ],
+  "commitAll": false,
+  "skip": {
+    "bump": false,
+    "changelog": false,
+    "commit": false,
+    "tag": false
+  }
+}

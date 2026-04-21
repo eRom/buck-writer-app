@@ -90,8 +90,11 @@ fi
 
 # ---------- 1. Buck repo refresh ----------
 
-log "Pulling latest on VPS Buck repo ($REMOTE_DIR)"
-$SSH "cd $REMOTE_DIR && git fetch --all && git reset --hard origin/main"
+# DEPLOY_REF = tag (v1.2.3) ou branch ref (origin/main) a deployer.
+# Defaut : origin/main (comportement legacy pour les appels locaux sans tag).
+DEPLOY_REF="${DEPLOY_REF:-origin/main}"
+log "Pulling latest on VPS Buck repo ($REMOTE_DIR) at ref: $DEPLOY_REF"
+$SSH "cd $REMOTE_DIR && git fetch --all --tags && git reset --hard $DEPLOY_REF"
 
 # ---------- 2. Buck .env ----------
 
