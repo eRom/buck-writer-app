@@ -166,6 +166,9 @@ export function createHttpApp(
   if (uiDir && fs.existsSync(uiDir) && fs.readdirSync(uiDir).length > 0) {
     app.use(express.static(uiDir));
     app.get("/{*path}", (_req, res) => {
+      // SPA fallback: uiDir is a hardcoded build-time path and "index.html" is a literal.
+      // No user input reaches sendFile — path traversal is not possible here.
+      // nosemgrep: javascript.express.security.audit.express-res-sendfile.express-res-sendfile
       res.sendFile(path.join(uiDir, "index.html"));
     });
     console.error(`[http] UI statique servie depuis ${uiDir}`);
