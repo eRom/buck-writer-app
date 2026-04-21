@@ -7,6 +7,7 @@ export interface Prompts {
   tools: string;
   rules: string;
   live: string;
+  tts: string;
 }
 
 export interface PromptsRef {
@@ -25,14 +26,15 @@ export function loadPrompts(systemsDir: string): Prompts {
   const tools = readIfExists(path.join(systemsDir, 'TOOLS.md'));
   const rules = readIfExists(path.join(systemsDir, 'RULES.md'));
   const live = readIfExists(path.join(systemsDir, 'LIVE.md'));
-  return { system, tools, rules, live };
+  const tts = readIfExists(path.join(systemsDir, 'TTS.md'));
+  return { system, tools, rules, live, tts };
 }
 
 export function bootstrapPrompts(systemsDir: string, defaultsDir: string): void {
   if (!fs.existsSync(systemsDir)) {
     fs.mkdirSync(systemsDir, { recursive: true });
   }
-  for (const file of ['SYSTEM.md', 'TOOLS.md', 'RULES.md', 'LIVE.md']) {
+  for (const file of ['SYSTEM.md', 'TOOLS.md', 'RULES.md', 'LIVE.md', 'TTS.md']) {
     const target = path.join(systemsDir, file);
     const source = path.join(defaultsDir, file);
     if (!fs.existsSync(target) && fs.existsSync(source)) {

@@ -28,6 +28,7 @@ function formatSettings(row: UserSettingsRow) {
     vectorStoreLastSyncAt: row.vectorStoreLastSyncAt
       ? row.vectorStoreLastSyncAt.getTime()
       : null,
+    ttsDefaultVoice: row.ttsDefaultVoice,
   };
 }
 
@@ -105,6 +106,9 @@ export function createSettingsRoutes(
     }
     if (data.chatTools !== undefined) {
       updates.chatToolsJson = JSON.stringify(data.chatTools);
+    }
+    if (data.ttsDefaultVoice !== undefined) {
+      updates.ttsDefaultVoice = data.ttsDefaultVoice;
     }
 
     if (Object.keys(updates).length > 0) {

@@ -3,6 +3,9 @@ import { apiFetch, ApiError } from './api';
 export interface MeResponse {
   userId: string;
   email: string;
+  features?: {
+    tts?: boolean;
+  };
 }
 
 export async function fetchMe(): Promise<MeResponse | null> {

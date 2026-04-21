@@ -577,7 +577,7 @@ export function ChatStream({ sessionId, onSessionCreated }: ChatStreamProps) {
         ) : (
           <div className="mx-auto max-w-3xl space-y-5 px-4 py-6">
             {messages.map((m, idx) => {
-              if (m.role === 'user') return <MessageUser key={m.id} content={m.content} />;
+              if (m.role === 'user') return <MessageUser key={m.id} content={m.content} messageId={m.id} />;
               const isLastAssistant = idx === lastAssistantIdx;
               const showPending = isLastAssistant && pendingApproval != null;
               const metas = m.toolMetas ?? [];
@@ -613,7 +613,7 @@ export function ChatStream({ sessionId, onSessionCreated }: ChatStreamProps) {
               ) : null;
               const showActivity = isLoading && isLastAssistant && toolActivity;
               return (
-                <MessageAssistant key={m.id} toolCalls={toolCalls}>
+                <MessageAssistant key={m.id} toolCalls={toolCalls} messageId={m.id}>
                   {showActivity ? (
                     <span className="inline-flex items-center gap-2 text-xs text-muted-foreground">
                       <span className="inline-block size-2 animate-pulse rounded-full bg-primary" />
