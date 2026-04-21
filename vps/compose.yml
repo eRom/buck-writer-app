@@ -17,7 +17,7 @@ services:
     env_file: ../.env
     environment:
       BIBLE_DB_PATH: /app/data/bible.db
-      BIBLE_HTTP_PORT: "7801"
+      BIBLE_HTTP_PORT: '7801'
       # NB: MCP_SHARED_SECRET intentionally NOT set here. The Bearer check
       # is enforced at the Caddy edge (bible-mcp.buck.*) for OpenAI. Bible
       # UI calls /mcp through an internal path (Caddy→bible-ui nginx→

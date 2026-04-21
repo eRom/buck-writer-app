@@ -51,3 +51,4 @@ __pycache__/
 # Security audit artefacts (scanner outputs + markdown reports)
 reports/
 security-audit-*.md
+workspace/.tts_audio
