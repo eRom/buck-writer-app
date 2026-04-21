@@ -1,6 +1,12 @@
 import { Hono } from 'hono';
-import { and, eq } from 'drizzle-orm';
-import { newId, isTtsVoice, costOfTts, TTS_MODEL } from '@buck/shared';
+import { and, eq, sql } from 'drizzle-orm';
+import {
+  newId,
+  isTtsVoice,
+  costOfTts,
+  TTS_MODEL,
+  type TtsPostResponse,
+} from '@buck/shared';
 import * as fs from 'node:fs/promises';
 import * as path from 'node:path';
 import type { DbHandles } from '../db/client.js';
@@ -14,7 +20,8 @@ import {
 import { HttpError } from '../utils/http-error.js';
 import { assertSafePath } from '../utils/path-safe.js';
 import { messageToPlaintext } from '../services/tts/plaintext.js';
-import { synthesize, type SynthesizeDeps } from '../services/tts/gemini-client.js';
+import { synthesize } from '../services/tts/gemini-client.js';
+import type { SynthesizeDeps } from '../services/tts/gemini-client.js';
 import type { PromptsRef } from '../services/prompts.js';
 
 export interface TtsRoutesDeps {
@@ -28,12 +35,14 @@ export interface TtsRoutesDeps {
   synthesizeDeps?: SynthesizeDeps;
 }
 
-interface PostResponse {
-  url: string;
-  voice: string;
-  durationSec: number | null;
-  cached: boolean;
-  costUsd: number;
+// Whitelist matches the ID generator (ULID/UUID). Guards against a crafted
+// `messageId` leaking path separators into relativeAudioPath.
+const SAFE_ID_RE = /^[a-zA-Z0-9_-]+$/;
+
+function assertSafeId(value: string, field: string): void {
+  if (!SAFE_ID_RE.test(value)) {
+    throw new HttpError(400, 'invalid_id', `${field} has invalid format`);
+  }
 }
 
 function resolveVoice(
@@ -82,6 +91,13 @@ function relativeAudioPath(userId: string, messageId: string, voice: string): st
   return `.tts_audio/${userId}/${messageId}_${voice}.wav`;
 }
 
+// Guard against Gemini returning an empty/invalid PCM buffer — NaN or zero
+// duration must not leak into NOT NULL columns.
+function safeDuration(sec: number): number | null {
+  if (!Number.isFinite(sec) || sec <= 0) return null;
+  return sec;
+}
+
 export function createTtsRoutes(
   deps: TtsRoutesDeps,
 ): Hono<{ Variables: { userId: string } }> {
@@ -91,6 +107,7 @@ export function createTtsRoutes(
   app.post('/:messageId', async (c) => {
     const userId = c.get('userId');
     const messageId = c.req.param('messageId');
+    assertSafeId(messageId, 'messageId');
 
     const body = (await c.req
       .json()
@@ -118,7 +135,7 @@ export function createTtsRoutes(
       .get();
 
     if (cacheHit) {
-      const resp: PostResponse = {
+      const resp: TtsPostResponse = {
         url: `/api/tts/${messageId}/audio?voice=${voice}`,
         voice,
         durationSec: cacheHit.durationSec,
@@ -156,50 +173,94 @@ export function createTtsRoutes(
     await fs.writeFile(absPath, result.wavBuffer);
 
     const createdAt = now();
-    deps.db.db
-      .insert(ttsAudioCache)
-      .values({
-        id: newId(),
-        messageId,
-        userId,
-        voice,
-        model: result.model,
-        audioPath: relPath,
-        mimeType: 'audio/wav',
-        sizeBytes: result.wavBuffer.length,
-        durationSec: result.durationSec,
-        createdAt,
-      })
-      .run();
-
+    const durationSec = safeDuration(result.durationSec);
     const costUsd = costOfTts({
       inputTextTokens: result.inputTextTokens,
       outputAudioTokens: result.outputAudioTokens,
     });
 
-    deps.db.db
-      .insert(usageEvents)
-      .values({
-        id: newId(),
-        userId,
-        sessionId: message.sessionId,
-        createdAt,
-        model: TTS_MODEL,
-        inputTokens: result.inputTextTokens,
-        outputTokens: result.outputAudioTokens,
-        reasoningTokens: 0,
-        cachedInputTokens: 0,
-        audioInputSeconds: 0,
-        audioOutputSeconds: result.durationSec,
-        costUsd,
-        kind: 'tts',
-      })
-      .run();
+    // Atomic cache write + usage recording. Concurrent POSTs race past the
+    // cacheHit check above; the UNIQUE (message_id, voice) index is the only
+    // real serializer. We use INSERT OR IGNORE so the loser of the race gets
+    // a graceful cached-row response instead of a 500.
+    const raceResolution = deps.db.sqlite.transaction(() => {
+      const inserted = deps.db.db
+        .insert(ttsAudioCache)
+        .values({
+          id: newId(),
+          messageId,
+          userId,
+          voice,
+          model: result.model,
+          audioPath: relPath,
+          mimeType: 'audio/wav',
+          sizeBytes: result.wavBuffer.length,
+          durationSec,
+          createdAt,
+        })
+        .onConflictDoNothing({
+          target: [ttsAudioCache.messageId, ttsAudioCache.voice],
+        })
+        .returning({ id: ttsAudioCache.id })
+        .all();
 
-    const resp: PostResponse = {
+      if (inserted.length === 0) {
+        // Another concurrent request won — do not charge this one.
+        return { won: false as const };
+      }
+      deps.db.db
+        .insert(usageEvents)
+        .values({
+          id: newId(),
+          userId,
+          sessionId: message.sessionId,
+          createdAt,
+          model: TTS_MODEL,
+          inputTokens: result.inputTextTokens,
+          outputTokens: result.outputAudioTokens,
+          reasoningTokens: 0,
+          cachedInputTokens: 0,
+          audioInputSeconds: 0,
+          audioOutputSeconds: durationSec ?? 0,
+          costUsd,
+          kind: 'tts',
+        })
+        .run();
+      return { won: true as const };
+    })();
+
+    if (!raceResolution.won) {
+      // Best effort — clean up our orphaned file since the winner already
+      // wrote its own.
+      try {
+        await fs.unlink(absPath);
+      } catch {
+        // noop
+      }
+      const existing = deps.db.db
+        .select({ durationSec: ttsAudioCache.durationSec })
+        .from(ttsAudioCache)
+        .where(
+          and(
+            eq(ttsAudioCache.messageId, messageId),
+            eq(ttsAudioCache.voice, voice),
+          ),
+        )
+        .get();
+      const resp: TtsPostResponse = {
+        url: `/api/tts/${messageId}/audio?voice=${voice}`,
+        voice,
+        durationSec: existing?.durationSec ?? null,
+        cached: true,
+        costUsd: 0,
+      };
+      return c.json(resp);
+    }
+
+    const resp: TtsPostResponse = {
       url: `/api/tts/${messageId}/audio?voice=${voice}`,
       voice,
-      durationSec: result.durationSec,
+      durationSec,
       cached: false,
       costUsd,
     };
@@ -209,6 +270,7 @@ export function createTtsRoutes(
   app.get('/:messageId/audio', async (c) => {
     const userId = c.get('userId');
     const messageId = c.req.param('messageId');
+    assertSafeId(messageId, 'messageId');
     const rawVoice = c.req.query('voice');
 
     const userSettingsRow = deps.db.db
@@ -258,4 +320,28 @@ export function createTtsRoutes(
   });
 
   return app;
+}
+
+// Deletes all TTS audio files + rows belonging to a user. Intended for
+// cascade deletion when a session/message is permanently removed (the DB FK
+// cascades the rows, but we must remove the WAVs from disk ourselves).
+export async function purgeUserTtsByMessages(
+  deps: { db: DbHandles; workspaceDir: string },
+  messageIds: string[],
+): Promise<void> {
+  if (messageIds.length === 0) return;
+  const rows = deps.db.db
+    .select({ id: ttsAudioCache.id, audioPath: ttsAudioCache.audioPath })
+    .from(ttsAudioCache)
+    .where(sql`${ttsAudioCache.messageId} IN (${sql.join(messageIds.map((id) => sql`${id}`), sql`, `)})`)
+    .all();
+  for (const r of rows) {
+    try {
+      const abs = await assertSafePath(deps.workspaceDir, r.audioPath);
+      await fs.unlink(abs);
+    } catch {
+      // best effort
+    }
+  }
+  // DB rows are removed via FK cascade when the parent row disappears.
 }

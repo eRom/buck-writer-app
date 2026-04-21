@@ -236,17 +236,23 @@ export function buildApp(deps: AppDeps) {
       '/api/tts/*',
       authGuard({ db: deps.db, jwt: deps.jwt, nowMs: deps.nowMs }),
     );
-    // Rate-limit: 10 POSTs/min per authenticated user on the synthesis endpoint
-    app.use(
-      '/api/tts/:messageId',
-      createRateLimiter({
-        windowMs: 60_000,
-        max: 10,
-        keyBy: (c) => c.get('userId') ?? ipKey(c),
-      }),
-    );
-    // Budget guard applies only to synthesis (POST), not to GET /audio serving
-    app.use('/api/tts/:messageId', budgetGuard({ db: deps.db, nowMs: deps.nowMs }));
+    // Rate-limit + budget guard apply to synthesis only (POST). The GET audio
+    // endpoint streams a cached file — it must keep working even when the
+    // budget is exhausted, and we don't want cache replay to eat the quota.
+    const ttsRateLimiter = createRateLimiter({
+      windowMs: 60_000,
+      max: 10,
+      keyBy: (c) => c.get('userId') ?? ipKey(c),
+    });
+    const ttsBudgetGuard = budgetGuard({ db: deps.db, nowMs: deps.nowMs });
+    const postOnly =
+      (mw: ReturnType<typeof createRateLimiter>): ReturnType<typeof createRateLimiter> =>
+      async (c, next) => {
+        if (c.req.method !== 'POST') return next();
+        return mw(c, next);
+      };
+    app.use('/api/tts/:messageId', postOnly(ttsRateLimiter));
+    app.use('/api/tts/:messageId', postOnly(ttsBudgetGuard));
     app.route(
       '/api/tts',
       createTtsRoutes({

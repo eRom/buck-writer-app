@@ -422,6 +422,29 @@ describe('POST /api/tts/:messageId', () => {
     };
     expect(callArg.config.systemInstruction).toBe('Style guide');
   });
+
+  it('rejects messageId with invalid characters (path traversal defense)', async () => {
+    const ctx = await makeCtx();
+    const res = await ctx.app.request(`/../etc/passwd`, {
+      method: 'POST',
+      body: JSON.stringify({}),
+      headers: authHeaders(ctx.token, ctx.csrfToken),
+    });
+    expect([400, 404]).toContain(res.status);
+  });
+
+  it('stores durationSec = null when Gemini returns empty PCM', async () => {
+    const ctx = await makeCtx();
+    const msgId = ctx.insertMessage('assistant', 'Test.');
+    ctx.generateContent.mockResolvedValueOnce(fakeGenAIResponse(0));
+    const res = await ctx.app.request(`/${msgId}`, {
+      method: 'POST',
+      body: JSON.stringify({}),
+      headers: authHeaders(ctx.token, ctx.csrfToken),
+    });
+    // Empty PCM → TTS_NO_AUDIO from the service layer → 502
+    expect(res.status).toBe(502);
+  });
 });
 
 describe('GET /api/tts/:messageId/audio', () => {

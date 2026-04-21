@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { isTtsVoice } from '@buck/shared';
 import { loadDotenv } from './utils/find-up.js';
 
 // Load .env from closest parent directory (works in worktrees, monorepo root, Docker)
@@ -49,7 +50,12 @@ const Schema = z.object({
   // M9 TTS (Gemini)
   GEMINI_API_KEY: z.string().min(1).optional(),
   TTS_ENABLED: z.coerce.boolean().default(false),
-  TTS_DEFAULT_VOICE: z.string().default('Kore'),
+  TTS_DEFAULT_VOICE: z
+    .string()
+    .default('Kore')
+    .refine(isTtsVoice, {
+      message: 'TTS_DEFAULT_VOICE must be one of the 30 Gemini TTS voices',
+    }),
   TTS_MAX_CHARS: z.coerce.number().int().positive().default(4500),
 });
 

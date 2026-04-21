@@ -32,7 +32,8 @@ export function MessageTtsButton({ messageId }: Props) {
       title={label}
       disabled={state === 'loading'}
       className={cn(
-        'hover-elevate rounded-md p-1 text-muted-foreground opacity-0 transition-opacity group-hover:opacity-100',
+        'hover-elevate rounded-md p-1 text-muted-foreground opacity-0 transition-opacity',
+        'group-hover:opacity-100 focus-visible:opacity-100',
         'disabled:opacity-60',
       )}
     >

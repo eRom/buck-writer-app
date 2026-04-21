@@ -79,14 +79,27 @@ describe('synthesize', () => {
     const genAI = makeMockGenAI(async () => {
       throw new Error('500 INTERNAL');
     });
-    // First call throws, retry also throws → since second throw is still a
-    // transient-looking error, we do NOT retry a second time. We surface it.
     await expect(
       synthesize(
         { apiKey: 'k', text: 'hi', voice: 'Kore' },
         { genAI },
       ),
-    ).rejects.toThrow();
+    ).rejects.toMatchObject({ status: 502, code: 'TTS_GEMINI_FAILED' });
+  });
+
+  it('does NOT retry on RESOURCE_EXHAUSTED (quota) — throws 429 directly', async () => {
+    let calls = 0;
+    const genAI = makeMockGenAI(async () => {
+      calls += 1;
+      throw new Error('429 RESOURCE_EXHAUSTED: quota hit');
+    });
+    await expect(
+      synthesize(
+        { apiKey: 'k', text: 'hi', voice: 'Kore' },
+        { genAI },
+      ),
+    ).rejects.toMatchObject({ status: 429, code: 'tts_quota_exhausted' });
+    expect(calls).toBe(1);
   });
 
   it('throws HttpError 502 on non-transient error', async () => {
@@ -99,6 +112,28 @@ describe('synthesize', () => {
         { genAI },
       ),
     ).rejects.toBeInstanceOf(HttpError);
+  });
+
+  it('times out after the configured delay', async () => {
+    const genAI = makeMockGenAI(
+      () => new Promise<unknown>(() => {}), // never resolves
+    );
+    await expect(
+      synthesize(
+        { apiKey: 'k', text: 'hi', voice: 'Kore' },
+        { genAI, timeoutMs: 50 },
+      ),
+    ).rejects.toMatchObject({ status: 504, code: 'tts_timeout' });
+  });
+
+  it('throws TTS_NO_AUDIO on empty PCM payload', async () => {
+    const genAI = makeMockGenAI(async () => fakeSuccessResponse(''));
+    await expect(
+      synthesize(
+        { apiKey: 'k', text: 'hi', voice: 'Kore' },
+        { genAI },
+      ),
+    ).rejects.toMatchObject({ code: 'TTS_NO_AUDIO' });
   });
 
   it('throws TTS_NO_AUDIO when response has no inlineData.data', async () => {

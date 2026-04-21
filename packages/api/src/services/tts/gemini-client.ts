@@ -9,6 +9,8 @@ export const TTS_AUDIO_FORMAT: WavFormat = {
   channels: 1,
 };
 
+export const TTS_REQUEST_TIMEOUT_MS = 30_000;
+
 export interface SynthesizeParams {
   apiKey: string;
   text: string;
@@ -27,12 +29,38 @@ export interface SynthesisResult {
 export interface SynthesizeDeps {
   genAI?: GoogleGenAI;
   nowMs?: () => number;
+  timeoutMs?: number;
 }
 
-function looksLikeTransient500(err: unknown): boolean {
+// Transient infra errors worth a single retry. Explicitly excludes:
+//   - 400 (bad request), 401/403 (auth), 404 (model), 422 (invalid param),
+//     429 RESOURCE_EXHAUSTED (quota — retrying costs money without changing
+//     the outcome), and anything user-fixable.
+function isRetriableTransient(err: unknown): boolean {
   if (!err) return false;
   const msg = err instanceof Error ? err.message : String(err);
-  return /\b5(00|02|03|04)\b/.test(msg) || /INTERNAL|UNAVAILABLE|RESOURCE_EXHAUSTED/i.test(msg);
+  if (/RESOURCE_EXHAUSTED|quota|rate[_\s-]?limit/i.test(msg)) return false;
+  if (/\b(500|502|503|504)\b/.test(msg)) return true;
+  if (/INTERNAL|UNAVAILABLE|DEADLINE_EXCEEDED/i.test(msg)) return true;
+  return false;
+}
+
+function isQuotaExhausted(err: unknown): boolean {
+  const msg = err instanceof Error ? err.message : String(err);
+  return /RESOURCE_EXHAUSTED|quota/i.test(msg);
+}
+
+function withTimeout<T>(promise: Promise<T>, ms: number, label: string): Promise<T> {
+  let timer: NodeJS.Timeout | undefined;
+  const timeout = new Promise<never>((_, reject) => {
+    timer = setTimeout(() => {
+      reject(new HttpError(504, 'tts_timeout', `${label} exceeded ${ms}ms`));
+    }, ms);
+    timer.unref?.();
+  });
+  return Promise.race([promise, timeout]).finally(() => {
+    if (timer) clearTimeout(timer);
+  });
 }
 
 export async function synthesize(
@@ -40,30 +68,52 @@ export async function synthesize(
   deps: SynthesizeDeps = {},
 ): Promise<SynthesisResult> {
   const ai = deps.genAI ?? new GoogleGenAI({ apiKey: params.apiKey });
+  const timeoutMs = deps.timeoutMs ?? TTS_REQUEST_TIMEOUT_MS;
 
-  const call = () =>
-    ai.models.generateContent({
-      model: TTS_MODEL,
-      contents: [{ parts: [{ text: params.text }] }],
-      config: {
-        ...(params.systemPrompt
-          ? { systemInstruction: params.systemPrompt }
-          : {}),
-        responseModalities: ['AUDIO'],
-        speechConfig: {
-          voiceConfig: {
-            prebuiltVoiceConfig: { voiceName: params.voice },
+  const call = (): Promise<unknown> =>
+    withTimeout(
+      ai.models.generateContent({
+        model: TTS_MODEL,
+        contents: [{ parts: [{ text: params.text }] }],
+        config: {
+          ...(params.systemPrompt
+            ? { systemInstruction: params.systemPrompt }
+            : {}),
+          responseModalities: ['AUDIO'],
+          speechConfig: {
+            voiceConfig: {
+              prebuiltVoiceConfig: { voiceName: params.voice },
+            },
           },
         },
-      },
-    });
+      }) as Promise<unknown>,
+      timeoutMs,
+      'Gemini TTS request',
+    );
 
-  let response;
+  let response: unknown;
   try {
     response = await call();
   } catch (err) {
-    if (looksLikeTransient500(err)) {
-      response = await call();
+    if (isQuotaExhausted(err)) {
+      throw new HttpError(
+        429,
+        'tts_quota_exhausted',
+        'Gemini TTS quota exhausted',
+      );
+    }
+    if (isRetriableTransient(err)) {
+      try {
+        response = await call();
+      } catch (retryErr) {
+        throw new HttpError(
+          502,
+          'TTS_GEMINI_FAILED',
+          `Gemini TTS request failed after retry: ${(retryErr as Error).message}`,
+        );
+      }
+    } else if (err instanceof HttpError) {
+      throw err;
     } else {
       throw new HttpError(
         502,
@@ -73,8 +123,13 @@ export async function synthesize(
     }
   }
 
-  const inlineData =
-    response.candidates?.[0]?.content?.parts?.[0]?.inlineData;
+  const r = response as {
+    candidates?: Array<{
+      content?: { parts?: Array<{ inlineData?: { data?: string } }> };
+    }>;
+    usageMetadata?: Record<string, number>;
+  };
+  const inlineData = r.candidates?.[0]?.content?.parts?.[0]?.inlineData;
   const base64 = inlineData?.data;
   if (!base64) {
     throw new HttpError(
@@ -85,11 +140,13 @@ export async function synthesize(
   }
 
   const pcm = Buffer.from(base64, 'base64');
+  if (pcm.length === 0) {
+    throw new HttpError(502, 'TTS_NO_AUDIO', 'Gemini returned empty audio');
+  }
   const wavBuffer = wrapPcmToWav(pcm, TTS_AUDIO_FORMAT);
   const durationSec = pcmDurationSec(pcm, TTS_AUDIO_FORMAT);
 
-  const usage = (response as { usageMetadata?: Record<string, number> })
-    .usageMetadata ?? {};
+  const usage = r.usageMetadata ?? {};
   const inputTextTokens = usage.promptTokenCount ?? 0;
   const outputAudioTokens =
     usage.candidatesTokenCount ??
