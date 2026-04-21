@@ -1,6 +1,37 @@
 # Patterns et conventions — Buck Writer
 
-> MAJ 2026-04-21 (M5 live)
+> MAJ 2026-04-21 (M9 TTS live)
+
+## Pattern local-id → DB-id reconciliation via SSE
+
+Le chat front gère des messages optimistes avec `localId()` (format `local-N-timestamp`) pour afficher le message user immédiatement et streamer l'assistant. Le back insère en DB avec ses propres `newId()` dans le `finally` du runLoop, sans propager l'ID au front — les IDs divergent, inutilisables pour toute action post-hoc (TTS, future édition, etc).
+
+Pattern : dans le `finally` du back (après les INSERTs), émettre des SSE events dédiés `user_saved { id }` et `assistant_saved { id }`. Le front track `userMsgLocalId` et `assistantId` dans le scope du handler, et sur réception remplace l'ID via `setMessages(prev => prev.map(...))`. Gérer aussi dans `handleApproval` (follow-up turns insèrent un assistant message). React key change → re-render propre, pas de flicker visible.
+
+À étendre pour toute feature post-hoc (édition inline, fork session, etc).
+
+## Pattern race-safe cache write (TTS)
+
+Cache disk + DB cache_row avec unicité `(message_id, voice)`. Problème : 2 POST concurrents passent le `cacheHit` check ensemble, synthétisent deux fois, et se disputent l'INSERT.
+
+Pattern :
+1. Transaction SQLite englobant `INSERT ... ON CONFLICT DO NOTHING` + INSERT usage_events + .returning().
+2. Si `inserted.length === 0` → loser du race : unlink le WAV orphelin (best-effort), re-SELECT la row du winner, retourne `{cached:true, costUsd:0}`.
+3. UNIQUE constraint = serializer réel, le cacheHit upstream reste une optim rapide.
+
+Appliqué dans `routes/tts.ts`. Reproductible pour tout cache write coûteux (embeddings, PDF extract, etc).
+
+## Pattern singleton front pour ressource exclusive
+
+Composants React multiples peuvent vouloir contrôler UNE ressource audio/vidéo/WebRTC partagée. `useRef` local → chaque instance a son propre handle, coexistence silencieuse = catastrophe (audio qui continue, mic allumé, mémoire fuite).
+
+Pattern : `let currentX: X | null = null; let currentOwnerId: string | null = null;` module-level, helpers `setActive(x, id)` + `stopCurrent()` exportés. Listeners `Set<(activeId) => void>` notifiés sur changement → autres hooks `setState('idle')` quand ils perdent la main.
+
+Exemples : `use-tts.ts` (audio), `use-realtime-voice.ts` (clientSingleton). Cleanup dans `useEffect` return : si `currentOwnerId === myId` → `stopCurrent()`. Aussi `mountedRef = useRef(true)` pour bailer après chaque `await` post-unmount.
+
+## Pattern hidden workspace dirs
+
+`buildTree` dans `routes/workspace.ts` filtre les dirs internes que l'utilisateur ne doit pas voir : `.attachments` (cache uploads), `.tts_audio` (cache TTS). Filtre en dur : `if (entry.name === '.attachments' || entry.name === '.tts_audio') continue;`. Ajouter à la liste dès qu'un nouveau cache disk serveur arrive sous `WORKSPACE_DIR`.
 
 ## Pattern config-via-env-var
 

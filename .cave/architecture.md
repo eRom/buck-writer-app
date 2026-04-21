@@ -1,10 +1,10 @@
 # Architecture — Buck Writer
 
-> MAJ 2026-04-21 (M5 live en prod + smoke test validé)
+> MAJ 2026-04-21 (M9 TTS Gemini live)
 
 ## Vue d'ensemble
 
-Assistant d'écriture web connecté à OpenAI + archiviste d'univers (bible MCP). Auth magic-link, chat streaming, workspace (attachments, WebDAV, skills), bible (FTS + semantic OpenAI embeddings), mémoire Supabase (M5), mode vocal Realtime (M8).
+Assistant d'écriture web connecté à OpenAI + archiviste d'univers (bible MCP). Auth magic-link, chat streaming, workspace (attachments, WebDAV, skills), bible (FTS + semantic OpenAI embeddings), mémoire Supabase (M5), mode vocal Realtime (M8), TTS Gemini par message (M9).
 
 ## Stack
 
@@ -30,6 +30,41 @@ workspace/systems/  SYSTEM → MEMORY → TOOLS → RULES (+ LIVE) — live-edit
 data/           workspace/, bible/, db/
 docs/superpowers/ specs/ + plans/
 ```
+
+## M9 — TTS Gemini par message (gemini-3.1-flash-tts-preview)
+
+Bouton Play/Pause à côté du bouton Copier sur user+assistant. Cache serveur par `(messageId, voice)` → one-shot Gemini puis replay gratuit depuis disque.
+
+```
+Front click Play → POST /api/tts/:messageId {voice?}
+                 → rate-limit + budget-guard (POST only, pas GET)
+                 → resolveOwnedMessage (ownership + 404)
+                 → cacheHit ? return {url, cached:true, costUsd:0}
+                 → messageToPlaintext + guard maxChars (4500)
+                 → Gemini synthesize (timeout 30s, retry 1x sur 5xx, skip quota)
+                 → wrapPcmToWav (PCM 24kHz/16-bit/mono → WAV RIFF)
+                 → TX atomique : INSERT cache ON CONFLICT DO NOTHING + INSERT usage
+                 → si race perdu : unlink WAV, return cached du winner
+                 ← {url, voice, durationSec, cached, costUsd}
+Front <Audio url> → GET /api/tts/:messageId/audio?voice=...
+                  → lookup cache + disk read → binary wav
+```
+
+**Singleton front** : `currentAudio` + `currentMessageId` module-level dans `use-tts.ts` — un seul message joue à la fois, mêmes listeners notifiés entre composants.
+
+**30 voix Gemini** (Kore/Puck/Charon/etc) en `@buck/shared/tts/voices.ts`. Défaut `TTS_DEFAULT_VOICE` (env, fallback `Kore`).
+
+**Pricing** : `$0.50/M` input text tokens + `$10/M` output audio tokens. `costOfTts` dans `@buck/shared/pricing/tts.ts`.
+
+**Cache disk** : `{WORKSPACE_DIR}/.tts_audio/{userId}/{messageId}_{voice}.wav`. Dir filtrée de `buildTree` (workspace route) pour rester invisible à l'utilisateur.
+
+**DB** : migration `0012_tts.sql` — `tts_audio_cache` (UNIQUE `(message_id, voice)`), FK CASCADE sur messages. Budget séparé : `usage_events.kind='tts'`.
+
+**Flags** : `TTS_ENABLED` + `GEMINI_API_KEY` côté serveur. Front révèle le bouton seulement si `/api/settings` report `features.tts=true` (`use-features.ts`).
+
+**Rate-limit + budget** : middleware `app.use('/api/tts/:messageId', postOnly(...))` — gate sur `req.method === 'POST'` uniquement, les GET audio (replay cache) passent même budget plein.
+
+**systemInstruction pas envoyé** : modèle `-tts` rejette developer instruction (`400 INVALID_ARGUMENT`). `workspace/systems/TTS.md` reste live-editable (bootstrap) mais non injecté. À ré-activer si Google ouvre le champ.
 
 ## M8 — Mode Live vocal (OpenAI Realtime gpt-realtime-1.5)
 

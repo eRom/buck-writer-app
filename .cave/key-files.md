@@ -1,6 +1,34 @@
 # Fichiers clés — Buck Writer
 
-> MAJ 2026-04-21 (M5 go-live)
+> MAJ 2026-04-21 (M9 TTS Gemini live)
+
+## M9 — TTS Gemini (2026-04-21)
+
+### Backend API
+- `packages/api/src/routes/tts.ts` — POST /:messageId (synthèse + cache) + GET /:messageId/audio (replay), `purgeUserTtsByMessages` helper
+- `packages/api/src/services/tts/gemini-client.ts` — `synthesize()`, `withTimeout` 30s, retry 1× sur 5xx/INTERNAL/DEADLINE, 429 quota exhausted
+- `packages/api/src/services/tts/wav-encoder.ts` — `wrapPcmToWav`, `pcmDurationSec`
+- `packages/api/src/services/tts/plaintext.ts` — `messageToPlaintext` strip markdown → texte brut lisible
+- `packages/api/migrations/0012_tts.sql` — table `tts_audio_cache` UNIQUE(message_id, voice)
+- `packages/api/src/defaults/systems/TTS.md` — prompt style (non injecté actuellement)
+
+### Frontend Web
+- `packages/web/src/hooks/use-tts.ts` — singleton `currentAudio` module-level + hook `useTts(messageId)`
+- `packages/web/src/hooks/use-features.ts` — query `/api/settings` → flags.tts
+- `packages/web/src/components/chat/message-tts-button.tsx` — Play/Pause icon button + état loading
+- `packages/web/src/components/settings/tts-section.tsx` — toggle + voix défaut + max chars
+
+### Shared
+- `packages/shared/src/tts/voices.ts` — 30 voix Gemini + `isTtsVoice` + `DEFAULT_VOICE='Kore'`
+- `packages/shared/src/tts/response.ts` — `TtsPostResponse` type partagé
+- `packages/shared/src/pricing/tts.ts` — `costOfTts({inputTextTokens, outputAudioTokens})` + `TTS_MODEL` + `AUDIO_TOKENS_PER_SECOND`
+
+### Wiring
+- `packages/api/src/app.ts` — `createTtsRoutes` + middleware postOnly rate-limit + budget
+- `packages/api/src/env.ts` — `TTS_ENABLED`, `GEMINI_API_KEY`, `TTS_DEFAULT_VOICE` (validé via `isTtsVoice`), `TTS_MAX_CHARS` (4500)
+- `packages/api/src/routes/workspace.ts:48-49` — filtre `.tts_audio` + `.attachments` dans buildTree
+- `packages/api/src/routes/chat.ts:690-725` — émet SSE `user_saved`/`assistant_saved` avec vrais IDs DB après insert (fix TTS 'message not found')
+- `packages/web/src/components/chat/chat-stream.tsx` — handler `user_saved`/`assistant_saved` remplace `localId` par ID DB réel
 
 ## Fichiers M5 sensibles (touchés pendant la validation 2026-04-21)
 

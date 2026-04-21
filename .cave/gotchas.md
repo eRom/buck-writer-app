@@ -1,6 +1,24 @@
 # Gotchas — Buck Writer
 
-> MAJ 2026-04-21 (M5 go-live + 6 bugs trouvés pendant validation)
+> MAJ 2026-04-21 (M9 TTS go-live + 3 bugs fixés post-merge)
+
+## M9 — TTS Gemini (session 2026-04-21)
+
+### gemini-3.1-flash-tts-preview rejette `systemInstruction`
+Le client Gemini injectait conditionnellement `config.systemInstruction = prompts.current.tts` pour piloter le style de lecture. Première synthèse réelle → `400 INVALID_ARGUMENT: Developer instruction is not enabled for this model`. Les modèles `-tts` ne supportent pas developer instructions en GA (contrairement à `gemini-3.1-pro` / `flash`).
+**Fix** (commit `17b5e1a`) : retirer `systemPrompt` de `SynthesizeParams` + le wiring `prompts` dans `TtsRoutesDeps`. `workspace/systems/TTS.md` reste live-editable et bootstrappé — juste plus injecté. À ré-activer si Google ouvre le champ.
+
+### Messages chat : `localId` front jamais réconcilié avec ID DB → TTS 404
+Le front `ChatStream` utilisait `localId()` (format `local-N-timestamp`) pour afficher les messages user en optimiste et streamer l'assistant. Le back `routes/chat.ts:finally` insérait avec un `newId()` indépendant sans jamais le renvoyer. Le bouton Play TTS tapait `/api/tts/local-1-...` → `resolveOwnedMessage` SELECT rien → `404 message not found`. Le TTS ne marchait que sur les messages rechargés (switch session ou refresh forçait `fetchMessages` → vrais IDs DB).
+**Fix** (commit `a408892`) : émettre SSE `user_saved { id }` et `assistant_saved { id }` depuis le `finally` après INSERTs. Le front remplace l'ID local via `setMessages(prev => prev.map(m => m.id === localId ? {...m, id: realId} : m))`. Gérer aussi dans `handleApproval` (follow-up turns insèrent un assistant message aussi).
+
+### `.tts_audio` polluait la vue Dossier de travail
+`buildTree` de `routes/workspace.ts` filtrait `.attachments` mais pas `.tts_audio`. Après quelques lectures, la sidebar Workspace affichait un dir `.tts_audio/{userId}/{messageId}_{voice}.wav` avec des dizaines de fichiers incompréhensibles pour l'utilisateur.
+**Fix** (commit `5d9e...`) : ajouter `entry.name === '.tts_audio'` au filtre. Pattern : ajouter tout nouveau cache disk serveur à cette liste dès sa création.
+
+### Worktree merge : rebuild `@buck/shared` obligatoire
+Après `git merge worktree-feat-tts-gemini`, `pnpm install` puis `pnpm typecheck` sur main crashe avec `Module '"@buck/shared"' has no exported member 'isTtsVoice'` / `TTS_MODEL` / `costOfTts` / `AUDIO_TOKENS_PER_SECOND` / `TtsPostResponse`. Le bundle `packages/shared/dist/` est stale — les nouveaux exports existent dans `src/` mais pas dans `dist/`.
+**Fix** : `pnpm --filter @buck/shared build` (tsup rebuild). En dev `pnpm dev` relance le watch tsup qui rebuild auto, mais un typecheck/test run hors `pnpm dev` échoue tant que le dist est pas refait. À documenter dans le README merge-post-worktree.
 
 ## M5 — Memory Supabase (session 2026-04-21)
 
