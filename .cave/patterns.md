@@ -1,6 +1,25 @@
 # Patterns et conventions — Buck Writer
 
-> MAJ 2026-04-19 (M8)
+> MAJ 2026-04-21 (M5 live)
+
+## Pattern config-via-env-var
+
+Quand un seuil ou une constante metier meriterait d'être tuné en prod sans redeploy, l'expose via `env.ts` avec un Zod `coerce.number()/boolean()` et un default sensé. Exemple : `MEMORY_RECALL_THRESHOLD` (default 0.5). Piper depuis le schema → `bootstrapXxx` dans les consommateurs, JAMAIS hardcoder dans le service lui-même.
+
+## Pattern fail-soft sur dep externe
+
+Pour chaque dep externe critique (Supabase, Edge Functions, MCP remote), le chat DOIT continuer à tourner même si la dep est down. Pattern :
+1. `AbortSignal.timeout(timeoutMs)` sur chaque req (typical 1500ms).
+2. `try/catch` autour du call.
+3. Fallback local (buffer retry, empty result, `degraded: true` dans le context).
+4. SSE event dédié pour le UI (`memory_status { degraded: true }`) → badge UI via zustand store.
+5. Jamais `throw` qui remonterait à Hono et casserait le stream.
+
+## Pattern container env en Docker Compose
+
+Pour éviter le piège `${VAR}` qui se résout en blank : préférer `env_file:` au lieu de `environment: KEY: ${KEY}`. Seule exception : les vars dérivées avec `:-default` ou les vars runtime-only.
+
+
 
 ## Architecture
 

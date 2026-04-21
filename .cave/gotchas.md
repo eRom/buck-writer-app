@@ -1,6 +1,50 @@
 # Gotchas — Buck Writer
 
-> MAJ 2026-04-19 (M8)
+> MAJ 2026-04-21 (M5 go-live + 6 bugs trouvés pendant validation)
+
+## M5 — Memory Supabase (session 2026-04-21)
+
+### Auth silent-drop quand whitelisted email absent de la DB
+`routes/auth.ts:62-68` retournait un `{sent:true}` factice si l'email était dans `AUTH_ALLOWED_EMAILS` mais pas dans la table `users` (cas "seed missed?"). Le seed auto ne re-tourne qu'au premier boot (`userCount === 0`), donc ajouter un email à l'env après coup ne débloquait rien : magic-link jamais envoyé, zéro log d'erreur, 30 min de debug gaspillées.
+**Fix** (commit `5a48176`) : auto-provision — INSERT la row `users` à la volée si whitelist hit + DB miss, log audit (UUID only, jamais l'email pour ne pas leaker la whitelist). La sécurité reste identique : le whitelist check est avant, un email inconnu sort toujours en 200 factice.
+
+### PUBLIC_BASE_URL dev désaligné avec port Vite → CSRF 403 muet
+`csrfMiddleware` compare `Origin` request vs `PUBLIC_BASE_URL`. En dev avec Vite :5173 proxy → API :3000, le browser envoie `Origin: http://localhost:5173` mais `.env.development` avait `PUBLIC_BASE_URL=http://localhost:3000`. Toutes les mutations POST partaient en 403 silencieux, l'UI rendait les prompts user optimistiquement → `getByText(X)` dans un test E2E matchait la prompt elle-même → **faux-vert total**, remember/recall jamais exercés.
+**Fix** (commit `cac5920`) : `PUBLIC_BASE_URL=http://localhost:5173` dans `.env.development`. Vite prend :5173 en premier choix, mais si un zombie occupe le port, Vite fallback :5174/5175 et le matching casse. Si l'E2E reprend à planter, `lsof -nP -i TCP:5173 -sTCP:LISTEN` pour repérer le zombie.
+
+### Recall threshold 0.7 trop strict pour text-embedding-3-large FR
+Mesure empirique : cosine similarity entre `"Quel est mon langage préféré ?"` et `"Le langage préféré de Philippe est X"` atteint ~0.65 (sous le 0.7 hardcodé dans `match_memories`). Recall retournait [] malgré rows en DB. Plafond observé entre 2 memories très proches : 0.73.
+**Fix** (commit `cac5920`) : `MEMORY_RECALL_THRESHOLD` env var (0..1, default 0.5). Raise en prod si Buck surface des memories off-topic, baisser à 0.3 si legitimate recalls miss.
+
+### `insertUsageEvent` oubliait `kind` → memory events tagués `chat`
+`packages/api/src/index.ts#insertUsageEvent` construisait l'INSERT sans copier `r.kind`. Tous les embedding calls (remember/recall + Edge usageSync) landaient en `usage_events` avec default `kind='chat'`. `/api/usage/current` retournait `byKind: { chat: X + MEMORY, realtime: Y }` — mélange silencieux des coûts mémoire dans le budget chat.
+**Fix** (commit `01cfcfd`) : ajouter `kind: r.kind`. Query pour vérifier : `SELECT DISTINCT kind FROM usage_events;` doit inclure `memory_embedding`.
+
+### `byKind.memory` absent de `UsageResponse` + UI
+Le endpoint retournait `byKind: { chat, realtime }` seulement. Le shared schema `UsageResponse` n'avait pas `byKind` du tout (strip côté frontend). UI Settings ne montrait que le total.
+**Fix** (commit `01cfcfd`) : extend `UsageResponse` avec `byKind: { chat, realtime, memory }`, summing des 4 memory kinds côté backend, 3 petites lignes sous la barre budget dans `budget-section.tsx`. Memory près de $0.00 sur les 1-2 premiers remember (~2e-6 USD chacun), mais la ligne doit exister.
+
+### `env_file` manquant sur bible-mcp + writing-tools-mcp (deploy prod)
+`vps/compose.yml` déclarait `OPENAI_API_KEY: ${OPENAI_API_KEY}` et `MCP_SHARED_SECRET: ${MCP_SHARED_SECRET:-}` via `environment:`. Docker Compose ne substitue `${VAR}` que depuis son propre shell (pas depuis un env_file d'un autre service). `deploy.sh` fait `docker compose up -d` sans sourcer `.env.production` → warning visible `"OPENAI_API_KEY variable is not set. Defaulting to a blank string"`. Résultat : bible-mcp boot **sans clé OpenAI** → embeddings bible cassées en prod. Silencieux jusqu'au 1er appel MCP.
+**Fix** (commit `77f747a`) : `env_file: ../.env` sur bible-mcp ET writing-tools-mcp (même path que buck-app). Path relatif au compose.yml (dans `vps/`) → remonte à `/opt/buck-writer-app/.env` côté VPS.
+
+### Conflit container_name au re-deploy
+Après un rename/move du project compose (`/opt/buck-writer-app/` → `/opt/buck-writer-app/vps/`), les anciens containers nommés `buck-*` survivent au nouveau projet. `docker compose up -d` tape un `Conflict. The container name is already in use`.
+**Remède** : `docker rm -f buck-writing-tools-mcp buck-bible-mcp buck-bible-ui buck-app` sur le VPS, puis re-run deploy.
+
+### UX 1er call cold-start : "Responses API error"
+Après deploy ou container restart, **premier** POST `/api/chat` affiche un toast `Responses API error`. Retenter le même message immédiatement → OK. Hypothèse : OpenAI Responses fait un `tools/list` fetch sur les MCP remote au premier call ; writing-tools-mcp boot lourd (~3 GB torch/transformers/spacy) → tool list enum timeout → `external_connector_error`. 2e call : containers chauds + cache OpenAI → OK.
+Non tracé serveur (le `catch` dans `chat.ts:584` n'a pas de `console.warn`, l'erreur part seulement au client via SSE). À instrumenter si l'occurrence se répète. Fix UX possible : warmup ping MCP au boot buck-app, ou retry silencieux côté web au premier `Responses API error`.
+
+### Edge Functions 500 sur path complet
+`consolidate-memory` retourne 200 "skipped: only N episodes" tant que <3 episodes (OK). Avec ≥3 episodes injectés, 500 → path LLM ou upsert. `compact-state` retourne 500 sur payload bien formé. Pas tracé (pas de try/catch + console.error dans le code Deno). Non-bloquant (pg_cron retry nightly et fail-soft sur crash), mais à fixer pour débloquer la consolidation réelle.
+
+### MCP remote désactivés en DB dev locale (workaround dev)
+`bible` et `writing-tools` dans `mcp_servers` ont `url: http://bible-mcp:7801/mcp` / `http://writing-tools-mcp:7802/mcp` — resolvables dans le Docker compose prod mais pas depuis OpenAI en dev. Quand OpenAI fait tools/list → 400 Bad Request → Buck stream plante avec `Responses API error`. En dev local, set `enabled=0` en DB :
+```sql
+UPDATE mcp_servers SET enabled=0 WHERE name IN ('bible','writing-tools');
+```
+Le seed ne re-force pas `enabled` (ON CONFLICT DO UPDATE SET config_json, core — pas enabled). Pour retester bible en local : ngrok tunnel + override `MCP_BIBLE_URL` vers l'URL ngrok, ou pointer vers la prod publique.
 
 ## M8 — OpenAI Realtime WebRTC
 

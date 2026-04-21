@@ -1,6 +1,20 @@
 # Fichiers clés — Buck Writer
 
-> MAJ 2026-04-19 (M8)
+> MAJ 2026-04-21 (M5 go-live)
+
+## Fichiers M5 sensibles (touchés pendant la validation 2026-04-21)
+
+- `packages/api/src/env.ts` — ajout `MEMORY_RECALL_THRESHOLD` (0..1, default 0.5).
+- `packages/api/src/services/memory/bootstrap.ts` — threshold lit depuis `env.MEMORY_RECALL_THRESHOLD` au lieu d'être hardcodé.
+- `packages/api/src/routes/auth.ts` — auto-provision user row quand whitelist hit + DB miss.
+- `packages/api/src/routes/usage.ts` — `byKind.memory` somme les 4 kinds memory.
+- `packages/api/src/index.ts#insertUsageEvent` — propage `kind` (bug fix).
+- `packages/shared/src/schemas/settings.ts` — `UsageResponse.byKind` (chat/realtime/memory).
+- `packages/web/src/components/settings/budget-section.tsx` — 3 lignes sous la barre budget.
+- `packages/web/tests/e2e/memory.spec.ts` — refactor selectors sémantiques + URL assert post-click "Nouvelle session".
+- `.env.development` — `PUBLIC_BASE_URL=http://localhost:5173` (align Vite port).
+- `vps/compose.yml` — `env_file: ../.env` ajouté sur bible-mcp + writing-tools-mcp.
+- `docs/superpowers/plans/m5-go-no-go.md` — validation complète + gaps tracés.
 
 ## API (packages/api/src/)
 

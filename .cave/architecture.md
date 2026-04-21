@@ -1,6 +1,6 @@
 # Architecture — Buck Writer
 
-> MAJ 2026-04-19 (M8 — mode Live vocal)
+> MAJ 2026-04-21 (M5 live en prod + smoke test validé)
 
 ## Vue d'ensemble
 
@@ -93,6 +93,9 @@ SSE events : `content`, `mcp_call_started/done/error`, `mcp_approval`, `tool_app
 - SSE event `memory_status {degraded:true}` avant premier token si fail-soft.
 - Cost dual : embeddings Node → `usage_events` SQLite ; Edge → `buck_memory_usage` rapatriée 6h par `syncMemoryUsage()`.
 - Feature flag `MEMORY_ENABLED` — rollback instant.
+- Threshold `MEMORY_RECALL_THRESHOLD` (0..1, default 0.5) — configure le floor cosine pour `match_memories`. 0.7 était trop strict pour text-embedding-3-large en FR.
+- Rollout prod 2026-04-21 : round-trip `remember` → `recall` en nouvelle session validé. 2 rows `buck_memories` créées sur smoke test (user `3c2245f3-...`).
+- Ventilation coûts dans Settings : `byKind.memory` = somme 4 kinds (memory_embedding / memory_consolidation / memory_compaction / memory_dedup). Ligne UI dans `budget-section.tsx`.
 
 ## Production
 
