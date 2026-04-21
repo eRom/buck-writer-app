@@ -32,12 +32,19 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - run: |
+          # generic.nginx.security.missing-internal.missing-internal : false positive.
+          # Notre proxy_pass dans bible-ui/nginx.conf est un reverse-proxy public
+          # front-facing, pas un X-Accel-Redirect target. "internal" casserait le
+          # routage /mcp. Justification documentee inline dans nginx.conf.
+          # Les `# nosemgrep` inline ne sont pas honores sur les fichiers nginx (mode
+          # generic), d'ou l'exclusion au niveau workflow.
           semgrep scan \
             --config p/typescript \
             --config p/nodejs \
             --config p/security-audit \
             --config p/jwt \
             --config p/sql-injection \
+            --exclude-rule generic.nginx.security.missing-internal.missing-internal \
             --error \
             packages/
 
