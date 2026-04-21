@@ -1,4 +1,4 @@
-import { describe, it, expect, vi } from 'vitest';
+import { describe, it, expect } from 'vitest';
 import { synthesize } from './gemini-client.js';
 import { HttpError } from '../../utils/http-error.js';
 import type { GoogleGenAI } from '@google/genai';
@@ -148,34 +148,4 @@ describe('synthesize', () => {
     ).rejects.toMatchObject({ code: 'TTS_NO_AUDIO', status: 502 });
   });
 
-  it('passes systemInstruction when systemPrompt is provided', async () => {
-    const spy = vi.fn(async () =>
-      fakeSuccessResponse(pcmBase64(100)),
-    );
-    const genAI = makeMockGenAI(spy);
-    await synthesize(
-      { apiKey: 'k', text: 'hi', voice: 'Kore', systemPrompt: 'Be calm.' },
-      { genAI },
-    );
-    expect(spy).toHaveBeenCalledTimes(1);
-    const arg = spy.mock.calls[0][0] as {
-      config: { systemInstruction?: string };
-    };
-    expect(arg.config.systemInstruction).toBe('Be calm.');
-  });
-
-  it('omits systemInstruction when not provided', async () => {
-    const spy = vi.fn(async () =>
-      fakeSuccessResponse(pcmBase64(100)),
-    );
-    const genAI = makeMockGenAI(spy);
-    await synthesize(
-      { apiKey: 'k', text: 'hi', voice: 'Kore' },
-      { genAI },
-    );
-    const arg = spy.mock.calls[0][0] as {
-      config: { systemInstruction?: string };
-    };
-    expect(arg.config.systemInstruction).toBeUndefined();
-  });
 });

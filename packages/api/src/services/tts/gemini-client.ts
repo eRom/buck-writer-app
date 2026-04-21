@@ -15,7 +15,6 @@ export interface SynthesizeParams {
   apiKey: string;
   text: string;
   voice: string;
-  systemPrompt?: string;
 }
 
 export interface SynthesisResult {
@@ -76,9 +75,6 @@ export async function synthesize(
         model: TTS_MODEL,
         contents: [{ parts: [{ text: params.text }] }],
         config: {
-          ...(params.systemPrompt
-            ? { systemInstruction: params.systemPrompt }
-            : {}),
           responseModalities: ['AUDIO'],
           speechConfig: {
             voiceConfig: {

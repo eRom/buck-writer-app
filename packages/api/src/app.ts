@@ -261,7 +261,6 @@ export function buildApp(deps: AppDeps) {
         geminiApiKey: deps.geminiApiKey,
         defaultVoice: deps.ttsDefaultVoice ?? 'Kore',
         maxChars: deps.ttsMaxChars ?? 4500,
-        prompts: deps.prompts,
         nowMs: deps.nowMs,
       }),
     );

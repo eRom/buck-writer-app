@@ -22,7 +22,6 @@ import { assertSafePath } from '../utils/path-safe.js';
 import { messageToPlaintext } from '../services/tts/plaintext.js';
 import { synthesize } from '../services/tts/gemini-client.js';
 import type { SynthesizeDeps } from '../services/tts/gemini-client.js';
-import type { PromptsRef } from '../services/prompts.js';
 
 export interface TtsRoutesDeps {
   db: DbHandles;
@@ -30,7 +29,6 @@ export interface TtsRoutesDeps {
   geminiApiKey: string;
   defaultVoice: string;
   maxChars: number;
-  prompts?: PromptsRef;
   nowMs?: () => number;
   synthesizeDeps?: SynthesizeDeps;
 }
@@ -162,7 +160,6 @@ export function createTtsRoutes(
         apiKey: deps.geminiApiKey,
         text,
         voice,
-        systemPrompt: deps.prompts?.current.tts || undefined,
       },
       deps.synthesizeDeps,
     );

@@ -155,7 +155,6 @@ async function makeCtx(
       geminiApiKey: 'test-key',
       defaultVoice: 'Kore',
       maxChars: options.ttsMaxChars ?? 4500,
-      prompts: { current: { system: '', tools: '', rules: '', live: '', tts: 'Style guide' } },
       synthesizeDeps,
     }),
   );
@@ -406,21 +405,6 @@ describe('POST /api/tts/:messageId', () => {
     expect(res.status).toBe(422);
     const body = (await res.json()) as { error: { code: string } };
     expect(body.error.code).toBe('empty_text');
-  });
-
-  it('passes TTS system prompt to Gemini when provided', async () => {
-    const ctx = await makeCtx();
-    const msgId = ctx.insertMessage('assistant', 'Salut.');
-
-    await ctx.app.request(`/${msgId}`, {
-      method: 'POST',
-      body: JSON.stringify({}),
-      headers: authHeaders(ctx.token, ctx.csrfToken),
-    });
-    const callArg = ctx.generateContent.mock.calls[0]?.[0] as {
-      config: { systemInstruction?: string };
-    };
-    expect(callArg.config.systemInstruction).toBe('Style guide');
   });
 
   it('rejects messageId with invalid characters (path traversal defense)', async () => {
