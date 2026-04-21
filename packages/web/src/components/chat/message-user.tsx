@@ -1,13 +1,17 @@
 import { useState } from 'react';
 import { Copy, Check } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import { MessageTtsButton } from './message-tts-button';
+import { useFeatures } from '@/hooks/use-features';
 
 interface Props {
   content: string;
+  messageId?: string;
 }
 
-export function MessageUser({ content }: Props) {
+export function MessageUser({ content, messageId }: Props) {
   const [copied, setCopied] = useState(false);
+  const features = useFeatures();
   async function onCopy() {
     await navigator.clipboard.writeText(content);
     setCopied(true);
@@ -18,15 +22,18 @@ export function MessageUser({ content }: Props) {
       <div className="max-w-[70%] whitespace-pre-wrap rounded-2xl border border-border bg-secondary px-3.5 py-2 text-sm text-secondary-foreground">
         {content}
       </div>
-      <button
-        onClick={onCopy}
-        aria-label="Copier"
-        className={cn(
-          'hover-elevate rounded-md p-1 text-muted-foreground opacity-0 transition-opacity group-hover:opacity-100',
-        )}
-      >
-        {copied ? <Check className="size-3" /> : <Copy className="size-3" />}
-      </button>
+      <div className="flex items-center gap-0.5">
+        <button
+          onClick={onCopy}
+          aria-label="Copier"
+          className={cn(
+            'hover-elevate rounded-md p-1 text-muted-foreground opacity-0 transition-opacity group-hover:opacity-100',
+          )}
+        >
+          {copied ? <Check className="size-3" /> : <Copy className="size-3" />}
+        </button>
+        {features.tts && messageId && <MessageTtsButton messageId={messageId} />}
+      </div>
     </div>
   );
 }

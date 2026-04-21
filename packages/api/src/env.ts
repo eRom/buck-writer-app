@@ -46,6 +46,11 @@ const Schema = z.object({
    * scoped to the current host only (default browser behaviour).
    */
   COOKIE_DOMAIN: z.string().min(1).optional(),
+  // M9 TTS (Gemini)
+  GEMINI_API_KEY: z.string().min(1).optional(),
+  TTS_ENABLED: z.coerce.boolean().default(false),
+  TTS_DEFAULT_VOICE: z.string().default('Kore'),
+  TTS_MAX_CHARS: z.coerce.number().int().positive().default(4500),
 });
 
 export type Env = z.infer<typeof Schema>;

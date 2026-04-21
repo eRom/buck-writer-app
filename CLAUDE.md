@@ -90,6 +90,7 @@ Voir `.env.example`. Variables critiques :
 - `BIBLE_DB_PATH`, `BIBLE_HTTP_PORT`, `OPENAI_EMBEDDING_MODEL` (M4+, bible-mcp)
 - `E2E=1` active le mode e2e (token file au lieu d'email)
 - `REALTIME_ENABLED=1` active le mode Live vocal (M8)
+- `GEMINI_API_KEY` + `TTS_ENABLED=1` activent la synthèse vocale Gemini (M9)
 
 ## Milestones
 
@@ -98,6 +99,7 @@ Voir `.env.example`. Variables critiques :
 - **M4** — MCP Bible integration + prompts live-editable (terminé 2026-04-18)
 - **M5** — Memory layer Supabase : `buck_memories` (vector search), `buck_state` (KV), tools `recall`/`remember`, Edge Functions consolidation+compaction, pg_cron nightly. Flag `MEMORY_ENABLED`.
 - **M8** — Mode Live vocal OpenAI Realtime (`gpt-realtime-1.5`) : WebRTC direct browser↔OpenAI, notch waveform top-center, 10 voix (défaut `coral`), VAD 3 sliders, bouton mic chat + raccourci `Cmd+Shift+L`, MCP Bible/writing-tools + web_search, transcripts persistés (`messages.source='voice'`), budget séparé (`usage_events.kind='realtime'`), silence timeout 30s (10-60 paramétrable), max 25 min. Flag `REALTIME_ENABLED`. Prompt `workspace/systems/LIVE.md` live-editable.
+- **M9** — TTS Gemini sur chaque message (`gemini-3.1-flash-tts-preview`) : bouton Play/Pause à côté du bouton Copier sur user+assistant, 30 voix (défaut `Kore`), cache serveur par `(messageId, voice)` dans `tts_audio_cache` + `.tts_audio/{userId}/{messageId}_{voice}.wav`, PCM 24kHz wrappé WAV, budget séparé (`usage_events.kind='tts'`), rate-limit 10/min/user, hard cap `TTS_MAX_CHARS=4500`, singleton audio côté front (un seul message lu à la fois), retry 1× sur 500 transitoire. Flags `TTS_ENABLED` + `GEMINI_API_KEY`. Prompt `workspace/systems/TTS.md` live-editable.
 
 Specs et plans dans `docs/superpowers/specs/` et `docs/superpowers/plans/`.
 

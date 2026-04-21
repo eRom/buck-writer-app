@@ -25,6 +25,7 @@ import { createAttachmentRoutes } from './routes/attachments.js';
 import { createWebDAVRoutes } from './services/webdav.js';
 import type { PromptsRef } from './services/prompts.js';
 import { createRealtimeRoute } from './routes/realtime.js';
+import { createTtsRoutes } from './routes/tts.js';
 import type { UsageTracker } from './services/realtime/usage-tracker.js';
 import type { mintRealtimeClientSecret } from './lib/realtime.js';
 import { authGuard } from './middleware/auth.js';
@@ -86,6 +87,23 @@ export interface AppDeps extends AuthRoutesDeps, SessionRoutesDeps {
    * AuthRoutesDeps.cookieDomain for details.
    */
   cookieDomain?: string;
+  /**
+   * Whether TTS (Gemini) is feature-enabled. Effective activation additionally
+   * requires geminiApiKey to be non-empty. Set via TTS_ENABLED.
+   */
+  ttsEnabled?: boolean;
+  /**
+   * Default voice name when the user has not picked one in settings.
+   */
+  ttsDefaultVoice?: string;
+  /**
+   * Hard cap on message length (characters) accepted by /api/tts/:messageId.
+   */
+  ttsMaxChars?: number;
+  /**
+   * Gemini API key used by the TTS route.
+   */
+  geminiApiKey?: string;
 }
 
 // Re-export ChatRouteDeps for consumers
@@ -116,7 +134,13 @@ export function buildApp(deps: AppDeps) {
           404,
         );
       }
-      return c.json({ userId: user.id, email: user.email });
+      return c.json({
+        userId: user.id,
+        email: user.email,
+        features: {
+          tts: Boolean(deps.ttsEnabled && deps.geminiApiKey),
+        },
+      });
     },
   );
 
@@ -199,6 +223,42 @@ export function buildApp(deps: AppDeps) {
       featureFlag: deps.realtimeEnabled ?? false,
       mintFn: deps.mintFn,
     }));
+  }
+
+  // TTS routes (protected, only if enabled + API key + workspace + prompts)
+  if (
+    deps.ttsEnabled &&
+    deps.geminiApiKey &&
+    deps.workspaceDir &&
+    deps.prompts
+  ) {
+    app.use(
+      '/api/tts/*',
+      authGuard({ db: deps.db, jwt: deps.jwt, nowMs: deps.nowMs }),
+    );
+    // Rate-limit: 10 POSTs/min per authenticated user on the synthesis endpoint
+    app.use(
+      '/api/tts/:messageId',
+      createRateLimiter({
+        windowMs: 60_000,
+        max: 10,
+        keyBy: (c) => c.get('userId') ?? ipKey(c),
+      }),
+    );
+    // Budget guard applies only to synthesis (POST), not to GET /audio serving
+    app.use('/api/tts/:messageId', budgetGuard({ db: deps.db, nowMs: deps.nowMs }));
+    app.route(
+      '/api/tts',
+      createTtsRoutes({
+        db: deps.db,
+        workspaceDir: deps.workspaceDir,
+        geminiApiKey: deps.geminiApiKey,
+        defaultVoice: deps.ttsDefaultVoice ?? 'Kore',
+        maxChars: deps.ttsMaxChars ?? 4500,
+        prompts: deps.prompts,
+        nowMs: deps.nowMs,
+      }),
+    );
   }
 
   // Settings routes (protected)

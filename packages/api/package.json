@@ -18,6 +18,7 @@
   },
   "dependencies": {
     "@buck/shared": "workspace:*",
+    "@google/genai": "^1.50.1",
     "@hono/node-server": "^1.13.5",
     "@modelcontextprotocol/sdk": "^1.28.0",
     "@supabase/supabase-js": "^2.103.3",

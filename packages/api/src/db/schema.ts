@@ -209,6 +209,7 @@ export const userSettings = sqliteTable('user_settings', {
     .default('{"webSearch":false}'),
   vectorStoreId: text('vector_store_id'),
   vectorStoreLastSyncAt: integer('vector_store_last_sync_at', { mode: 'timestamp_ms' }),
+  ttsDefaultVoice: text('tts_default_voice'),
 });
 
 // ---------- workspace vector files (M8A file_search) ----------
@@ -271,6 +272,32 @@ export const todos = sqliteTable(
   },
   (t) => ({
     userIdx: index('todos_user_idx').on(t.userId, t.createdAt),
+  }),
+);
+
+// ---------- tts audio cache (M9 Gemini TTS) ----------
+
+export const ttsAudioCache = sqliteTable(
+  'tts_audio_cache',
+  {
+    id: text('id').primaryKey(),
+    messageId: text('message_id')
+      .notNull()
+      .references(() => messages.id, { onDelete: 'cascade' }),
+    userId: text('user_id')
+      .notNull()
+      .references(() => users.id, { onDelete: 'cascade' }),
+    voice: text('voice').notNull(),
+    model: text('model').notNull(),
+    audioPath: text('audio_path').notNull(),
+    mimeType: text('mime_type').notNull().default('audio/wav'),
+    sizeBytes: integer('size_bytes').notNull(),
+    durationSec: real('duration_sec'),
+    createdAt: integer('created_at').notNull(),
+  },
+  (t) => ({
+    uniqMsgVoice: uniqueIndex('tts_unique_msg_voice').on(t.messageId, t.voice),
+    byUser: index('tts_by_user').on(t.userId),
   }),
 );
 

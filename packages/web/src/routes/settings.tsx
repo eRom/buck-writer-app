@@ -5,6 +5,7 @@ import { AccountSection } from '@/components/settings/account-section';
 import { GeneralSection } from '@/components/settings/general-section';
 import { BudgetSection } from '@/components/settings/budget-section';
 import { AudioLiveSection } from '@/components/settings/audio-live-section';
+import { TtsSection } from '@/components/settings/tts-section';
 
 export const Route = createFileRoute('/settings')({
   beforeLoad: async () => {
@@ -34,6 +35,7 @@ function SettingsPage() {
         <GeneralSection />
         <BudgetSection />
         <AudioLiveSection />
+        <TtsSection />
       </main>
     </div>
   );

@@ -1,6 +1,9 @@
 import { z } from 'zod';
 import { MODELS } from './chat.js';
 import { REALTIME_VOICES } from '../voice/voices.js';
+import { TTS_VOICES } from '../tts/voices.js';
+
+const TTS_VOICE_NAMES = TTS_VOICES.map((v) => v.name) as [string, ...string[]];
 
 const TurnDetection = z.object({
   mode: z.enum(['server_vad', 'semantic_vad']),
@@ -33,6 +36,7 @@ export const UpdateSettingsInput = z.object({
   realtimeSilenceTimeoutSec: z.number().int().min(10).max(60).optional(),
   realtimeTools: RealtimeTools.optional(),
   chatTools: ChatTools.optional(),
+  ttsDefaultVoice: z.enum(TTS_VOICE_NAMES).optional(),
 });
 export type UpdateSettingsInput = z.infer<typeof UpdateSettingsInput>;
 
@@ -50,6 +54,7 @@ export const SettingsResponse = z.object({
   chatTools: ChatTools,
   vectorStoreId: z.string().nullable(),
   vectorStoreLastSyncAt: z.number().nullable(),
+  ttsDefaultVoice: z.string().nullable(),
 });
 export type SettingsResponse = z.infer<typeof SettingsResponse>;
 

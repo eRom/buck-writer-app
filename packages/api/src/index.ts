@@ -225,6 +225,10 @@ const app = buildApp({
   cookieDomain: env.COOKIE_DOMAIN,
   realtimeEnabled: process.env.REALTIME_ENABLED === '1',
   usageTracker,
+  ttsEnabled: env.TTS_ENABLED,
+  ttsDefaultVoice: env.TTS_DEFAULT_VOICE,
+  ttsMaxChars: env.TTS_MAX_CHARS,
+  geminiApiKey: env.GEMINI_API_KEY,
 });
 
 serve({ fetch: app.fetch, port: env.PORT, hostname: '0.0.0.0' }, (info) => {
