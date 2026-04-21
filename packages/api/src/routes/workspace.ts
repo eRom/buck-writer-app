@@ -44,8 +44,8 @@ async function buildTree(
 
   const result: FileEntry[] = [];
   for (const entry of entries) {
-    // Exclude .attachments directory
-    if (entry.name === '.attachments') continue;
+    // Hidden directories the user should never see from the workspace tree.
+    if (entry.name === '.attachments' || entry.name === '.tts_audio') continue;
 
     const entryPath = path.join(dirPath, entry.name);
     const rel = path.relative(relativeTo, entryPath);
