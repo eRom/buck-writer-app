@@ -30,7 +30,7 @@ Référence : `docs/superpowers/plans/2026-04-18-m5-memory.md` — Task 23.
 
 ## Rollout
 
-- [ ] Bump `MEMORY_ENABLED=true` commité, image Docker déployée, vérif en prod.
+- [x] Bump `MEMORY_ENABLED=true` commité, image Docker déployée, vérif en prod (2026-04-21 ~12:18 CEST). Smoke test sur buck.romain-ecarnot.com : session A `Souviens-toi que mon projet s'appelle Buck Writer...` → Buck confirme + 2 rows `buck_memories` créées (user `3c2245f3-...`, memory_type `semantic`, importance 0.9). Session B nouvelle : `Quel est le deadline...` → Buck rappelle correctement « fin juin 2026 ».
 
 ## Bugs fixes M5 (découverts pendant validation 2026-04-21)
 
@@ -44,3 +44,4 @@ Référence : `docs/superpowers/plans/2026-04-18-m5-memory.md` — Task 23.
 
 - Edge `consolidate-memory` et `compact-state` : 500 sur path complet. À logger + fixer (ajouter try/catch + `console.error` dans le code Deno, redéployer).
 - MCP remote (`bible`, `writing-tools`) désactivés en DB locale dev (OpenAI ne peut pas joindre `localhost:*`). À réactiver pour dev avec ngrok / tunnel public si besoin tester.
+- **UX 1er call cold-start** : après un deploy ou container restart, le **premier** POST `/api/chat` affiche un toast `Responses API error` côté web. Re-tenter le même message passe immédiatement. Hypothèse : OpenAI Responses fait un `tools/list` sur les MCP remote (bible-mcp, writing-tools-mcp) au premier appel ; un des deux met >N secondes à répondre cold (writing-tools-mcp charge ~3 GB torch/transformers/spacy), OpenAI timeout → `external_connector_error` → stream `event: error` → Buck re-throw. 2e call : containers chauds, list cachée côté OpenAI, OK. Non-bloquant (le 2e essai marche toujours), mais UX pénible. Fix possible : warmup ping des MCP au boot `buck-app`, ou retry silencieux côté web au premier `Responses API error`. Pas tracé serveur pour l'instant (le catch dans `chat.ts:584` envoie l'erreur au client via SSE sans `console.warn`) — à instrumenter si l'occurrence se répète.
