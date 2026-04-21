@@ -693,10 +693,11 @@ export function createChatRoute(
             : [...typedUserMessages].reverse().find((m) => m.role === 'user');
 
           if (lastUserMessage) {
+            const userMsgId = newId();
             deps.db.db
               .insert(messages)
               .values({
-                id: newId(),
+                id: userMsgId,
                 sessionId: finalSessionId,
                 role: 'user',
                 contentJson: JSON.stringify({ text: lastUserMessage.content }),
@@ -704,12 +705,14 @@ export function createChatRoute(
                 createdAt: finishTs - 1,
               })
               .run();
+            sendEvent('user_saved', { id: userMsgId });
           }
 
+          const assistantMsgId = newId();
           deps.db.db
             .insert(messages)
             .values({
-              id: newId(),
+              id: assistantMsgId,
               sessionId: finalSessionId,
               role: 'assistant',
               contentJson: JSON.stringify({ text: accumulatedText }),
@@ -721,6 +724,7 @@ export function createChatRoute(
               createdAt: finishTs,
             })
             .run();
+          sendEvent('assistant_saved', { id: assistantMsgId });
 
           const costUsd = costOf(
             resolvedModel,

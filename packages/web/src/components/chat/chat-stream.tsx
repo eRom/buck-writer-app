@@ -236,6 +236,7 @@ export function ChatStream({ sessionId, onSessionCreated }: ChatStreamProps) {
     setInput('');
 
     const userMsg: ChatMessage = { id: localId(), role: 'user', content: userText };
+    const userMsgLocalId = userMsg.id;
     setMessages((prev) => [...prev, userMsg]);
 
     const allMessages = [...messages, userMsg].map((m) => ({ role: m.role, content: m.content }));
@@ -339,6 +340,16 @@ export function ChatStream({ sessionId, onSessionCreated }: ChatStreamProps) {
             const current = accumulated;
             setMessages((prev) =>
               prev.map((m) => (m.id === assistantId ? { ...m, content: current } : m)),
+            );
+          } else if (event === 'user_saved' && typeof parsed.id === 'string') {
+            const realId = parsed.id;
+            setMessages((prev) =>
+              prev.map((m) => (m.id === userMsgLocalId ? { ...m, id: realId } : m)),
+            );
+          } else if (event === 'assistant_saved' && typeof parsed.id === 'string') {
+            const realId = parsed.id;
+            setMessages((prev) =>
+              prev.map((m) => (m.id === assistantId ? { ...m, id: realId } : m)),
             );
           } else if (event === 'memory_status') {
             useMemoryStatus.getState().setDegraded(Boolean(parsed.degraded));
@@ -496,6 +507,11 @@ export function ChatStream({ sessionId, onSessionCreated }: ChatStreamProps) {
               const current = accumulated;
               setMessages((prev) =>
                 prev.map((m) => (m.id === assistantId ? { ...m, content: current } : m)),
+              );
+            } else if (event === 'assistant_saved' && typeof parsed.id === 'string') {
+              const realId = parsed.id;
+              setMessages((prev) =>
+                prev.map((m) => (m.id === assistantId ? { ...m, id: realId } : m)),
               );
             } else if (event === 'memory_status') {
               useMemoryStatus.getState().setDegraded(Boolean(parsed.degraded));
