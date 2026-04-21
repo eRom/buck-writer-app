@@ -102,6 +102,20 @@ export function BudgetSection() {
           <span>80%</span>
           <span>100%</span>
         </div>
+        <div className="mt-3 grid grid-cols-3 gap-2 text-xs">
+          <div className="flex items-baseline gap-1.5">
+            <span className="text-muted-foreground">Chat</span>
+            <span className="font-mono">${usage.byKind.chat.toFixed(2)}</span>
+          </div>
+          <div className="flex items-baseline gap-1.5">
+            <span className="text-muted-foreground">Live</span>
+            <span className="font-mono">${usage.byKind.realtime.toFixed(2)}</span>
+          </div>
+          <div className="flex items-baseline gap-1.5">
+            <span className="text-muted-foreground">Mémoire</span>
+            <span className="font-mono">${usage.byKind.memory.toFixed(2)}</span>
+          </div>
+        </div>
       </div>
 
       <div className="mt-6 space-y-4 border-t border-border pt-6">

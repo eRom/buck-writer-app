@@ -179,6 +179,7 @@ const memory = bootstrapMemory({
         audioInputSeconds: 0,
         audioOutputSeconds: 0,
         costUsd: r.costUsd,
+        kind: r.kind,
       })
       .run();
   },

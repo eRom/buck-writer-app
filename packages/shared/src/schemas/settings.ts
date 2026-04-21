@@ -65,5 +65,10 @@ export const UsageResponse = z.object({
     percent: z.number(),
     triggeredAt: z.number().nullable(),
   })),
+  byKind: z.object({
+    chat: z.number(),
+    realtime: z.number(),
+    memory: z.number(),
+  }),
 });
 export type UsageResponse = z.infer<typeof UsageResponse>;
