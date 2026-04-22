@@ -3,6 +3,7 @@ import { useState } from 'react';
 import { Folder, RefreshCw } from 'lucide-react';
 import { fetchWorkspaceTree } from '@/lib/workspace';
 import { FileTree } from '@/components/workspace/file-tree';
+import { FilePreviewModal } from '@/components/workspace/file-preview-modal';
 import type { FileEntry } from '@buck/shared';
 
 export function CardWorkspace() {
@@ -11,7 +12,7 @@ export function CardWorkspace() {
     queryKey: ['workspace-tree'],
     queryFn: fetchWorkspaceTree,
   });
-  const [selected, setSelected] = useState<FileEntry | null>(null);
+  const [previewPath, setPreviewPath] = useState<string | null>(null);
 
   return (
     <section className="rounded-lg border border-card-border bg-card p-3">
@@ -32,14 +33,15 @@ export function CardWorkspace() {
         {isLoading ? (
           <p className="p-2 text-xs text-muted-foreground">Chargement...</p>
         ) : (
-          <FileTree entries={data?.tree ?? []} onSelect={setSelected} />
-        )}
-        {selected && (
-          <div className="mt-1 truncate border-t border-border px-1 pt-1 font-mono text-[10px] text-muted-foreground">
-            {selected.path}
-          </div>
+          <FileTree
+            entries={data?.tree ?? []}
+            onSelect={(entry: FileEntry) => {
+              if (entry.type === 'file') setPreviewPath(entry.path);
+            }}
+          />
         )}
       </div>
+      <FilePreviewModal path={previewPath} onClose={() => setPreviewPath(null)} />
     </section>
   );
 }

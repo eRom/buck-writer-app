@@ -39,8 +39,14 @@ async function buildTree(
     return [];
   }
 
-  // Sort alphabetically
-  entries.sort((a, b) => a.name.localeCompare(b.name));
+  // Sort : directories first (alpha), then files (alpha). `localeCompare`
+  // with `sensitivity: 'base'` keeps case-insensitive ordering.
+  entries.sort((a, b) => {
+    const aDir = a.isDirectory();
+    const bDir = b.isDirectory();
+    if (aDir !== bDir) return aDir ? -1 : 1;
+    return a.name.localeCompare(b.name, undefined, { sensitivity: 'base' });
+  });
 
   const result: FileEntry[] = [];
   for (const entry of entries) {
