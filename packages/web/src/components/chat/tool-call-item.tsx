@@ -1,10 +1,11 @@
-import { Check, X, Terminal, Wrench, AlertCircle } from 'lucide-react';
+import { Check, X, Terminal, Wrench, AlertCircle, Loader2 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
 export type ToolCallState = 'pending-approval' | 'running' | 'success' | 'error' | 'denied';
 
 interface Props {
   name: string;
+  rawName?: string;
   args?: string;
   output?: string;
   state: ToolCallState;
@@ -12,8 +13,9 @@ interface Props {
   onDeny?: () => void;
 }
 
-export function ToolCallItem({ name, args, output, state, onApprove, onDeny }: Props) {
-  const isShell = name === 'shell_execute';
+export function ToolCallItem({ name, rawName, args, output, state, onApprove, onDeny }: Props) {
+  const refName = rawName ?? name;
+  const isShell = refName === 'shell_execute';
   const Icon = isShell ? Terminal : Wrench;
 
   if (state === 'pending-approval') {
@@ -58,11 +60,19 @@ export function ToolCallItem({ name, args, output, state, onApprove, onDeny }: P
       )}
     >
       <div className="flex items-center gap-1.5">
-        <Icon className="size-3 text-muted-foreground" />
+        {state === 'running' ? (
+          <Loader2 className="size-3 animate-spin text-primary" />
+        ) : (
+          <Icon className="size-3 text-muted-foreground" />
+        )}
         <span className="font-semibold text-foreground">{name}</span>
         {args && <span className="truncate text-muted-foreground opacity-60">{args}</span>}
         {state === 'success' && <Check className="ml-auto size-3 text-emerald-400" />}
-        {(state === 'error' || state === 'denied') && <X className="ml-auto size-3 text-destructive" />}
+        {(state === 'error' || state === 'denied') && (
+          <span title={output ?? undefined} className="ml-auto inline-flex">
+            <X className="size-3 text-destructive" />
+          </span>
+        )}
       </div>
       {output && state !== 'running' && (
         <pre className="mt-1 max-h-40 overflow-y-auto whitespace-pre-wrap text-[10px] text-muted-foreground opacity-80">

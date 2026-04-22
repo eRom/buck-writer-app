@@ -286,3 +286,82 @@ describe('GET /api/attachments/:id', () => {
     expect(body.error.code).toBe('not_found');
   });
 });
+
+describe('GET /api/attachments/:id/meta', () => {
+  it('returns extraction metadata for an owned attachment', async () => {
+    const ctx = await makeCtx();
+    const attId = newId();
+    const extractedText = 'hello world from extraction';
+    ctx.db.db
+      .insert(attachments)
+      .values({
+        id: attId,
+        messageId: null,
+        userId: ctx.userId,
+        filename: 'doc.pdf',
+        mimeType: 'application/pdf',
+        sizeBytes: 1234,
+        path: `.attachments/${ctx.userId}/${attId}.pdf`,
+        createdAt: Date.now(),
+        extractedText,
+        extractionStatus: 'ok',
+        extractionSource: 'markitdown',
+        extractedAt: 1_700_000_000,
+      })
+      .run();
+
+    const res = await ctx.app.request(`/${attId}/meta`, {
+      headers: { cookie: `buck_session=${ctx.token}` },
+    });
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as Record<string, unknown>;
+    expect(body).toMatchObject({
+      id: attId,
+      filename: 'doc.pdf',
+      mimeType: 'application/pdf',
+      sizeBytes: 1234,
+      extractionStatus: 'ok',
+      extractionSource: 'markitdown',
+      extractionError: null,
+      extractedChars: extractedText.length,
+      extractedAt: 1_700_000_000,
+    });
+  });
+
+  it('returns 404 for unknown ID', async () => {
+    const ctx = await makeCtx();
+    const res = await ctx.app.request(`/${newId()}/meta`, {
+      headers: { cookie: `buck_session=${ctx.token}` },
+    });
+    expect(res.status).toBe(404);
+  });
+
+  it('returns 404 when attachment belongs to another user', async () => {
+    const ctx = await makeCtx();
+    const otherUserId = newId();
+    ctx.db.db
+      .insert(users)
+      .values({ id: otherUserId, email: 'other@test.com', createdAt: Date.now() })
+      .run();
+    const attId = newId();
+    ctx.db.db
+      .insert(attachments)
+      .values({
+        id: attId,
+        messageId: null,
+        userId: otherUserId,
+        filename: 'secret.pdf',
+        mimeType: 'application/pdf',
+        sizeBytes: 10,
+        path: `.attachments/${otherUserId}/${attId}.pdf`,
+        createdAt: Date.now(),
+        extractionStatus: 'ok',
+      })
+      .run();
+
+    const res = await ctx.app.request(`/${attId}/meta`, {
+      headers: { cookie: `buck_session=${ctx.token}` },
+    });
+    expect(res.status).toBe(404);
+  });
+});

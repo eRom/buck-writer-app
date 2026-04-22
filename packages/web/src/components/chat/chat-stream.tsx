@@ -22,7 +22,7 @@ interface ToolMeta {
   toolCallId: string;
   toolName: string;
   args: Record<string, unknown>;
-  status: 'approved' | 'denied' | 'auto' | 'blocked';
+  status: 'approved' | 'denied' | 'auto' | 'blocked' | 'requires_approval';
   result?: {
     stdout?: string;
     stderr?: string;
@@ -30,7 +30,9 @@ interface ToolMeta {
     content?: string;
     error?: string;
     ok?: boolean;
+    status?: string;
   };
+  isRunning?: boolean;
 }
 
 interface ChatMessage {
@@ -38,6 +40,7 @@ interface ChatMessage {
   role: 'user' | 'assistant';
   content: string;
   toolMetas?: ToolMeta[];
+  attachments?: Array<{ id: string; filename: string; mimeType: string; sizeBytes: number }>;
 }
 
 interface PendingApproval {
@@ -78,27 +81,6 @@ const SERVER_LABELS: Record<string, string> = {
   'writing-tools': 'Analyse du texte',
 };
 
-function toolActivityLabel(args: {
-  kind: 'local' | 'mcp' | 'web_search' | 'file_search';
-  toolName?: string;
-  serverLabel?: string;
-}): string {
-  if (args.kind === 'web_search') return 'Recherche web';
-  if (args.kind === 'file_search') return 'Recherche dans knowledge';
-  if (args.kind === 'mcp') {
-    return (
-      SERVER_LABELS[args.serverLabel ?? ''] ??
-      `MCP ${args.serverLabel ?? ''}`.trim()
-    );
-  }
-  return LOCAL_TOOL_LABELS[args.toolName ?? ''] ?? `Outil ${args.toolName ?? ''}`;
-}
-
-interface ToolActivity {
-  id: string;
-  label: string;
-}
-
 interface SSEFrame {
   event: string;
   data: string;
@@ -121,9 +103,21 @@ function parseSSEBuffer(buffer: string): { frames: SSEFrame[]; rest: string } {
 }
 
 function toolMetaState(meta: ToolMeta): ToolCallState {
+  if (meta.isRunning) return 'running';
   if (meta.status === 'denied' || meta.status === 'blocked') return 'denied';
   if (meta.result?.error) return 'error';
   return 'success';
+}
+
+function displayToolName(rawName: string): string {
+  if (rawName.startsWith('mcp:')) {
+    const parts = rawName.split(':');
+    const server = parts[1] ?? '';
+    const tool = parts.slice(2).join(':');
+    const serverLabel = SERVER_LABELS[server] ?? server;
+    return `${serverLabel} — ${tool}`;
+  }
+  return LOCAL_TOOL_LABELS[rawName] ?? rawName;
 }
 
 function toolOutputText(meta: ToolMeta): string | undefined {
@@ -146,7 +140,6 @@ export function ChatStream({ sessionId, onSessionCreated }: ChatStreamProps) {
   const [isLoading, setIsLoading] = useState(false);
   const [references, setReferences] = useState<Array<{ path: string; content: string }>>([]);
   const [pendingApproval, setPendingApproval] = useState<PendingApproval | null>(null);
-  const [toolActivity, setToolActivity] = useState<ToolActivity | null>(null);
   const [budgetExceeded, setBudgetExceeded] = useState<boolean>(false);
   const scrollRef = useRef<HTMLDivElement>(null);
   const abortRef = useRef<AbortController | null>(null);
@@ -198,6 +191,7 @@ export function ChatStream({ sessionId, onSessionCreated }: ChatStreamProps) {
           }
         })(),
         toolMetas: m.toolMeta ? (JSON.parse(m.toolMeta) as ToolMeta[]) : undefined,
+        attachments: m.attachments,
       }));
       setMessages(loaded);
     });
@@ -249,6 +243,21 @@ export function ChatStream({ sessionId, onSessionCreated }: ChatStreamProps) {
     if (pendingAttachments.length > 0) {
       try {
         uploadedAttachments = await uploadAttachments(pendingAttachments.map((a) => a.file));
+        setMessages((prev) =>
+          prev.map((m) =>
+            m.id === userMsg.id
+              ? {
+                  ...m,
+                  attachments: uploadedAttachments.map((a) => ({
+                    id: a.id,
+                    filename: a.filename,
+                    mimeType: a.mimeType,
+                    sizeBytes: a.sizeBytes,
+                  })),
+                }
+              : m,
+          ),
+        );
       } catch (err) {
         console.error('[chat] attachment upload failed:', err);
       }
@@ -378,26 +387,103 @@ export function ChatStream({ sessionId, onSessionCreated }: ChatStreamProps) {
               messageHistory: allMessages,
             });
           } else if (event === 'tool_started') {
-            setToolActivity({
-              id: String(parsed.toolCallId ?? parsed.callId ?? ''),
-              label: toolActivityLabel({
-                kind: 'local',
-                toolName: String(parsed.toolName ?? ''),
-              }),
-            });
+            const callId = String(parsed.toolCallId ?? parsed.callId ?? '');
+            const toolName = String(parsed.toolName ?? '');
+            setMessages((prev) =>
+              prev.map((m) =>
+                m.id === assistantId
+                  ? {
+                      ...m,
+                      toolMetas: [
+                        ...(m.toolMetas ?? []),
+                        {
+                          toolCallId: callId,
+                          toolName,
+                          args: (parsed.args as Record<string, unknown>) ?? {},
+                          status: 'auto',
+                          isRunning: true,
+                        },
+                      ],
+                    }
+                  : m,
+              ),
+            );
           } else if (event === 'tool_result') {
-            setToolActivity(null);
+            const callId = String(parsed.toolCallId ?? parsed.callId ?? '');
+            const result = (parsed.result as ToolMeta['result']) ?? {};
+            setMessages((prev) =>
+              prev.map((m) =>
+                m.id === assistantId
+                  ? {
+                      ...m,
+                      toolMetas: (m.toolMetas ?? []).map((t) =>
+                        t.toolCallId === callId
+                          ? { ...t, isRunning: false, result }
+                          : t,
+                      ),
+                    }
+                  : m,
+              ),
+            );
           } else if (event === 'mcp_call_started') {
-            setToolActivity({
-              id: String(parsed.itemId ?? ''),
-              label: toolActivityLabel({
-                kind: 'mcp',
-                serverLabel: String(parsed.serverLabel ?? ''),
-                toolName: String(parsed.toolName ?? ''),
-              }),
-            });
-          } else if (event === 'mcp_call_done' || event === 'mcp_call_error') {
-            setToolActivity(null);
+            const itemId = String(parsed.itemId ?? '');
+            const serverLabel = String(parsed.serverLabel ?? 'mcp');
+            const toolName = String(parsed.toolName ?? '');
+            setMessages((prev) =>
+              prev.map((m) =>
+                m.id === assistantId
+                  ? {
+                      ...m,
+                      toolMetas: [
+                        ...(m.toolMetas ?? []),
+                        {
+                          toolCallId: itemId,
+                          toolName: `mcp:${serverLabel}:${toolName}`,
+                          args: {},
+                          status: 'auto',
+                          isRunning: true,
+                        },
+                      ],
+                    }
+                  : m,
+              ),
+            );
+          } else if (event === 'mcp_call_done') {
+            const itemId = String(parsed.itemId ?? '');
+            setMessages((prev) =>
+              prev.map((m) =>
+                m.id === assistantId
+                  ? {
+                      ...m,
+                      toolMetas: (m.toolMetas ?? []).map((t) =>
+                        t.toolCallId === itemId ? { ...t, isRunning: false } : t,
+                      ),
+                    }
+                  : m,
+              ),
+            );
+          } else if (event === 'mcp_call_error') {
+            const itemId = String(parsed.itemId ?? '');
+            const errorText =
+              typeof parsed.error === 'string'
+                ? parsed.error
+                : parsed.error
+                  ? JSON.stringify(parsed.error).slice(0, 500)
+                  : 'erreur MCP';
+            setMessages((prev) =>
+              prev.map((m) =>
+                m.id === assistantId
+                  ? {
+                      ...m,
+                      toolMetas: (m.toolMetas ?? []).map((t) =>
+                        t.toolCallId === itemId
+                          ? { ...t, isRunning: false, result: { error: errorText } }
+                          : t,
+                      ),
+                    }
+                  : m,
+              ),
+            );
           } else if (event === 'error') {
             const err = parsed as { code?: string; message?: string; link?: string };
             if (err.code === 'provider_rate_limit') {
@@ -438,7 +524,6 @@ export function ChatStream({ sessionId, onSessionCreated }: ChatStreamProps) {
       console.error('[chat] streaming error:', err);
     } finally {
       setIsLoading(false);
-      setToolActivity(null);
       abortRef.current = null;
     }
   }, [input, isLoading, messages, model, onSessionCreated, budgetExceeded, pendingAttachments, references]);
@@ -540,26 +625,103 @@ export function ChatStream({ sessionId, onSessionCreated }: ChatStreamProps) {
                 messageHistory,
               });
             } else if (event === 'tool_started') {
-              setToolActivity({
-                id: String(parsed.toolCallId ?? parsed.callId ?? ''),
-                label: toolActivityLabel({
-                  kind: 'local',
-                  toolName: String(parsed.toolName ?? ''),
-                }),
-              });
+              const callId = String(parsed.toolCallId ?? parsed.callId ?? '');
+              const toolName = String(parsed.toolName ?? '');
+              setMessages((prev) =>
+                prev.map((m) =>
+                  m.id === assistantId
+                    ? {
+                        ...m,
+                        toolMetas: [
+                          ...(m.toolMetas ?? []),
+                          {
+                            toolCallId: callId,
+                            toolName,
+                            args: (parsed.args as Record<string, unknown>) ?? {},
+                            status: 'auto',
+                            isRunning: true,
+                          },
+                        ],
+                      }
+                    : m,
+                ),
+              );
             } else if (event === 'tool_result') {
-              setToolActivity(null);
+              const callId = String(parsed.toolCallId ?? parsed.callId ?? '');
+              const result = (parsed.result as ToolMeta['result']) ?? {};
+              setMessages((prev) =>
+                prev.map((m) =>
+                  m.id === assistantId
+                    ? {
+                        ...m,
+                        toolMetas: (m.toolMetas ?? []).map((t) =>
+                          t.toolCallId === callId
+                            ? { ...t, isRunning: false, result }
+                            : t,
+                        ),
+                      }
+                    : m,
+                ),
+              );
             } else if (event === 'mcp_call_started') {
-              setToolActivity({
-                id: String(parsed.itemId ?? ''),
-                label: toolActivityLabel({
-                  kind: 'mcp',
-                  serverLabel: String(parsed.serverLabel ?? ''),
-                  toolName: String(parsed.toolName ?? ''),
-                }),
-              });
-            } else if (event === 'mcp_call_done' || event === 'mcp_call_error') {
-              setToolActivity(null);
+              const itemId = String(parsed.itemId ?? '');
+              const serverLabel = String(parsed.serverLabel ?? 'mcp');
+              const toolName = String(parsed.toolName ?? '');
+              setMessages((prev) =>
+                prev.map((m) =>
+                  m.id === assistantId
+                    ? {
+                        ...m,
+                        toolMetas: [
+                          ...(m.toolMetas ?? []),
+                          {
+                            toolCallId: itemId,
+                            toolName: `mcp:${serverLabel}:${toolName}`,
+                            args: {},
+                            status: 'auto',
+                            isRunning: true,
+                          },
+                        ],
+                      }
+                    : m,
+                ),
+              );
+            } else if (event === 'mcp_call_done') {
+              const itemId = String(parsed.itemId ?? '');
+              setMessages((prev) =>
+                prev.map((m) =>
+                  m.id === assistantId
+                    ? {
+                        ...m,
+                        toolMetas: (m.toolMetas ?? []).map((t) =>
+                          t.toolCallId === itemId ? { ...t, isRunning: false } : t,
+                        ),
+                      }
+                    : m,
+                ),
+              );
+            } else if (event === 'mcp_call_error') {
+              const itemId = String(parsed.itemId ?? '');
+              const errorText =
+                typeof parsed.error === 'string'
+                  ? parsed.error
+                  : parsed.error
+                    ? JSON.stringify(parsed.error).slice(0, 500)
+                    : 'erreur MCP';
+              setMessages((prev) =>
+                prev.map((m) =>
+                  m.id === assistantId
+                    ? {
+                        ...m,
+                        toolMetas: (m.toolMetas ?? []).map((t) =>
+                          t.toolCallId === itemId
+                            ? { ...t, isRunning: false, result: { error: errorText } }
+                            : t,
+                        ),
+                      }
+                    : m,
+                ),
+              );
             } else if (event === 'error' && parsed.message) {
               toast.error(String(parsed.message));
             }
@@ -593,14 +755,15 @@ export function ChatStream({ sessionId, onSessionCreated }: ChatStreamProps) {
         ) : (
           <div className="mx-auto max-w-3xl space-y-5 px-4 py-6">
             {messages.map((m, idx) => {
-              if (m.role === 'user') return <MessageUser key={m.id} content={m.content} messageId={m.id} />;
+              if (m.role === 'user') return <MessageUser key={m.id} content={m.content} messageId={m.id} attachments={m.attachments} />;
               const isLastAssistant = idx === lastAssistantIdx;
               const showPending = isLastAssistant && pendingApproval != null;
               const metas = m.toolMetas ?? [];
               const toolCallNodes: React.ReactNode[] = metas.map((meta) => (
                 <ToolCallItem
                   key={meta.toolCallId}
-                  name={meta.toolName}
+                  name={displayToolName(meta.toolName)}
+                  rawName={meta.toolName}
                   args={Object.keys(meta.args).length > 0 ? JSON.stringify(meta.args) : undefined}
                   output={toolOutputText(meta)}
                   state={toolMetaState(meta)}
@@ -627,16 +790,17 @@ export function ChatStream({ sessionId, onSessionCreated }: ChatStreamProps) {
                   {toolCallNodes}
                 </ToolCallsCollapsible>
               ) : null;
-              const showActivity = isLoading && isLastAssistant && toolActivity;
+              const isThinking =
+                isLoading && isLastAssistant && !m.content && metas.length === 0 && !showPending;
               return (
                 <MessageAssistant key={m.id} toolCalls={toolCalls} messageId={m.id}>
-                  {showActivity ? (
+                  {isThinking ? (
                     <span className="inline-flex items-center gap-2 text-xs text-muted-foreground">
                       <span className="inline-block size-2 animate-pulse rounded-full bg-primary" />
-                      {toolActivity.label}...
+                      Buck réfléchit…
                     </span>
                   ) : (
-                    <MarkdownRenderer content={m.content || (isLoading && isLastAssistant ? '...' : '')} />
+                    <MarkdownRenderer content={m.content} />
                   )}
                 </MessageAssistant>
               );

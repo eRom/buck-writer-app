@@ -719,6 +719,20 @@ export function createChatRoute(
                 createdAt: finishTs - 1,
               })
               .run();
+            if (attachmentIds.length > 0) {
+              for (const attId of attachmentIds) {
+                deps.db.db
+                  .update(attachments)
+                  .set({ messageId: userMsgId })
+                  .where(
+                    and(
+                      eq(attachments.id, attId),
+                      eq(attachments.userId, userId),
+                    ),
+                  )
+                  .run();
+              }
+            }
             sendEvent('user_saved', { id: userMsgId });
           }
 

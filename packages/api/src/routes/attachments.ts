@@ -222,6 +222,44 @@ export function createAttachmentRoutes(
     return c.json({ attachments: results }, 201);
   });
 
+  // GET /:id/meta — Return extraction metadata
+  app.get('/:id/meta', async (c) => {
+    const userId = c.get('userId');
+    const id = c.req.param('id');
+
+    const row = deps.db.db
+      .select({
+        id: attachments.id,
+        filename: attachments.filename,
+        mimeType: attachments.mimeType,
+        sizeBytes: attachments.sizeBytes,
+        extractionStatus: attachments.extractionStatus,
+        extractionSource: attachments.extractionSource,
+        extractionError: attachments.extractionError,
+        extractedText: attachments.extractedText,
+        extractedAt: attachments.extractedAt,
+      })
+      .from(attachments)
+      .where(and(eq(attachments.id, id), eq(attachments.userId, userId)))
+      .get();
+
+    if (!row) {
+      throw new HttpError(404, 'not_found', 'attachment not found');
+    }
+
+    return c.json({
+      id: row.id,
+      filename: row.filename,
+      mimeType: row.mimeType,
+      sizeBytes: row.sizeBytes,
+      extractionStatus: row.extractionStatus,
+      extractionSource: row.extractionSource,
+      extractionError: row.extractionError,
+      extractedChars: row.extractedText?.length ?? null,
+      extractedAt: row.extractedAt,
+    });
+  });
+
   // GET /:id — Serve an attachment file
   app.get('/:id', async (c) => {
     const userId = c.get('userId');

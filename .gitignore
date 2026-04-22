@@ -57,3 +57,4 @@ __pycache__/
 reports/
 security-audit-*.md
 workspace/.tts_audio
+workspace/.attachments

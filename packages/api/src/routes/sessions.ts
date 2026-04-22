@@ -8,7 +8,8 @@ import {
   newId,
 } from '@buck/shared';
 import type { DbHandles } from '../db/client.js';
-import { chatSessions, messages } from '../db/schema.js';
+import { chatSessions, messages, attachments } from '../db/schema.js';
+import { inArray } from 'drizzle-orm';
 
 export interface SessionRoutesDeps {
   db: DbHandles;
@@ -299,7 +300,33 @@ export function createSessionRoutes(
       }
     }
 
-    return c.json({ messages: rows, nextCursor });
+    const messageIds = rows.map((r) => r.id);
+    const attachmentRows = messageIds.length
+      ? deps.db.db
+          .select({
+            id: attachments.id,
+            messageId: attachments.messageId,
+            filename: attachments.filename,
+            mimeType: attachments.mimeType,
+            sizeBytes: attachments.sizeBytes,
+          })
+          .from(attachments)
+          .where(inArray(attachments.messageId, messageIds))
+          .all()
+      : [];
+    const byMsg = new Map<string, typeof attachmentRows>();
+    for (const att of attachmentRows) {
+      if (!att.messageId) continue;
+      const arr = byMsg.get(att.messageId) ?? [];
+      arr.push(att);
+      byMsg.set(att.messageId, arr);
+    }
+    const messagesWithAttachments = rows.map((r) => ({
+      ...r,
+      attachments: byMsg.get(r.id) ?? [],
+    }));
+
+    return c.json({ messages: messagesWithAttachments, nextCursor });
   });
 
   return app;

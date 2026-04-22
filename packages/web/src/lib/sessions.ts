@@ -56,6 +56,13 @@ export async function deleteSession(id: string): Promise<void> {
   await apiFetch(`/api/sessions/${id}`, { method: 'DELETE' });
 }
 
+export interface MessageAttachment {
+  id: string;
+  filename: string;
+  mimeType: string;
+  sizeBytes: number;
+}
+
 export interface Message {
   id: string;
   role: string;
@@ -63,6 +70,7 @@ export interface Message {
   model: string | null;
   toolMeta: string | null;
   createdAt: number;
+  attachments?: MessageAttachment[];
 }
 
 export interface MessagesResponse {
