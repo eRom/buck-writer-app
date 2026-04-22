@@ -52,7 +52,7 @@ pnpm db:seed          # Seed initial
 pnpm docker:build     # Build image locale (vps/Dockerfile.app)
 pnpm docker:up        # docker compose -f vps/compose.yml up -d --build
 pnpm deploy           # ./vps/deploy.sh (git pull + scp envs + build + healthchecks)
-docker compose -f vps/compose.local.yml up -d bible-mcp   # dev hybride (bible en Docker, buck pnpm dev)
+docker compose -f vps/compose.local.yml up -d bible-mcp markitdown-worker   # dev hybride (services en Docker, buck pnpm dev)
 ```
 
 ## Dev mode

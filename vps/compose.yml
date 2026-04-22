@@ -61,6 +61,36 @@ services:
     depends_on:
       - bible-mcp
 
+  markitdown-worker:
+    build:
+      context: ../services/markitdown-worker
+      dockerfile: Dockerfile
+    container_name: buck-markitdown-worker
+    restart: unless-stopped
+    # Internal only — never exposed on caddy-public.
+    networks:
+      - internal
+    # INTERNAL_TOKEN comes from /opt/buck-writer-app/.env (same file as buck-app).
+    env_file: ../.env
+    environment:
+      INTERNAL_TOKEN: ${MARKITDOWN_INTERNAL_TOKEN}
+      OCR_LANGS: fra+eng
+      MAX_UPLOAD_MB: '20'
+      CONVERT_TIMEOUT_S: '60'
+    healthcheck:
+      test:
+        - CMD-SHELL
+        - 'curl -fsS http://localhost:8000/health || exit 1'
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 20s
+    deploy:
+      resources:
+        limits:
+          cpus: '1.0'
+          memory: 1G
+
   buck-app:
     image: buck-writer:local
     build:
@@ -80,6 +110,10 @@ services:
       - MCP_BIBLE_URL=${MCP_BIBLE_URL:-https://bible-mcp.buck.romain-ecarnot.com}
       - MCP_WRITING_TOOLS_URL=${MCP_WRITING_TOOLS_URL:-https://writing-mcp.buck.romain-ecarnot.com}
       - MCP_SHARED_SECRET=${MCP_SHARED_SECRET}
+      # MarkItDown sidecar (M6). Uses the shared `internal` network.
+      - MARKITDOWN_URL=http://buck-markitdown-worker:8000
+      - MARKITDOWN_INTERNAL_TOKEN=${MARKITDOWN_INTERNAL_TOKEN}
+      - MARKITDOWN_TIMEOUT_MS=65000
     volumes:
       - ../data/db:/app/data
       - ../data/workspace:/app/workspace
@@ -89,6 +123,7 @@ services:
     depends_on:
       - bible-mcp
       - writing-tools-mcp
+      - markitdown-worker
     healthcheck:
       test:
         - CMD-SHELL

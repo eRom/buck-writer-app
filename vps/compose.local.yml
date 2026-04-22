@@ -12,3 +12,13 @@ services:
       OPENAI_EMBEDDING_MODEL: ${OPENAI_EMBEDDING_MODEL:-text-embedding-3-large}
     volumes:
       - /Users/recarnot/dev/barda-mcp-ecrivain-bible/data:/app/data:ro
+
+  markitdown-worker:
+    build:
+      context: ../services/markitdown-worker
+      dockerfile: Dockerfile
+    ports:
+      - "8765:8000"
+    environment:
+      INTERNAL_TOKEN: ${MARKITDOWN_INTERNAL_TOKEN:-local-dev-token-do-not-use-in-prod}
+      OCR_LANGS: ${OCR_LANGS:-fra+eng}
