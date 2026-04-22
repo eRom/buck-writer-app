@@ -10,7 +10,11 @@ from markitdown import MarkItDown
 from pdf2image import convert_from_path
 from PIL import Image
 
-INTERNAL_TOKEN = os.environ.get("INTERNAL_TOKEN", "")
+INTERNAL_TOKEN = (
+    os.environ.get("MARKITDOWN_INTERNAL_TOKEN")
+    or os.environ.get("INTERNAL_TOKEN")
+    or ""
+)
 MAX_UPLOAD_MB = int(os.environ.get("MAX_UPLOAD_MB", "20"))
 CONVERT_TIMEOUT_S = int(os.environ.get("CONVERT_TIMEOUT_S", "60"))
 OCR_ENABLED = os.environ.get("OCR_ENABLED", "1") == "1"
