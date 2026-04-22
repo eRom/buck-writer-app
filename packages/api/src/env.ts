@@ -67,6 +67,10 @@ const Schema = z.object({
       message: 'TTS_DEFAULT_VOICE must be one of the 30 Gemini TTS voices',
     }),
   TTS_MAX_CHARS: z.coerce.number().int().positive().default(4500),
+  // M6 MarkItDown sidecar
+  MARKITDOWN_URL: z.string().url().optional(),
+  MARKITDOWN_INTERNAL_TOKEN: z.string().min(16).optional(),
+  MARKITDOWN_TIMEOUT_MS: z.coerce.number().int().positive().default(65_000),
 });
 
 export type Env = z.infer<typeof Schema>;

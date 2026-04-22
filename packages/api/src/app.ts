@@ -27,6 +27,7 @@ import type { PromptsRef } from './services/prompts.js';
 import { createRealtimeRoute } from './routes/realtime.js';
 import { createTtsRoutes } from './routes/tts.js';
 import type { UsageTracker } from './services/realtime/usage-tracker.js';
+import type { MarkitdownClient } from './services/markitdown.js';
 import type { mintRealtimeClientSecret } from './lib/realtime.js';
 import { authGuard } from './middleware/auth.js';
 import { securityHeaders } from './middleware/security-headers.js';
@@ -104,6 +105,13 @@ export interface AppDeps extends AuthRoutesDeps, SessionRoutesDeps {
    * Gemini API key used by the TTS route.
    */
   geminiApiKey?: string;
+  /**
+   * MarkItDown sidecar client (M6). When present, attachments of type
+   * PDF/image/DOCX/PPTX/XLSX are extracted to markdown and injected in the
+   * prompt at the tour they are added. When absent, attachments are kept
+   * with status `skipped`.
+   */
+  markitdown?: MarkitdownClient;
 }
 
 // Re-export ChatRouteDeps for consumers

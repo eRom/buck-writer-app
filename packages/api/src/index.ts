@@ -19,6 +19,7 @@ import { loadSkills, createSkillsWatcher } from './services/skills.js';
 import { applyMcpToolClassifications } from './services/mcp-classifier.js';
 import { createUsageTracker } from './services/realtime/usage-tracker.js';
 import { bootstrapMemory } from './services/memory/bootstrap.js';
+import { createMarkitdownClient } from './services/markitdown.js';
 import { usageEvents, userSettings } from './db/schema.js';
 import { eq } from 'drizzle-orm';
 import { newId } from '@buck/shared';
@@ -203,6 +204,18 @@ const memory = bootstrapMemory({
   tokenCounter: (s: string) => Math.ceil(s.length / 4),
 });
 
+const markitdown =
+  env.MARKITDOWN_URL && env.MARKITDOWN_INTERNAL_TOKEN
+    ? createMarkitdownClient({
+        baseUrl: env.MARKITDOWN_URL,
+        internalToken: env.MARKITDOWN_INTERNAL_TOKEN,
+        timeoutMs: env.MARKITDOWN_TIMEOUT_MS,
+      })
+    : undefined;
+if (markitdown) {
+  console.warn(`[api] markitdown worker enabled (${env.MARKITDOWN_URL})`);
+}
+
 if (memory.enabled && process.env.NODE_ENV !== 'test') {
   setInterval(() => { memory.drainRetryBuffer().catch(() => {}); }, 30_000);
   setInterval(() => { memory.syncUsage().catch(() => {}); }, 6 * 60 * 60 * 1000);
@@ -230,6 +243,7 @@ const app = buildApp({
   ttsDefaultVoice: env.TTS_DEFAULT_VOICE,
   ttsMaxChars: env.TTS_MAX_CHARS,
   geminiApiKey: env.GEMINI_API_KEY,
+  markitdown,
 });
 
 serve({ fetch: app.fetch, port: env.PORT, hostname: '0.0.0.0' }, (info) => {
