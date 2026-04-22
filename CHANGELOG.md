@@ -2,6 +2,25 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.0.2](https://github.com/eRom/buck-writer-app/compare/v0.0.1...v0.0.2) (2026-04-22)
+
+
+### Features
+
+* **m6:** phase 1 — sidecar MarkItDown worker (FastAPI + OCR) ([0ff4072](https://github.com/eRom/buck-writer-app/commit/0ff407280dcb493af7b4d512644ac3ca4b360de4))
+* **m6:** phase 2 — schema attachments + migration 0013 (extraction state) ([89663cc](https://github.com/eRom/buck-writer-app/commit/89663cc50143d07f22bbac859453bb69f3deac32))
+* **m6:** phase 3 — MarkitdownClient + branchement buildApp ([b7b290a](https://github.com/eRom/buck-writer-app/commit/b7b290aa36ba026d01d4a8bdff90692f1fb7e425))
+* **m6:** phase 4 — routage attachments + extraction au send via markitdown ([4f75de2](https://github.com/eRom/buck-writer-app/commit/4f75de2d2057418a36d47d4228a84211584e2897))
+* **m6:** phase 7 — markitdown-worker dans docker compose (prod + local) ([9650d74](https://github.com/eRom/buck-writer-app/commit/9650d742ee460d0681dd66be275bf24c8ecc9d9a))
+* **ux:** visibilité live des tool calls et extraction attachments ([c9dc1bb](https://github.com/eRom/buck-writer-app/commit/c9dc1bb2350df3b8608f68642f2bf56e6680b30a))
+
+
+### Bug Fixes
+
+* **m5:** instrument Edge Functions with try/catch + stage-tagged logs ([6315505](https://github.com/eRom/buck-writer-app/commit/6315505aab17a2a255597296961830f27a31170f))
+* **m6:** worker lit MARKITDOWN_INTERNAL_TOKEN + retire overrides env vides ([199a25e](https://github.com/eRom/buck-writer-app/commit/199a25ee008129f86b3479e14bb1661538b9f99e))
+* **test:** MIME type rejeté utilise text/html (json est désormais autorisé) ([c3c82b5](https://github.com/eRom/buck-writer-app/commit/c3c82b5e77de854001aabf28a51fe5b830f3acd9))
+
 ## 0.0.1 (2026-04-21)
 
 
