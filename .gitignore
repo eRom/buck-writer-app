@@ -38,6 +38,11 @@ test-results/
 # Python
 __pycache__/
 *.pyc
+.venv/
+.pytest_cache/
+
+# Local test fixtures (personal files, not versioned)
+/tests/
 
 # Claude Code local MCP config (not shared)
 .mcp.json
