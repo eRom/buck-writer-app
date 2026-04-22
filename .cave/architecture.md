@@ -1,6 +1,6 @@
 # Architecture — Buck Writer
 
-> MAJ 2026-04-21 (M9 TTS Gemini live)
+> MAJ 2026-04-22 (M6 MarkItDown shipped)
 
 ## Vue d'ensemble
 
@@ -30,6 +30,46 @@ workspace/systems/  SYSTEM → MEMORY → TOOLS → RULES (+ LIVE) — live-edit
 data/           workspace/, bible/, db/
 docs/superpowers/ specs/ + plans/
 ```
+
+## M6 — MarkItDown sidecar (2026-04-22)
+
+Extraction locale PDF/image/DOCX/PPTX/XLSX → markdown au **moment du send** (pas de l'upload), zéro token LLM, fallback OCR Tesseract intégré côté worker.
+
+```
+User attache fichier paperclip → POST /api/attachments (upload brut)
+User envoie message → chat route
+  → extractAttachment(row, { markitdown, workspaceDir })
+    → cache hit (extracted_text + status=ok) ? return direct
+    → TXT/MD/JSON ? readFile direct, source='text_file'
+    → PDF/JPG/PNG/WEBP/DOCX/PPTX/XLSX ?
+        → POST worker /api/convert (multipart + X-Internal-Token)
+        → worker: PDF→markitdown texte OU pdf2image+tesseract si scan
+                  image→pytesseract direct (markitdown 0.1.x ne fait plus d'OCR auto)
+                  office→markitdown natif
+        → persist DB extracted_text + status + source + extracted_at
+    → GIF / autres : status='skipped' (fallback Vision à venir)
+  → formatAttachmentBlock → <attachment filename="..." mime="...">md</attachment>
+    → truncation 20k (18k début + 2k fin + marker)
+  → Injection UNIQUEMENT au tour d'ajout (lastUserIdx), jamais répétée
+```
+
+**Service Docker `markitdown-worker`** sur réseau privé `internal` (pas caddy-public) :
+- Python 3.12 FastAPI + `markitdown[pdf,docx,pptx,xlsx]==0.1.5` + `pytesseract` + `pdf2image`
+- Image Docker : tesseract-ocr fra+eng+osd + poppler-utils, non-root user
+- Auth header `X-Internal-Token` (alias `INTERNAL_TOKEN`/`MARKITDOWN_INTERNAL_TOKEN`, min 16 chars)
+- Endpoints : `/health` + `/api/convert` (multipart file, retourne `{markdown, char_count, filename, ext, source}`)
+- Limits : MAX_UPLOAD_MB=20, CONVERT_TIMEOUT_S=60, uvicorn mono-worker, 1 CPU / 1G RAM
+- OCR_LANGS=fra+eng par défaut, langpacks fr+en+osd dans l'image
+
+**Cache idempotent** : `attachments.extracted_text` + `extraction_status='ok'` → re-extraction skippée sur retry/regen d'un même tour. Colonne `extraction_source` ∈ {`text`, `ocr`, `native`, `text_file`}.
+
+**Fail-soft** : worker absent/down → `status='skipped'` ou `'failed'`, upload jamais bloqué, LLM appelé sans `<attachment>`. Placeholder `[Image jointe non extraite: filename]` pour images si pas de markitdown (fallback Vision reporté).
+
+**DB** : migration `0013` — 5 colonnes sur `attachments` (`extracted_text`, `extraction_status` default 'pending', `extraction_error`, `extracted_at`, `extraction_source`) + index `attachments_status_idx`.
+
+**Dégradation** : si `MARKITDOWN_URL` ou `MARKITDOWN_INTERNAL_TOKEN` absent dans env → `deps.markitdown` = undefined, la route chat route simplement par-dessus sans rien casser.
+
+**Dev hybride** : `docker compose -f vps/compose.local.yml up -d bible-mcp markitdown-worker` + `pnpm dev`. Worker exposé port 8765 local.
 
 ## M9 — TTS Gemini par message (gemini-3.1-flash-tts-preview)
 

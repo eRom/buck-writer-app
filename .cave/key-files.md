@@ -1,6 +1,43 @@
 # Fichiers clés — Buck Writer
 
-> MAJ 2026-04-21 (M9 TTS Gemini live)
+> MAJ 2026-04-22 (M6 MarkItDown shipped)
+
+## M6 — MarkItDown sidecar (2026-04-22)
+
+### Sidecar Python (hors monorepo pnpm)
+- `services/markitdown-worker/main.py` — FastAPI `/health` + `/api/convert`, router PDF/image/office, OCR pytesseract direct + pdf2image fallback pour PDF scannés
+- `services/markitdown-worker/requirements.txt` — `markitdown[pdf,docx,pptx,xlsx]==0.1.5` + `pytesseract` + `pdf2image` + `fastapi`
+- `services/markitdown-worker/Dockerfile` — Python 3.12 slim + tesseract-ocr fra/eng/osd + poppler-utils, user `app` non-root, healthcheck `curl /health`
+- `services/markitdown-worker/tests/test_convert.py` — 7 tests pytest (health, auth, pdf, image, unsupported, too_large)
+- `services/markitdown-worker/pytest.ini` — testpaths + pythonpath
+- `services/markitdown-worker/README.md` — build, dev local (`uv venv`), smoke test curl
+
+### Backend API (TypeScript)
+- `packages/api/src/services/markitdown.ts` — `createMarkitdownClient(baseUrl, token)` + `MarkitdownError` 6 codes (unauthorized/too_large/unsupported/timeout/unreachable/worker_error), `AbortController` timeout
+- `packages/api/src/services/markitdown.test.ts` — 9 tests mock fetch (succès, tous codes d'erreur, AbortError→timeout)
+- `packages/api/src/services/attachmentExtractor.ts` — `extractAttachment()` route par mime (TEXT_MIMES direct / MARKITDOWN_MIMES sidecar) + cache DB + persist status/source, `truncateForPrompt` 20k (18k head + 2k tail + marker), `formatAttachmentBlock` → `<attachment filename="..." mime="...">md</attachment>`
+- `packages/api/src/services/attachmentExtractor.test.ts` — 12 tests (cache hit, txt, json, pdf via markitdown, image, skipped, failed, truncation, format)
+- `packages/api/migrations/0013_tricky_harry_osborn.sql` — ALTER TABLE attachments ADD 5 colonnes (`extracted_text`, `extraction_status` default 'pending', `extraction_error`, `extracted_at`, `extraction_source`) + index `attachments_status_idx`
+
+### Wiring
+- `packages/api/src/db/schema.ts` — attachments étendu 5 colonnes + index statut
+- `packages/api/src/env.ts` — `MARKITDOWN_URL` (url optional), `MARKITDOWN_INTERNAL_TOKEN` (string min 16 optional), `MARKITDOWN_TIMEOUT_MS` (default 65000)
+- `packages/api/src/index.ts` — instancie `createMarkitdownClient` conditionnel si URL+TOKEN, passé à `buildApp({ markitdown })`
+- `packages/api/src/app.ts` — `AppDeps.markitdown?: MarkitdownClient` pipé à `createChatRoute`
+- `packages/api/src/routes/chat.ts` — remplace ancienne boucle `for (att of attachmentIds)` + `extractText` par `extractAttachment` + `formatAttachmentBlock`, injection au `lastUserIdx` uniquement
+- `packages/api/src/routes/attachments.ts` — allowlist étendue (PPTX, XLSX, JSON) + `mimeMatches` zip magic bytes + `extFromMime` map
+- `packages/shared/src/schemas/workspace.ts` — `ALLOWED_MIME_TYPES` + 3 entrées (JSON, PPTX, XLSX)
+
+### Docker
+- `vps/compose.yml` — service `markitdown-worker` sur réseau `internal`, `env_file: ../.env`, healthcheck, limits 1 CPU / 1G RAM, buck-app dépend_on + env_file fournit MARKITDOWN_URL/TOKEN (PAS d'override `${...}` dans environment)
+- `vps/compose.local.yml` — worker exposé port `8765:8000` pour dev hybride, default token si var absente
+
+### Env files
+- `.env.example` — section M6 avec 3 vars
+- `.env.development` — `MARKITDOWN_URL=http://localhost:8765` + `MARKITDOWN_INTERNAL_TOKEN=local-dev-token-do-not-use-in-prod` (≥16 chars)
+- `vps/.env.production` (hors git) — `MARKITDOWN_INTERNAL_TOKEN` 48 bytes urlsafe généré via `python -c "import secrets; print(secrets.token_urlsafe(48))"`
+
+## M9 — TTS Gemini (2026-04-21)
 
 ## M9 — TTS Gemini (2026-04-21)
 

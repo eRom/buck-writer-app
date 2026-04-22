@@ -1,6 +1,34 @@
 # Patterns et conventions — Buck Writer
 
-> MAJ 2026-04-21 (M9 TTS live)
+> MAJ 2026-04-22 (M6 MarkItDown shipped)
+
+## Pattern extraction au send (vs post-upload)
+
+Pour les conversions lourdes (OCR, parsing office, etc.), déclencher l'extraction au moment du **send** chat et non dès l'upload :
+- Pas d'état `pending` à gérer côté UI (pas de badge live/polling).
+- Cache idempotent DB (`extracted_text` + `status='ok'`) → retry d'un même tour ne re-extrait pas.
+- Injection dans le prompt UNIQUEMENT au tour d'ajout (`lastUserIdx`), pas répétée aux tours suivants — évite le gonflement artificiel du contexte, le LLM retient via l'historique conversationnel standard.
+- Truncation head+tail avec marker pour les gros contenus (`truncateForPrompt`, 18k/2k/marker).
+- `formatAttachmentBlock` émet un bloc `<attachment filename="..." mime="...">md</attachment>` avec escape HTML des attributs.
+
+Appliqué dans `attachmentExtractor.ts` + `routes/chat.ts:257-279`.
+
+## Pattern env_file > ${...} interpolation pour secrets Docker Compose
+
+Docker Compose substitue `${VAR}` depuis (1) le shell env, (2) un `.env` adjacent au fichier compose. Sur le VPS Buck, le `.env` est à `/opt/buck-writer-app/.env` et compose tourne depuis `vps/` — **aucun `vps/.env`** → `${VAR}` résout à chaîne vide et affiche un warning.
+
+**Conséquence** : `environment: - SECRET=${SECRET}` overrides la valeur chargée par `env_file: ../.env` avec `""`. Si la var est validée par Zod `min(N)`, l'app crash au boot.
+
+**Pattern correct** :
+- Mettre les secrets UNIQUEMENT dans `env_file: ../.env`.
+- NE PAS les redupliquer dans `environment:` avec interpolation `${}`.
+- Pour les valeurs non-secrètes (URLs hardcodées, flags) → `environment:` direct sans interpolation est ok.
+
+Exception tolérée : secrets non validés par Zod (ex: `MCP_SHARED_SECRET` absent du schema) — l'override vide ne crash pas, le code fail-softe ailleurs. Mais **pas à reproduire** : préférer `env_file` only pour éviter le piège.
+
+Appliqué dans `vps/compose.yml` pour M6 (MARKITDOWN_* via env_file seulement).
+
+## Pattern local-id → DB-id reconciliation via SSE
 
 ## Pattern local-id → DB-id reconciliation via SSE
 

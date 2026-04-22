@@ -1,6 +1,31 @@
 # Gotchas — Buck Writer
 
-> MAJ 2026-04-21 (M9 TTS go-live + 3 bugs fixés post-merge)
+> MAJ 2026-04-22 (M6 MarkItDown + 3 pièges env/drizzle/ocr)
+
+## M6 — MarkItDown sidecar (session 2026-04-22)
+
+### `${VAR}` interpolation vide dans compose.yml + env_file override → crash Zod au boot
+Symptôme : `buck-app` boucle en `Restarting (1)` post-deploy, logs montrent `ZodError: String must contain at least 16 character(s) at path MARKITDOWN_INTERNAL_TOKEN`. Warning compose `"MARKITDOWN_INTERNAL_TOKEN" variable is not set. Defaulting to a blank string`.
+Cause : compose.yml avait `- MARKITDOWN_INTERNAL_TOKEN=${MARKITDOWN_INTERNAL_TOKEN}` dans `environment:` de buck-app. Sur le VPS, compose tourne depuis `/opt/buck-writer-app/vps/` et il n'y a pas de `vps/.env` adjacent → `${...}` résout à `""` → écrase la valeur chargée par `env_file: ../.env`. Zod `min(16)` fail.
+Pourquoi `MCP_SHARED_SECRET=${MCP_SHARED_SECRET}` ne crashait pas : pas dans le zod schema, donc pas validé, l'app démarre sans (fonctionnalité MCP remote peut-être dégradée silencieusement en prod — à auditer).
+**Fix** : retirer toutes les lignes `${}` pour M6 d'environment: buck-app + worker, laisser `env_file: ../.env` fournir. Pattern à appliquer pour tout secret validé par Zod. Cf `patterns.md#env_file > ${...} interpolation`.
+
+### Drizzle-kit ignore les nouvelles migrations si leur `when` est dans le passé
+Symptôme : `pnpm db:generate` produit `0013_xxx.sql`, `db:migrate` dit `[migrate] done` sans erreur, mais `PRAGMA table_info(attachments)` ne montre aucune nouvelle colonne. `__drizzle_migrations` ne contient pas la nouvelle row.
+Cause : le `_journal.json` généré mettait `when: 1776839941386` (~2026-03-19) alors que l'horloge système Mac était bloquée à cette date — or la migration précédente 0012 avait `when: 1777680180000`. Drizzle compare sur `when` monotone, donc 0013 est considérée comme "déjà vue" ou hors ordre et skippée.
+**Fix** : éditer `packages/api/migrations/meta/_journal.json` pour mettre un `when` supérieur à la dernière appliquée (`Date.now()` en ms ou +60000 après la précédente). Pattern : après chaque `db:generate`, vérifier que `when` de la nouvelle entrée > précédente, sinon corriger avant `db:migrate`.
+
+### markitdown 0.1.x ne fait plus d'OCR automatique sur images
+Symptôme : `MarkItDown(enable_plugins=False).convert('foo.jpg').text_content` → chaîne vide alors que l'image contient du texte. Idem pour `foo.pdf` si PDF scanné (pdfminer voit 0 char texte).
+Cause : depuis markitdown 0.1.x, les images passent par un modèle LLM (si `llm_client` fourni) ou ne sont pas OCRisées du tout. Tesseract n'est plus appelé nativement. PDF : pdfminer extrait uniquement le texte natif, pas d'OCR sur pages image.
+**Fix** (appliqué dans `services/markitdown-worker/main.py`) :
+- Images → `pytesseract.image_to_string(Image.open(path), lang='fra+eng')` direct, pas via markitdown.
+- PDF : tenter markitdown d'abord ; si `len(text.strip()) < PDF_OCR_MIN_CHARS` (20) → `pdf2image.convert_from_path(path, dpi=200)` + Tesseract page par page, markdown avec marker `<!-- page N -->`.
+- Office (DOCX/PPTX/XLSX) : markitdown natif OK.
+
+Retour `source` dans la réponse ∈ {`text`, `ocr`, `native`} — utile côté API Buck pour savoir si fallback Vision pertinent.
+
+## M9 — TTS Gemini (session 2026-04-21)
 
 ## M9 — TTS Gemini (session 2026-04-21)
 
