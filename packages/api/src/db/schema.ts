@@ -121,10 +121,16 @@ export const attachments = sqliteTable(
     sizeBytes: integer('size_bytes').notNull(),
     path: text('path').notNull(),
     createdAt: integer('created_at').notNull(),
+    extractedText: text('extracted_text'),
+    extractionStatus: text('extraction_status').notNull().default('pending'),
+    extractionError: text('extraction_error'),
+    extractedAt: integer('extracted_at'),
+    extractionSource: text('extraction_source'),
   },
   (t) => ({
     messageIdx: index('attachments_message_idx').on(t.messageId),
     userIdx: index('attachments_user_idx').on(t.userId),
+    statusIdx: index('attachments_status_idx').on(t.extractionStatus),
   }),
 );
 
