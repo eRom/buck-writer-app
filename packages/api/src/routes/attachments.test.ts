@@ -164,8 +164,8 @@ describe('POST /api/attachments', () => {
     const form = new FormData();
     form.append(
       'files',
-      new Blob(['{}'], { type: 'application/json' }),
-      'data.json',
+      new Blob(['<html></html>'], { type: 'text/html' }),
+      'data.html',
     );
 
     const res = await ctx.app.request('/', {
