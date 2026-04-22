@@ -213,6 +213,7 @@ export function buildApp(deps: AppDeps) {
       nowMs: deps.nowMs,
       memory: deps.memory,
       buckUserId: deps.buckUserId,
+      markitdown: deps.markitdown,
     }));
   }
 

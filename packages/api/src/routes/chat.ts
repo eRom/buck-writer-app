@@ -1,7 +1,6 @@
 import { Hono } from 'hono';
 import { eq, and, isNull, gte, lt } from 'drizzle-orm';
 import { sql } from 'drizzle-orm';
-import * as pathModule from 'node:path';
 import { newId, costOf, getBillingPeriod } from '@buck/shared';
 import type { DbHandles } from '../db/client.js';
 import type { PromptsRef } from '../services/prompts.js';
@@ -15,7 +14,13 @@ import {
   attachments,
   mcpCallEvents,
 } from '../db/schema.js';
-import { isImage, isExtractable, extractText } from '../services/extractor.js';
+import { isImage } from '../services/extractor.js';
+import {
+  extractAttachment,
+  formatAttachmentBlock,
+  type AttachmentRow,
+} from '../services/attachmentExtractor.js';
+import type { MarkitdownClient } from '../services/markitdown.js';
 import {
   streamResponses,
   respond,
@@ -50,6 +55,12 @@ export interface ChatRouteDeps {
   nowMs?: () => number;
   memory?: MemoryServices;
   buckUserId?: string;
+  /**
+   * MarkItDown sidecar client for extracting attachments (PDF, images, DOCX,
+   * PPTX, XLSX) to markdown. When absent, those attachments are marked
+   * `skipped` and not injected in the prompt.
+   */
+  markitdown?: MarkitdownClient;
 }
 
 interface ToolMeta {
@@ -255,6 +266,12 @@ export function createChatRoute(
     }
 
     if (attachmentIds.length > 0 && deps.workspaceDir && lastUserIdx >= 0) {
+      const extractorDeps = {
+        db: deps.db,
+        workspaceDir: deps.workspaceDir,
+        markitdown: deps.markitdown,
+        now,
+      };
       for (const attId of attachmentIds) {
         const att = deps.db.db
           .select()
@@ -263,17 +280,14 @@ export function createChatRoute(
           .get();
         if (!att) continue;
 
-        const absPath = pathModule.join(deps.workspaceDir, att.path);
-
-        if (isImage(att.mimeType)) {
-          typedUserMessages[lastUserIdx]!.content += `\n\n[Attached image: ${att.filename}]`;
-        } else if (isExtractable(att.mimeType)) {
-          try {
-            const text = await extractText(absPath, att.mimeType);
-            typedUserMessages[lastUserIdx]!.content += `\n\n--- Attached: ${att.filename} ---\n${text}\n--- End ---`;
-          } catch {
-            // skip silently
-          }
+        const result = await extractAttachment(att as AttachmentRow, extractorDeps);
+        const block = formatAttachmentBlock(att.filename, att.mimeType, result);
+        if (block) {
+          typedUserMessages[lastUserIdx]!.content += `\n\n${block}`;
+        } else if (isImage(att.mimeType) && result.status !== 'ok') {
+          // Image not extractable (no markitdown or failure) — surface as a
+          // placeholder so the model at least knows an image was attached.
+          typedUserMessages[lastUserIdx]!.content += `\n\n[Image jointe non extraite: ${att.filename}]`;
         }
       }
     }

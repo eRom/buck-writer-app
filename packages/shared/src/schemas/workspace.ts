@@ -45,8 +45,11 @@ export const ALLOWED_MIME_TYPES = [
   'image/webp',
   'text/plain',
   'text/markdown',
+  'application/json',
   'application/pdf',
   'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+  'application/vnd.openxmlformats-officedocument.presentationml.presentation',
+  'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
 ] as const;
 
 export const MAX_ATTACHMENT_SIZE = 20 * 1024 * 1024; // 20 MB

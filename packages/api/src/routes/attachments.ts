@@ -79,7 +79,9 @@ function mimeMatches(claimed: string, buf: Buffer): boolean {
         b[4] === 0x2d
       );
     case 'application/vnd.openxmlformats-officedocument.wordprocessingml.document':
-      // zip: PK\x03\x04 (docx is a zip container)
+    case 'application/vnd.openxmlformats-officedocument.presentationml.presentation':
+    case 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet':
+      // zip: PK\x03\x04 (OOXML formats are zip containers)
       return (
         b.length >= 4 &&
         b[0] === 0x50 &&
@@ -89,6 +91,7 @@ function mimeMatches(claimed: string, buf: Buffer): boolean {
       );
     case 'text/plain':
     case 'text/markdown':
+    case 'application/json':
       return true;
     default:
       return false;
@@ -103,9 +106,14 @@ function extFromMime(mime: string): string {
     'image/webp': '.webp',
     'text/plain': '.txt',
     'text/markdown': '.md',
+    'application/json': '.json',
     'application/pdf': '.pdf',
     'application/vnd.openxmlformats-officedocument.wordprocessingml.document':
       '.docx',
+    'application/vnd.openxmlformats-officedocument.presentationml.presentation':
+      '.pptx',
+    'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet':
+      '.xlsx',
   };
   return map[mime] ?? '';
 }
