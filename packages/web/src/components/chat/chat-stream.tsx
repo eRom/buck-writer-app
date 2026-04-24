@@ -9,6 +9,7 @@ import { MarkdownRenderer } from './markdown-renderer';
 import { ToolCallsCollapsible } from './tool-calls-collapsible';
 import { ToolCallItem, type ToolCallState } from './tool-call-item';
 import { ChatEmptyState } from './chat-empty-state';
+import { ImageMessageBlock, type ImageBlockData } from './image-message-block';
 import { fetchMessages } from '@/lib/sessions';
 import { fetchUsageCurrent } from '@/lib/settings';
 import { fetchWorkspaceTree } from '@/lib/workspace';
@@ -40,6 +41,7 @@ interface ChatMessage {
   role: 'user' | 'assistant';
   content: string;
   toolMetas?: ToolMeta[];
+  images?: ImageBlockData[];
   attachments?: Array<{ id: string; filename: string; mimeType: string; sizeBytes: number }>;
 }
 
@@ -74,6 +76,7 @@ const LOCAL_TOOL_LABELS: Record<string, string> = {
   todos_update: 'Mise a jour todo',
   todos_delete: 'Suppression todo',
   activate_skill: 'Chargement skill',
+  image_generation: "Génération d'image",
 };
 
 const SERVER_LABELS: Record<string, string> = {
@@ -128,6 +131,52 @@ function toolOutputText(meta: ToolMeta): string | undefined {
     return [meta.result.stdout, meta.result.stderr].filter(Boolean).join('\n');
   }
   return undefined;
+}
+
+function parseStoredImages(raw: string | null | undefined): ImageBlockData[] | undefined {
+  if (!raw) return undefined;
+  try {
+    const arr = JSON.parse(raw) as Array<{
+      callId: string;
+      b64?: string;
+      size?: string;
+      revisedPrompt?: string;
+      savedToWorkspace?: string;
+    }>;
+    if (!Array.isArray(arr) || arr.length === 0) return undefined;
+    return arr.map((e) => ({
+      callId: e.callId,
+      status: 'done' as const,
+      b64: e.b64,
+      size: e.size,
+      revisedPrompt: e.revisedPrompt,
+      savedToWorkspace: e.savedToWorkspace,
+    }));
+  } catch {
+    return undefined;
+  }
+}
+
+function upsertImage(
+  msgs: ChatMessage[],
+  assistantId: string,
+  callId: string,
+  update: Partial<ImageBlockData> & { status: ImageBlockData['status'] },
+): ChatMessage[] {
+  return msgs.map((m) => {
+    if (m.id !== assistantId) return m;
+    const existing = m.images ?? [];
+    const idx = existing.findIndex((img) => img.callId === callId);
+    if (idx === -1) {
+      return {
+        ...m,
+        images: [...existing, { callId, ...update }],
+      };
+    }
+    const next = [...existing];
+    next[idx] = { ...next[idx]!, ...update, callId };
+    return { ...m, images: next };
+  });
 }
 
 export function ChatStream({ sessionId, onSessionCreated }: ChatStreamProps) {
@@ -191,6 +240,7 @@ export function ChatStream({ sessionId, onSessionCreated }: ChatStreamProps) {
           }
         })(),
         toolMetas: m.toolMeta ? (JSON.parse(m.toolMeta) as ToolMeta[]) : undefined,
+        images: parseStoredImages(m.imagesJson),
         attachments: m.attachments,
       }));
       setMessages(loaded);
@@ -484,6 +534,40 @@ export function ChatStream({ sessionId, onSessionCreated }: ChatStreamProps) {
                   : m,
               ),
             );
+          } else if (event === 'image_partial') {
+            const callId = String(parsed.callId ?? '');
+            if (!callId) continue;
+            setMessages((prev) =>
+              upsertImage(prev, assistantId, callId, {
+                status: 'partial',
+                b64: typeof parsed.b64 === 'string' ? parsed.b64 : undefined,
+              }),
+            );
+          } else if (event === 'image_done') {
+            const callId = String(parsed.callId ?? '');
+            if (!callId) continue;
+            setMessages((prev) =>
+              upsertImage(prev, assistantId, callId, {
+                status: 'done',
+                b64: typeof parsed.b64 === 'string' ? parsed.b64 : undefined,
+                revisedPrompt:
+                  typeof parsed.revisedPrompt === 'string'
+                    ? parsed.revisedPrompt
+                    : undefined,
+                size: typeof parsed.size === 'string' ? parsed.size : undefined,
+              }),
+            );
+          } else if (event === 'image_error') {
+            const callId = String(parsed.callId ?? '');
+            if (!callId) continue;
+            setMessages((prev) =>
+              upsertImage(prev, assistantId, callId, {
+                status: 'failed',
+                errorCode: typeof parsed.code === 'string' ? parsed.code : undefined,
+                errorMessage:
+                  typeof parsed.message === 'string' ? parsed.message : undefined,
+              }),
+            );
           } else if (event === 'error') {
             const err = parsed as { code?: string; message?: string; link?: string };
             if (err.code === 'provider_rate_limit') {
@@ -722,6 +806,40 @@ export function ChatStream({ sessionId, onSessionCreated }: ChatStreamProps) {
                     : m,
                 ),
               );
+            } else if (event === 'image_partial') {
+              const callId = String(parsed.callId ?? '');
+              if (!callId) continue;
+              setMessages((prev) =>
+                upsertImage(prev, assistantId, callId, {
+                  status: 'partial',
+                  b64: typeof parsed.b64 === 'string' ? parsed.b64 : undefined,
+                }),
+              );
+            } else if (event === 'image_done') {
+              const callId = String(parsed.callId ?? '');
+              if (!callId) continue;
+              setMessages((prev) =>
+                upsertImage(prev, assistantId, callId, {
+                  status: 'done',
+                  b64: typeof parsed.b64 === 'string' ? parsed.b64 : undefined,
+                  revisedPrompt:
+                    typeof parsed.revisedPrompt === 'string'
+                      ? parsed.revisedPrompt
+                      : undefined,
+                  size: typeof parsed.size === 'string' ? parsed.size : undefined,
+                }),
+              );
+            } else if (event === 'image_error') {
+              const callId = String(parsed.callId ?? '');
+              if (!callId) continue;
+              setMessages((prev) =>
+                upsertImage(prev, assistantId, callId, {
+                  status: 'failed',
+                  errorCode: typeof parsed.code === 'string' ? parsed.code : undefined,
+                  errorMessage:
+                    typeof parsed.message === 'string' ? parsed.message : undefined,
+                }),
+              );
             } else if (event === 'error' && parsed.message) {
               toast.error(String(parsed.message));
             }
@@ -790,8 +908,14 @@ export function ChatStream({ sessionId, onSessionCreated }: ChatStreamProps) {
                   {toolCallNodes}
                 </ToolCallsCollapsible>
               ) : null;
+              const images = m.images ?? [];
               const isThinking =
-                isLoading && isLastAssistant && !m.content && metas.length === 0 && !showPending;
+                isLoading &&
+                isLastAssistant &&
+                !m.content &&
+                metas.length === 0 &&
+                images.length === 0 &&
+                !showPending;
               return (
                 <MessageAssistant key={m.id} toolCalls={toolCalls} messageId={m.id}>
                   {isThinking ? (
@@ -800,7 +924,12 @@ export function ChatStream({ sessionId, onSessionCreated }: ChatStreamProps) {
                       Buck réfléchit…
                     </span>
                   ) : (
-                    <MarkdownRenderer content={m.content} />
+                    <>
+                      <MarkdownRenderer content={m.content} />
+                      {images.map((img) => (
+                        <ImageMessageBlock key={img.callId} data={img} />
+                      ))}
+                    </>
                   )}
                 </MessageAssistant>
               );

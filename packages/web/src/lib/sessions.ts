@@ -69,6 +69,7 @@ export interface Message {
   contentJson: string;
   model: string | null;
   toolMeta: string | null;
+  imagesJson: string | null;
   createdAt: number;
   attachments?: MessageAttachment[];
 }
