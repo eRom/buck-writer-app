@@ -1,6 +1,28 @@
 # Gotchas — Buck Writer
 
-> MAJ 2026-04-22 (M6 MarkItDown + 3 pièges env/drizzle/ocr)
+> MAJ 2026-04-24 (M8B image_generation + drizzle migration skippée)
+
+## M8B — Migration drizzle skippée silencieusement si `when` plus petit (session 2026-04-24)
+
+**Symptôme** : Migration 0014_image_gen générée via `drizzle-kit generate --name image_gen` ajoutée proprement à `_journal.json`, tests unitaires verts, MAIS au boot de l'api en dev (`pnpm dev`) les logs disent `[api] migrations applied` puis chaque call API explose avec `SqliteError: no such column: "image_quality"`. La colonne n'existe physiquement pas dans `data/buck.db`, alors que la DB se dit à jour.
+
+**Cause** : drizzle-kit pose un `when` timestamp basé sur `Date.now()` au moment du `generate`. Les migrations précédentes du repo avaient été **manuellement ré-écrites** avec des `when` futurs ordonnés artificiellement (0009 → 0013 entre `1777680000000` et `1777680240000`, soit ~mai 2026). Ma 0014 a pris le timestamp réel au moment du generate = `1777046580111` (2026-04-24). Drizzle migrate compare **par timestamp** : il voit que les timestamps "plus récents" sont déjà dans `__drizzle_migrations`, donc la 0014 est considérée comme "passée dans le passé" et SKIP. Aucune erreur, aucun warning.
+
+**Fix ponctuel** (DB dev déjà polluée) :
+```bash
+sqlite3 data/buck.db "
+  ALTER TABLE messages ADD images_json text;
+  ALTER TABLE user_settings ADD image_quality text DEFAULT 'medium' NOT NULL;
+  ALTER TABLE user_settings ADD image_size text DEFAULT '1024x1024' NOT NULL;
+  INSERT INTO __drizzle_migrations (hash, created_at) VALUES ('m8b_0014_image_gen', 1777680300000);
+"
+```
+
+**Fix durable** : éditer `packages/api/migrations/meta/_journal.json` pour mettre la nouvelle migration avec un `when` **strictement supérieur** au max des précédentes. Pour M8B : `1777680300000` (juste après 0013).
+
+**Règle** : à chaque nouvelle migration, vérifier `jq '[.entries[].when] | max' packages/api/migrations/meta/_journal.json` ≤ `when` de la nouvelle. Si non, éditer manuellement le journal. Les tests `pnpm test` passent quand même car ils tournent sur DB fresh — le bug ne se révèle qu'en DB existante.
+
+---
 
 ## M6 — MarkItDown sidecar (session 2026-04-22)
 

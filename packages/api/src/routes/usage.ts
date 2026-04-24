@@ -90,6 +90,7 @@ export function createUsageRoutes(
     const memoryRaw = ['memory_embedding', 'memory_consolidation', 'memory_compaction', 'memory_dedup']
       .reduce((sum, k) => sum + sumByKind(deps.db, userId, period.periodStart, period.periodEnd, k), 0);
     const memoryUsd = Math.round(memoryRaw * 100) / 100;
+    const imageUsd = Math.round(sumByKind(deps.db, userId, period.periodStart, period.periodEnd, 'image') * 100) / 100;
 
     return c.json({
       totalUsd,
@@ -100,7 +101,7 @@ export function createUsageRoutes(
       daysRemaining: period.daysRemaining,
       resetDay: settings.billingResetDay,
       alerts,
-      byKind: { chat: chatUsd, realtime: realtimeUsd, memory: memoryUsd },
+      byKind: { chat: chatUsd, realtime: realtimeUsd, memory: memoryUsd, image: imageUsd },
     });
   });
 

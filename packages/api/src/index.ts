@@ -20,6 +20,7 @@ import { applyMcpToolClassifications } from './services/mcp-classifier.js';
 import { createUsageTracker } from './services/realtime/usage-tracker.js';
 import { bootstrapMemory } from './services/memory/bootstrap.js';
 import { createMarkitdownClient } from './services/markitdown.js';
+import { purgeOldImages } from './services/image-purge.js';
 import { usageEvents, userSettings } from './db/schema.js';
 import { eq } from 'drizzle-orm';
 import { newId } from '@buck/shared';
@@ -220,6 +221,26 @@ if (memory.enabled && process.env.NODE_ENV !== 'test') {
   setInterval(() => { memory.drainRetryBuffer().catch(() => {}); }, 30_000);
   setInterval(() => { memory.syncUsage().catch(() => {}); }, 6 * 60 * 60 * 1000);
   console.warn('[api] memory enabled (Supabase)');
+}
+
+// M8B — purge images > 30j non sauvegardées dans workspace. Run au boot
+// puis toutes les 24h. Skip en test (les tests contrôlent leur propre DB).
+if (process.env.NODE_ENV !== 'test') {
+  const runPurge = () => {
+    try {
+      const res = purgeOldImages({ db: handles });
+      if (res.purgedImages > 0) {
+        console.warn(
+          `[api] image purge: ${res.purgedImages} images removed from ${res.scannedMessages} messages (${res.collapsedToNull} rows collapsed to NULL)`,
+        );
+      }
+    } catch (err) {
+      console.warn('[api] image purge failed:', (err as Error).message);
+    }
+  };
+  runPurge();
+  const imagePurgeTimer = setInterval(runPurge, 24 * 60 * 60 * 1000);
+  imagePurgeTimer.unref?.();
 }
 
 const app = buildApp({
