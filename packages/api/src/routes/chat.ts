@@ -1,7 +1,15 @@
 import { Hono } from 'hono';
 import { eq, and, isNull, gte, lt } from 'drizzle-orm';
 import { sql } from 'drizzle-orm';
-import { newId, costOf, getBillingPeriod } from '@buck/shared';
+import {
+  newId,
+  costOf,
+  getBillingPeriod,
+  imageCost,
+  GPT_IMAGE_2_MODEL,
+  type ImageQuality,
+  type ImageEntry,
+} from '@buck/shared';
 import type { DbHandles } from '../db/client.js';
 import type { PromptsRef } from '../services/prompts.js';
 import type { Skill } from '../services/skills.js';
@@ -212,8 +220,8 @@ export function createChatRoute(
       resolvedModel = settingsRow.defaultModel;
     }
 
-    const chatTools: { webSearch?: boolean; fileSearch?: boolean } = settingsRow?.chatToolsJson
-      ? (JSON.parse(settingsRow.chatToolsJson) as { webSearch?: boolean; fileSearch?: boolean })
+    const chatTools: { webSearch?: boolean; fileSearch?: boolean; imageGen?: boolean } = settingsRow?.chatToolsJson
+      ? (JSON.parse(settingsRow.chatToolsJson) as { webSearch?: boolean; fileSearch?: boolean; imageGen?: boolean })
       : {};
 
     // Memory context — fail-soft.
@@ -320,6 +328,24 @@ export function createChatRoute(
         max_num_results: 5,
       });
     }
+    const imageQuality = (settingsRow?.imageQuality ?? 'medium') as ImageQuality;
+    const imageSize = (settingsRow?.imageSize ?? '1024x1024') as
+      | '1024x1024'
+      | '1536x1024'
+      | '1024x1536'
+      | 'auto';
+    if (chatTools.imageGen) {
+      toolDefs.push({
+        type: 'image_generation',
+        action: 'auto',
+        quality: imageQuality,
+        size: imageSize,
+        partial_images: 2,
+        output_format: 'png',
+        moderation: 'low',
+        background: 'auto',
+      });
+    }
 
     // Decide what goes into `input` for the first request.
     // - Approval resume : just the continuation item + previous_response_id.
@@ -396,6 +422,8 @@ export function createChatRoute(
         cachedInputTokens: 0,
       };
       const collectedToolMetas: ToolMeta[] = [];
+      const finalImages: ImageEntry[] = [];
+      const imageUsageRows: Array<{ callId: string; costUsd: number }> = [];
       let pendingApproval = false;
       let lastRespId: string | undefined = previousResponseId;
       let step = 0;
@@ -425,6 +453,7 @@ export function createChatRoute(
             string,
             { serverLabel: string; toolName: string; startedAt: number }
           >();
+          const imageInFlight = new Set<string>();
           let stepDone = false;
           let approvalRequestedInStep = false;
 
@@ -460,6 +489,15 @@ export function createChatRoute(
                       toolName: item.name ?? 'unknown',
                       startedAt: now(),
                     });
+                  } else if (item.type === 'image_generation_call') {
+                    if (!imageInFlight.has(item.id)) {
+                      imageInFlight.add(item.id);
+                      sendEvent('tool_started', {
+                        callId: item.id,
+                        toolCallId: item.id,
+                        toolName: 'image_generation',
+                      });
+                    }
                   }
                   break;
                 }
@@ -505,6 +543,33 @@ export function createChatRoute(
                       status: 'auto',
                       result: item.error ? { error: item.error } : item.output ?? {},
                     });
+                  } else if (item.type === 'image_generation_call') {
+                    const b64 = item.result ?? '';
+                    const revisedPrompt = item.revised_prompt;
+                    const entry: ImageEntry = {
+                      callId: item.id,
+                      b64,
+                      size: imageSize,
+                      revisedPrompt,
+                      createdAt: now(),
+                    };
+                    finalImages.push(entry);
+                    const costUsd = imageCost(imageQuality, imageSize);
+                    imageUsageRows.push({ callId: item.id, costUsd });
+                    sendEvent('image_done', {
+                      callId: item.id,
+                      b64,
+                      revisedPrompt,
+                      size: imageSize,
+                    });
+                    collectedToolMetas.push({
+                      toolCallId: item.id,
+                      toolName: 'image_generation',
+                      args: { quality: imageQuality, size: imageSize },
+                      status: 'auto',
+                      result: { size: imageSize, revisedPrompt: revisedPrompt ?? null },
+                    });
+                    imageInFlight.delete(item.id);
                   }
                   break;
                 }
@@ -540,6 +605,34 @@ export function createChatRoute(
                     }).run();
                     mcpInFlight.delete(ev.item_id);
                   }
+                  break;
+                }
+
+                case 'response.image_generation_call.generating':
+                case 'response.image_generation_call.in_progress': {
+                  if (!imageInFlight.has(ev.item_id)) {
+                    imageInFlight.add(ev.item_id);
+                    sendEvent('tool_started', {
+                      callId: ev.item_id,
+                      toolCallId: ev.item_id,
+                      toolName: 'image_generation',
+                    });
+                  }
+                  break;
+                }
+
+                case 'response.image_generation_call.partial_image': {
+                  sendEvent('image_partial', {
+                    callId: ev.item_id,
+                    index: ev.partial_image_index,
+                    b64: ev.partial_image_b64,
+                  });
+                  break;
+                }
+
+                case 'response.image_generation_call.completed': {
+                  // Final payload comes via response.output_item.done (below).
+                  // This event only marks streaming end.
                   break;
                 }
 
@@ -749,10 +842,34 @@ export function createChatRoute(
                 collectedToolMetas.length > 0
                   ? JSON.stringify(collectedToolMetas)
                   : null,
+              imagesJson:
+                finalImages.length > 0 ? JSON.stringify(finalImages) : null,
               createdAt: finishTs,
             })
             .run();
           sendEvent('assistant_saved', { id: assistantMsgId });
+
+          // Billing: one usage_events row per image_generation_call.
+          for (const row of imageUsageRows) {
+            deps.db.db
+              .insert(usageEvents)
+              .values({
+                id: newId(),
+                userId,
+                sessionId: finalSessionId,
+                createdAt: finishTs,
+                model: GPT_IMAGE_2_MODEL,
+                inputTokens: 0,
+                outputTokens: 0,
+                reasoningTokens: 0,
+                cachedInputTokens: 0,
+                audioInputSeconds: 0,
+                audioOutputSeconds: 0,
+                costUsd: row.costUsd,
+                kind: 'image',
+              })
+              .run();
+          }
 
           const costUsd = costOf(
             resolvedModel,

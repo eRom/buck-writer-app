@@ -191,6 +191,10 @@ export type ResponsesEvent =
   | { type: 'response.mcp_list_tools.in_progress'; output_index: number; item_id: string }
   | { type: 'response.mcp_list_tools.completed'; output_index: number; item_id: string }
   | { type: 'response.mcp_list_tools.failed'; output_index: number; item_id: string }
+  | { type: 'response.image_generation_call.generating'; output_index: number; item_id: string; sequence_number?: number }
+  | { type: 'response.image_generation_call.in_progress'; output_index: number; item_id: string; sequence_number?: number }
+  | { type: 'response.image_generation_call.partial_image'; output_index: number; item_id: string; partial_image_index: number; partial_image_b64: string; sequence_number?: number }
+  | { type: 'response.image_generation_call.completed'; output_index: number; item_id: string; sequence_number?: number }
   | { type: 'response.completed'; response: CompletedResponse }
   | { type: 'response.failed'; response: CompletedResponse }
   | { type: 'response.incomplete'; response: CompletedResponse }
@@ -226,6 +230,9 @@ export interface OutputItem {
   server_url?: string;
   output?: unknown;
   error?: string;
+  // image_generation_call
+  result?: string;
+  revised_prompt?: string;
 }
 
 // ---------- Error ----------
