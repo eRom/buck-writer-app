@@ -10,6 +10,12 @@ import { ToolCallsCollapsible } from './tool-calls-collapsible';
 import { ToolCallItem, type ToolCallState } from './tool-call-item';
 import { ChatEmptyState } from './chat-empty-state';
 import { ImageMessageBlock, type ImageBlockData } from './image-message-block';
+import { SaveToWorkspaceModal } from './save-to-workspace-modal';
+import {
+  Dialog,
+  DialogContent,
+  DialogTitle,
+} from '@/components/ui/dialog';
 import { fetchMessages } from '@/lib/sessions';
 import { fetchUsageCurrent } from '@/lib/settings';
 import { fetchWorkspaceTree } from '@/lib/workspace';
@@ -190,6 +196,11 @@ export function ChatStream({ sessionId, onSessionCreated }: ChatStreamProps) {
   const [references, setReferences] = useState<Array<{ path: string; content: string }>>([]);
   const [pendingApproval, setPendingApproval] = useState<PendingApproval | null>(null);
   const [budgetExceeded, setBudgetExceeded] = useState<boolean>(false);
+  const [saveTarget, setSaveTarget] = useState<{
+    messageId: string;
+    callId: string;
+  } | null>(null);
+  const [zoomSrc, setZoomSrc] = useState<string | null>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
   const abortRef = useRef<AbortController | null>(null);
   const sessionIdRef = useRef<string | null>(sessionId);
@@ -927,7 +938,19 @@ export function ChatStream({ sessionId, onSessionCreated }: ChatStreamProps) {
                     <>
                       <MarkdownRenderer content={m.content} />
                       {images.map((img) => (
-                        <ImageMessageBlock key={img.callId} data={img} />
+                        <ImageMessageBlock
+                          key={img.callId}
+                          data={img}
+                          onSave={
+                            m.id.startsWith('local-')
+                              ? undefined
+                              : (callId) =>
+                                  setSaveTarget({ messageId: m.id, callId })
+                          }
+                          onZoom={(_, b64) =>
+                            setZoomSrc(`data:image/png;base64,${b64}`)
+                          }
+                        />
                       ))}
                     </>
                   )}
@@ -960,6 +983,49 @@ export function ChatStream({ sessionId, onSessionCreated }: ChatStreamProps) {
         onReferenceSelect={handleReferenceSelect}
         chatSessionId={sessionId}
       />
+      {saveTarget ? (
+        <SaveToWorkspaceModal
+          open
+          onOpenChange={(o) => {
+            if (!o) setSaveTarget(null);
+          }}
+          messageId={saveTarget.messageId}
+          callId={saveTarget.callId}
+          onSaved={({ path }) => {
+            setMessages((prev) =>
+              prev.map((m) =>
+                m.id === saveTarget.messageId
+                  ? {
+                      ...m,
+                      images: (m.images ?? []).map((img) =>
+                        img.callId === saveTarget.callId
+                          ? { ...img, savedToWorkspace: path }
+                          : img,
+                      ),
+                    }
+                  : m,
+              ),
+            );
+          }}
+        />
+      ) : null}
+      <Dialog
+        open={zoomSrc !== null}
+        onOpenChange={(o) => {
+          if (!o) setZoomSrc(null);
+        }}
+      >
+        <DialogContent className="max-w-[90vw] bg-black/95 p-2 sm:max-w-[90vw]">
+          <DialogTitle className="sr-only">Image agrandie</DialogTitle>
+          {zoomSrc ? (
+            <img
+              src={zoomSrc}
+              alt="Image agrandie"
+              className="max-h-[85vh] w-auto mx-auto"
+            />
+          ) : null}
+        </DialogContent>
+      </Dialog>
     </>
   );
 }

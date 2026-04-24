@@ -20,6 +20,7 @@ import { createUsageRoutes } from './routes/usage.js';
 import { createMcpRoutes } from './routes/mcp.js';
 import { createTodosRoutes } from './routes/todos.js';
 import { createWorkspaceRoutes } from './routes/workspace.js';
+import { createImagesRoutes } from './routes/images.js';
 import { createVectorStoreRoutes } from './routes/vector-store.js';
 import { createAttachmentRoutes } from './routes/attachments.js';
 import { createWebDAVRoutes } from './services/webdav.js';
@@ -303,6 +304,11 @@ export function buildApp(deps: AppDeps) {
     app.use('/api/attachments/*', authGuard({ db: deps.db, jwt: deps.jwt, nowMs: deps.nowMs }));
     app.use('/api/attachments', authGuard({ db: deps.db, jwt: deps.jwt, nowMs: deps.nowMs }));
     app.route('/api/attachments', createAttachmentRoutes({ db: deps.db, workspaceDir: deps.workspaceDir, nowMs: deps.nowMs }));
+
+    // Image save routes (M8B image_generation)
+    app.use('/api/images/*', authGuard({ db: deps.db, jwt: deps.jwt, nowMs: deps.nowMs }));
+    app.use('/api/images', authGuard({ db: deps.db, jwt: deps.jwt, nowMs: deps.nowMs }));
+    app.route('/api/images', createImagesRoutes({ db: deps.db, workspaceDir: deps.workspaceDir, nowMs: deps.nowMs }));
 
     // WebDAV routes — own auth (Bearer/Basic JWT with scope=webdav), CSRF bypassed in csrf.ts
     app.route('/webdav', createWebDAVRoutes({ workspaceDir: deps.workspaceDir, jwt: deps.jwt }));
