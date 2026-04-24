@@ -29,6 +29,12 @@ function formatSettings(row: UserSettingsRow) {
       ? row.vectorStoreLastSyncAt.getTime()
       : null,
     ttsDefaultVoice: row.ttsDefaultVoice,
+    imageQuality: row.imageQuality as 'low' | 'medium' | 'high',
+    imageSize: row.imageSize as
+      | '1024x1024'
+      | '1536x1024'
+      | '1024x1536'
+      | 'auto',
   };
 }
 
@@ -109,6 +115,12 @@ export function createSettingsRoutes(
     }
     if (data.ttsDefaultVoice !== undefined) {
       updates.ttsDefaultVoice = data.ttsDefaultVoice;
+    }
+    if (data.imageQuality !== undefined) {
+      updates.imageQuality = data.imageQuality;
+    }
+    if (data.imageSize !== undefined) {
+      updates.imageSize = data.imageSize;
     }
 
     if (Object.keys(updates).length > 0) {

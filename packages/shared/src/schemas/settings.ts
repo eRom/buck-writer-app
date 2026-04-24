@@ -23,7 +23,11 @@ const RealtimeTools = z.object({
 const ChatTools = z.object({
   webSearch: z.boolean(),
   fileSearch: z.boolean().optional(),
+  imageGen: z.boolean().optional(),
 });
+
+export const IMAGE_SIZES = ['1024x1024', '1536x1024', '1024x1536', 'auto'] as const;
+export type ImageSizeOption = (typeof IMAGE_SIZES)[number];
 
 export const UpdateSettingsInput = z.object({
   monthlyCostLimitUsd: z.number().min(1).max(10000).optional(),
@@ -37,6 +41,8 @@ export const UpdateSettingsInput = z.object({
   realtimeTools: RealtimeTools.optional(),
   chatTools: ChatTools.optional(),
   ttsDefaultVoice: z.enum(TTS_VOICE_NAMES).optional(),
+  imageQuality: z.enum(['low', 'medium', 'high']).optional(),
+  imageSize: z.enum(IMAGE_SIZES).optional(),
 });
 export type UpdateSettingsInput = z.infer<typeof UpdateSettingsInput>;
 
@@ -55,6 +61,8 @@ export const SettingsResponse = z.object({
   vectorStoreId: z.string().nullable(),
   vectorStoreLastSyncAt: z.number().nullable(),
   ttsDefaultVoice: z.string().nullable(),
+  imageQuality: z.enum(['low', 'medium', 'high']),
+  imageSize: z.enum(IMAGE_SIZES),
 });
 export type SettingsResponse = z.infer<typeof SettingsResponse>;
 
@@ -74,6 +82,7 @@ export const UsageResponse = z.object({
     chat: z.number(),
     realtime: z.number(),
     memory: z.number(),
+    image: z.number().optional(),
   }),
 });
 export type UsageResponse = z.infer<typeof UsageResponse>;

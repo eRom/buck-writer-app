@@ -302,4 +302,67 @@ describe('settings routes', () => {
       expect(body.chatTools).toEqual({ webSearch: true });
     });
   });
+
+  describe('M8B image_generation settings', () => {
+    it('returns image_generation defaults on GET', async () => {
+      ctx = await makeCtx();
+      const res = await ctx.app.request('/api/settings', {
+        method: 'GET',
+        headers: authGetHeaders(ctx.sessionJwt),
+      });
+      expect(res.status).toBe(200);
+      const body = (await res.json()) as Record<string, unknown>;
+      expect(body.imageQuality).toBe('medium');
+      expect(body.imageSize).toBe('1024x1024');
+    });
+
+    it('PATCH imageQuality and imageSize round-trip', async () => {
+      ctx = await makeCtx();
+      const res = await ctx.app.request('/api/settings', {
+        method: 'PATCH',
+        headers: authMutHeaders(ctx.sessionJwt),
+        body: JSON.stringify({ imageQuality: 'high', imageSize: '1536x1024' }),
+      });
+      expect(res.status).toBe(200);
+      const body = (await res.json()) as Record<string, unknown>;
+      expect(body.imageQuality).toBe('high');
+      expect(body.imageSize).toBe('1536x1024');
+    });
+
+    it('rejects invalid imageQuality with 422', async () => {
+      ctx = await makeCtx();
+      const res = await ctx.app.request('/api/settings', {
+        method: 'PATCH',
+        headers: authMutHeaders(ctx.sessionJwt),
+        body: JSON.stringify({ imageQuality: 'ultra' }),
+      });
+      expect(res.status).toBe(422);
+    });
+
+    it('rejects invalid imageSize with 422', async () => {
+      ctx = await makeCtx();
+      const res = await ctx.app.request('/api/settings', {
+        method: 'PATCH',
+        headers: authMutHeaders(ctx.sessionJwt),
+        body: JSON.stringify({ imageSize: '999x999' }),
+      });
+      expect(res.status).toBe(422);
+    });
+
+    it('accepts imageGen flag in chatTools', async () => {
+      ctx = await makeCtx();
+      const res = await ctx.app.request('/api/settings', {
+        method: 'PATCH',
+        headers: authMutHeaders(ctx.sessionJwt),
+        body: JSON.stringify({
+          chatTools: { webSearch: false, imageGen: true },
+        }),
+      });
+      expect(res.status).toBe(200);
+      const body = (await res.json()) as {
+        chatTools: Record<string, boolean>;
+      };
+      expect(body.chatTools.imageGen).toBe(true);
+    });
+  });
 });
