@@ -85,8 +85,13 @@ export interface WebSearchToolDef {
 }
 export interface ImageGenToolDef {
   type: 'image_generation';
+  action?: 'auto' | 'generate' | 'edit';
   quality?: 'low' | 'medium' | 'high' | 'auto';
-  size?: string;
+  size?: '1024x1024' | '1536x1024' | '1024x1536' | 'auto';
+  partial_images?: 0 | 1 | 2 | 3;
+  output_format?: 'png' | 'jpeg' | 'webp';
+  moderation?: 'auto' | 'low';
+  background?: 'transparent' | 'opaque' | 'auto';
 }
 export interface FileSearchToolDef {
   type: 'file_search';

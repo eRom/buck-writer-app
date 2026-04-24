@@ -98,6 +98,7 @@ export const messages = sqliteTable(
     model: text('model'),
     toolMeta: text('tool_meta'),
     source: text('source').notNull().default('text'),
+    imagesJson: text('images_json'),
     createdAt: integer('created_at').notNull(),
   },
   (t) => ({
@@ -216,6 +217,8 @@ export const userSettings = sqliteTable('user_settings', {
   vectorStoreId: text('vector_store_id'),
   vectorStoreLastSyncAt: integer('vector_store_last_sync_at', { mode: 'timestamp_ms' }),
   ttsDefaultVoice: text('tts_default_voice'),
+  imageQuality: text('image_quality').notNull().default('medium'),
+  imageSize: text('image_size').notNull().default('1024x1024'),
 });
 
 // ---------- workspace vector files (M8A file_search) ----------

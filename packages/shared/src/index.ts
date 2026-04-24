@@ -1,6 +1,7 @@
 export * from './models/ids.js';
 export * from './pricing/models.js';
 export * from './pricing/tts.js';
+export * from './pricing/image.js';
 export * from './schemas/auth.js';
 export * from './schemas/chat.js';
 export * from './billing/period.js';
@@ -8,3 +9,4 @@ export * from './schemas/settings.js';
 export * from './schemas/workspace.js';
 export * from './voice/index.js';
 export * from './tts/index.js';
+export * from './chat/image-entry.js';
