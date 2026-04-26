@@ -14,7 +14,7 @@ RUN pnpm install --frozen-lockfile
 FROM deps AS build
 COPY . .
 # URL bible-ui injectee par Vite a la compilation (build arg surchargeable)
-ARG VITE_BIBLE_UI_URL=https://bible.buck.romain-ecarnot.com
+ARG VITE_BIBLE_UI_URL=https://bible.buck.apps.romain-ecarnot.com
 ENV VITE_BIBLE_UI_URL=${VITE_BIBLE_UI_URL}
 RUN pnpm --filter @buck/shared build \
  && pnpm --filter @buck/web build \
