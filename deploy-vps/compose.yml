@@ -27,7 +27,6 @@ services:
     networks: [traefik-public, internal]
     depends_on:
       - bible-mcp
-      - writing-tools-mcp
       - markitdown-worker
     healthcheck:
       test: ["CMD-SHELL", "wget -q -O - http://127.0.0.1:3000/api/health || exit 1"]
@@ -81,29 +80,10 @@ services:
       - traefik.http.routers.bible-mcp.tls.certresolver=acme-cloudflare
       - traefik.http.services.bible-mcp.loadbalancer.server.port=7801
 
-  writing-tools-mcp:
-    image: ghcr.io/erom/buck-writing-tools-mcp:${TAG:-latest}
-    container_name: buck-writing-tools-mcp
-    restart: unless-stopped
-    env_file: /opt/buck/.env
-    environment:
-      # Override env_file PORT (qui vaut 3000 pour buck-app) — ce service tourne sur 7802.
-      PORT: '7802'
-      HOST: 0.0.0.0
-    networks: [traefik-public, internal]
-    # Disable explicit du healthcheck du Dockerfile (wget --spider HEAD → 405,
-    # FastMCP n'accepte que POST). Container marque unhealthy → Traefik
-    # exclut le router → pas de cert ACME → 503. Disable resout tout.
-    healthcheck:
-      disable: true
-    labels:
-      - traefik.enable=true
-      - traefik.docker.network=traefik-public
-      - traefik.http.routers.writing-mcp.rule=Host(`writing-mcp.buck.apps.romain-ecarnot.com`)
-      - traefik.http.routers.writing-mcp.middlewares=writing-mcp-bearer@file
-      - traefik.http.routers.writing-mcp.entrypoints=websecure
-      - traefik.http.routers.writing-mcp.tls.certresolver=acme-cloudflare
-      - traefik.http.services.writing-mcp.loadbalancer.server.port=7802
+  # writing-tools-mcp removed (2026-04-26): build cost (torch + transformers + spacy ~3GB)
+  # disproportionate to actual usage. To re-enable, restore service block,
+  # add to release.yml matrix, and restore writing-mcp-bearer middleware in
+  # vps-docker-manager-prod/traefik/dynamic/buck.yml.
 
   markitdown-worker:
     image: ghcr.io/erom/buck-markitdown-worker:${TAG:-latest}
