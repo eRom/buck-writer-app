@@ -86,6 +86,10 @@ services:
     container_name: buck-writing-tools-mcp
     restart: unless-stopped
     env_file: /opt/buck/.env
+    environment:
+      # Override env_file PORT (qui vaut 3000 pour buck-app) — ce service tourne sur 7802.
+      PORT: '7802'
+      HOST: 0.0.0.0
     networks: [traefik-public, internal]
     healthcheck:
       test: ["CMD-SHELL", "wget -q --spider http://127.0.0.1:7802/mcp || exit 1"]
