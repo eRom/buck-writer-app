@@ -176,6 +176,25 @@ export function buildApp(deps: AppDeps) {
     },
   );
 
+  // ForwardAuth Bearer pour les MCPs (bible-mcp, writing-mcp).
+  // Traefik fait GET sur cet endpoint et forward le header Authorization
+  // original sous X-Forwarded-Authorization. On accepte les deux noms pour
+  // permettre les tests directs (curl avec Authorization).
+  // Mounted BEFORE le rate limiter /api/auth/* (5/min) car OpenAI Responses
+  // peut générer plus de 5 calls/min.
+  app.use(
+    '/api/auth/verify-mcp-bearer',
+    createRateLimiter({ windowMs: 60_000, max: 120, keyBy: ipKey }),
+  );
+  app.get('/api/auth/verify-mcp-bearer', (c) => {
+    const expected = process.env.MCP_SHARED_SECRET;
+    if (!expected) return c.body(null, 503);
+    const auth =
+      c.req.header('X-Forwarded-Authorization') ?? c.req.header('Authorization') ?? '';
+    if (auth === `Bearer ${expected}`) return c.body(null, 204);
+    return c.body(null, 401);
+  });
+
   // Rate-limit auth mutation endpoints (5 req/min per IP) to prevent magic-link spam
   app.use(
     '/api/auth/*',
