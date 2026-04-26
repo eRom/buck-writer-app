@@ -1,3 +1,5 @@
+name: buck
+
 # Buck Writer — Production deploy.
 # Images pulled from GHCR, routing via Traefik labels.
 #
