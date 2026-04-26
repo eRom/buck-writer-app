@@ -35,7 +35,7 @@ Les prompts systèmes (SYSTEM.md + RULES.md) vivent dans `$WORKSPACE_DIR/systems
 - **Frontend** : React 19, Vite 6, Tailwind CSS 4.2, shadcn/ui (style radix-mira, baseColor stone), TanStack Router (file-based), TanStack Query, Zustand, Lucide icons, font Figtree
 - **Tests** : Vitest (unit, tous packages), Playwright (e2e, `packages/web/tests/e2e/`), Testing Library (composants)
 - **Build** : tsup (api + shared), Vite (web)
-- **Docker** : `vps/Dockerfile.app` mono-stage, `vps/compose.yml` avec volume data/db + data/workspace. Tout ce qui concerne le VPS (dockerfiles, compose, Caddyfile, deploy.sh, envs) vit dans `vps/`.
+- **Docker** : `deploy-vps/Dockerfile.app` mono-stage, `deploy-vps/compose.yml` (prod avec images GHCR + labels Traefik) et `deploy-vps/compose.local.yml` (dev hybride). Tout ce qui concerne le VPS vit dans `deploy-vps/`. Le déploiement se fait via tag `buck-v*` (cf `.github/workflows/release.yml`) qui build/push GHCR puis dispatch le repo `vps-docker-manager-prod`.
 
 ## Commandes
 
@@ -49,10 +49,10 @@ pnpm typecheck        # tsc --noEmit tous les packages
 pnpm db:generate      # drizzle-kit generate (migrations)
 pnpm db:migrate       # Applique les migrations
 pnpm db:seed          # Seed initial
-pnpm docker:build     # Build image locale (vps/Dockerfile.app)
-pnpm docker:up        # docker compose -f vps/compose.yml up -d --build
-pnpm deploy           # ./vps/deploy.sh (git pull + scp envs + build + healthchecks)
-docker compose -f vps/compose.local.yml up -d bible-mcp markitdown-worker   # dev hybride (services en Docker, buck pnpm dev)
+pnpm docker:build     # Build image locale (deploy-vps/Dockerfile.app)
+pnpm docker:up        # docker compose -f deploy-vps/compose.local.yml up -d --build
+git tag buck-vX.Y.Z && git push --tags   # déclenche release.yml (build GHCR + dispatch vers vps-docker-manager-prod)
+docker compose -f deploy-vps/compose.local.yml up -d bible-mcp markitdown-worker   # dev hybride
 ```
 
 ## Dev mode
