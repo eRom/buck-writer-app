@@ -44,7 +44,7 @@ RUN rm -rf /usr/local/lib/node_modules/npm \
 COPY --from=build /deploy /app
 COPY --from=build /repo/packages/api/migrations /app/migrations
 COPY --from=build /repo/packages/web/dist /app/web-dist
-COPY vps/docker-entrypoint.sh /app/docker-entrypoint.sh
+COPY deploy-vps/docker-entrypoint.sh /app/docker-entrypoint.sh
 RUN mkdir -p /app/data /app/workspace \
  && chmod +x /app/docker-entrypoint.sh \
  && chown -R node:node /app

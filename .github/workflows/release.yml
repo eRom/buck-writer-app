@@ -15,11 +15,11 @@ jobs:
       fail-fast: false
       matrix:
         image:
-          - { name: buck-app,                dockerfile: deploy-vps/Dockerfile.app }
-          - { name: buck-bible-mcp,          dockerfile: deploy-vps/Dockerfile.bible-mcp }
-          - { name: buck-bible-ui,           dockerfile: deploy-vps/Dockerfile.bible-ui }
-          - { name: buck-writing-tools-mcp,  dockerfile: deploy-vps/Dockerfile.writing-tools-mcp }
-          - { name: buck-markitdown-worker,  dockerfile: services/markitdown-worker/Dockerfile }
+          - { name: buck-app,                dockerfile: deploy-vps/Dockerfile.app,                context: . }
+          - { name: buck-bible-mcp,          dockerfile: deploy-vps/Dockerfile.bible-mcp,          context: . }
+          - { name: buck-bible-ui,           dockerfile: deploy-vps/Dockerfile.bible-ui,           context: . }
+          - { name: buck-writing-tools-mcp,  dockerfile: deploy-vps/Dockerfile.writing-tools-mcp,  context: . }
+          - { name: buck-markitdown-worker,  dockerfile: services/markitdown-worker/Dockerfile,    context: services/markitdown-worker }
     steps:
       - uses: actions/checkout@v4
 
@@ -38,7 +38,7 @@ jobs:
 
       - uses: docker/build-push-action@v5
         with:
-          context: .
+          context: ${{ matrix.image.context }}
           file: ${{ matrix.image.dockerfile }}
           push: true
           tags: |

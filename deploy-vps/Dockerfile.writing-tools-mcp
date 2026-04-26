@@ -28,7 +28,7 @@ RUN uv pip install --python .venv/bin/python \
 
 # Our HTTP entrypoint: imports the upstream FastMCP instance and runs it with
 # streamable-http transport on port 7802.
-COPY vps/writing-tools-entrypoint.py /opt/wtm/entrypoint_http.py
+COPY deploy-vps/writing-tools-entrypoint.py /opt/wtm/entrypoint_http.py
 
 # Drop to unprivileged user. uv cache + .venv already materialised under
 # /opt/wtm, so ownership transfer is a one-shot.
