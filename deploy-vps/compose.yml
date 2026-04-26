@@ -91,9 +91,11 @@ services:
       PORT: '7802'
       HOST: 0.0.0.0
     networks: [traefik-public, internal]
-    # Pas de healthcheck Docker : FastMCP ne supporte que POST sur /mcp ;
-    # un wget --spider (HEAD) retourne 405 et marquerait le container unhealthy,
-    # ce qui ferait Traefik exclure le router (donc pas de cert ACME demande).
+    # Disable explicit du healthcheck du Dockerfile (wget --spider HEAD → 405,
+    # FastMCP n'accepte que POST). Container marque unhealthy → Traefik
+    # exclut le router → pas de cert ACME → 503. Disable resout tout.
+    healthcheck:
+      disable: true
     labels:
       - traefik.enable=true
       - traefik.docker.network=traefik-public
