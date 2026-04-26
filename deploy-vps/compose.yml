@@ -1,85 +1,119 @@
+# Buck Writer — Production deploy.
+# Images pulled from GHCR, routing via Traefik labels.
+#
+# Conventions :
+# - Le tag des images est injecte via ${TAG} dans /opt/buck/.env (par deploy.sh
+#   du repo vps-docker-manager-prod). En l'absence : 'latest'.
+# - Network 'traefik-public' est externe, cree par infra-bootstrap (deja en
+#   place sur le VPS).
+# - Les middlewares Bearer pour bible-mcp/writing-mcp (forwardAuth vers
+#   buck-app:/api/auth/verify-mcp-bearer) vivent dans
+#   vps-docker-manager-prod/traefik/dynamic/buck.yml (charges en runtime
+#   par le file provider Traefik). Reference ici via @file.
+
 services:
+  buck-app:
+    image: ghcr.io/erom/buck-app:${TAG:-latest}
+    container_name: buck-app
+    restart: unless-stopped
+    env_file: /opt/buck/.env
+    environment:
+      - WEB_DIST_ROOT=/app/web-dist
+      - WORKSPACE_DIR=/app/workspace
+      - DATABASE_URL=file:/app/data/buck.db
+    volumes:
+      - /opt/buck/data/db:/app/data
+      - /opt/buck/data/workspace:/app/workspace
+    networks: [traefik-public, internal]
+    depends_on:
+      - bible-mcp
+      - writing-tools-mcp
+      - markitdown-worker
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q -O - http://127.0.0.1:3000/api/health || exit 1"]
+      interval: 30s
+      timeout: 3s
+      retries: 3
+    labels:
+      - traefik.enable=true
+      - traefik.docker.network=traefik-public
+      - traefik.http.routers.buck.rule=Host(`buck.apps.romain-ecarnot.com`)
+      - traefik.http.routers.buck.entrypoints=websecure
+      - traefik.http.routers.buck.tls.certresolver=acme-cloudflare
+      - traefik.http.services.buck.loadbalancer.server.port=3000
+
+  bible-ui:
+    image: ghcr.io/erom/buck-bible-ui:${TAG:-latest}
+    container_name: buck-bible-ui
+    restart: unless-stopped
+    networks: [traefik-public, internal]
+    depends_on:
+      - bible-mcp
+    labels:
+      - traefik.enable=true
+      - traefik.docker.network=traefik-public
+      # SSO : forwardAuth vers buck-app verify-session (deja existant)
+      - traefik.http.middlewares.buck-sso.forwardauth.address=http://buck-app:3000/api/auth/verify-session
+      - traefik.http.middlewares.buck-sso.forwardauth.authResponseHeaders=X-User-Id
+      - traefik.http.routers.bible-ui.rule=Host(`bible.buck.apps.romain-ecarnot.com`)
+      - traefik.http.routers.bible-ui.middlewares=buck-sso@docker
+      - traefik.http.routers.bible-ui.entrypoints=websecure
+      - traefik.http.routers.bible-ui.tls.certresolver=acme-cloudflare
+      - traefik.http.services.bible-ui.loadbalancer.server.port=8080
+
   bible-mcp:
-    build:
-      context: ..
-      dockerfile: vps/Dockerfile.bible-mcp
+    image: ghcr.io/erom/buck-bible-mcp:${TAG:-latest}
     container_name: buck-bible-mcp
-    networks:
-      # caddy-public = public access for the OpenAI Responses MCP connector
-      # (behind Caddy Bearer auth via MCP_SHARED_SECRET).
-      - caddy-public
-      - internal
-    # Same env_file as buck-app: OPENAI_API_KEY + OPENAI_EMBEDDING_MODEL live
-    # in /opt/buck-writer-app/.env (synced from vps/.env.production by
-    # deploy.sh). Without this, ${VAR} substitutions in `environment` resolve
-    # to blank because docker compose only reads vars from its own shell
-    # invocation, not from any service's env_file.
-    env_file: ../.env
+    restart: unless-stopped
+    env_file: /opt/buck/.env
     environment:
       BIBLE_DB_PATH: /app/data/bible.db
       BIBLE_HTTP_PORT: '7801'
-      # NB: MCP_SHARED_SECRET intentionally NOT set here. The Bearer check
-      # is enforced at the Caddy edge (bible-mcp.buck.*) for OpenAI. Bible
-      # UI calls /mcp through an internal path (Caddy→bible-ui nginx→
-      # bible-mcp) that doesn't inject the Bearer, so a container-level
-      # check would lock the UI out of its own backend.
     volumes:
-      - ../data/bible:/app/data
-    restart: unless-stopped
+      - /opt/buck/data/bible:/app/data
+    networks: [traefik-public, internal]
+    labels:
+      - traefik.enable=true
+      - traefik.docker.network=traefik-public
+      - traefik.http.routers.bible-mcp.rule=Host(`bible-mcp.buck.apps.romain-ecarnot.com`)
+      - traefik.http.routers.bible-mcp.middlewares=bible-mcp-bearer@file
+      - traefik.http.routers.bible-mcp.entrypoints=websecure
+      - traefik.http.routers.bible-mcp.tls.certresolver=acme-cloudflare
+      - traefik.http.services.bible-mcp.loadbalancer.server.port=7801
 
   writing-tools-mcp:
-    build:
-      context: ..
-      dockerfile: vps/Dockerfile.writing-tools-mcp
+    image: ghcr.io/erom/buck-writing-tools-mcp:${TAG:-latest}
     container_name: buck-writing-tools-mcp
-    networks:
-      - caddy-public
-      - internal
     restart: unless-stopped
-    # env_file brings MCP_SHARED_SECRET from /opt/buck-writer-app/.env without
-    # needing docker compose to inherit it from the deploy shell.
-    env_file: ../.env
-    # First start downloads torch / transformers / spacy model (~3 GB).
+    env_file: /opt/buck/.env
+    networks: [traefik-public, internal]
     healthcheck:
-      test:
-        - CMD-SHELL
-        - 'wget -q --spider http://127.0.0.1:7802/mcp || exit 1'
+      test: ["CMD-SHELL", "wget -q --spider http://127.0.0.1:7802/mcp || exit 1"]
       interval: 30s
       timeout: 5s
       retries: 3
       start_period: 60s
-
-  bible-ui:
-    build:
-      context: ..
-      dockerfile: vps/Dockerfile.bible-ui
-    container_name: buck-bible-ui
-    restart: unless-stopped
-    networks:
-      - caddy-public
-      - internal
-    depends_on:
-      - bible-mcp
+    labels:
+      - traefik.enable=true
+      - traefik.docker.network=traefik-public
+      - traefik.http.routers.writing-mcp.rule=Host(`writing-mcp.buck.apps.romain-ecarnot.com`)
+      - traefik.http.routers.writing-mcp.middlewares=writing-mcp-bearer@file
+      - traefik.http.routers.writing-mcp.entrypoints=websecure
+      - traefik.http.routers.writing-mcp.tls.certresolver=acme-cloudflare
+      - traefik.http.services.writing-mcp.loadbalancer.server.port=7802
 
   markitdown-worker:
-    build:
-      context: ../services/markitdown-worker
-      dockerfile: Dockerfile
+    image: ghcr.io/erom/buck-markitdown-worker:${TAG:-latest}
     container_name: buck-markitdown-worker
     restart: unless-stopped
-    # Internal only — never exposed on caddy-public.
-    networks:
-      - internal
-    # Reads MARKITDOWN_INTERNAL_TOKEN from /opt/buck-writer-app/.env.
-    env_file: ../.env
+    env_file: /opt/buck/.env
     environment:
       OCR_LANGS: fra+eng
       MAX_UPLOAD_MB: '20'
       CONVERT_TIMEOUT_S: '60'
+    networks: [internal]
     healthcheck:
-      test:
-        - CMD-SHELL
-        - 'curl -fsS http://localhost:8000/health || exit 1'
+      test: ["CMD-SHELL", "curl -fsS http://localhost:8000/health || exit 1"]
       interval: 30s
       timeout: 5s
       retries: 3
@@ -90,49 +124,8 @@ services:
           cpus: '1.0'
           memory: 1G
 
-  buck-app:
-    image: buck-writer:local
-    build:
-      context: ..
-      dockerfile: vps/Dockerfile.app
-      args:
-        VITE_BIBLE_UI_URL: ${VITE_BIBLE_UI_URL:-https://bible.buck.romain-ecarnot.com}
-    container_name: buck-app
-    restart: unless-stopped
-    env_file: ../.env
-    environment:
-      - WEB_DIST_ROOT=/app/web-dist
-      - WORKSPACE_DIR=/app/workspace
-      - DATABASE_URL=file:/app/data/buck.db
-      # Public URLs exposed to OpenAI for the MCP connectors. Must be HTTPS
-      # with a valid Bearer (MCP_SHARED_SECRET) fronted by Caddy.
-      - MCP_BIBLE_URL=${MCP_BIBLE_URL:-https://bible-mcp.buck.romain-ecarnot.com}
-      - MCP_WRITING_TOOLS_URL=${MCP_WRITING_TOOLS_URL:-https://writing-mcp.buck.romain-ecarnot.com}
-      - MCP_SHARED_SECRET=${MCP_SHARED_SECRET}
-      # MarkItDown sidecar (M6). MARKITDOWN_URL + _INTERNAL_TOKEN + _TIMEOUT_MS
-      # are loaded from ../.env via env_file — do NOT duplicate here with `${}`
-      # interpolation (compose has no vps/.env so it would resolve to empty
-      # and override env_file, tripping the >=16 chars zod validation).
-    volumes:
-      - ../data/db:/app/data
-      - ../data/workspace:/app/workspace
-    networks:
-      - caddy-public
-      - internal
-    depends_on:
-      - bible-mcp
-      - writing-tools-mcp
-      - markitdown-worker
-    healthcheck:
-      test:
-        - CMD-SHELL
-        - 'wget -q -O - http://127.0.0.1:3000/api/health || exit 1'
-      interval: 30s
-      timeout: 3s
-      retries: 3
-
 networks:
+  traefik-public:
+    external: true
   internal:
     driver: bridge
-  caddy-public:
-    external: true
