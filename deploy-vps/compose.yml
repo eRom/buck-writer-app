@@ -16,14 +16,14 @@ services:
     image: ghcr.io/erom/buck-app:${TAG:-latest}
     container_name: buck-app
     restart: unless-stopped
-    env_file: /opt/buck/.env
+    env_file: ../.env
     environment:
       - WEB_DIST_ROOT=/app/web-dist
       - WORKSPACE_DIR=/app/workspace
       - DATABASE_URL=file:/app/data/buck.db
     volumes:
-      - /opt/buck/data/db:/app/data
-      - /opt/buck/data/workspace:/app/workspace
+      - ../data/db:/app/data
+      - ../data/workspace:/app/workspace
     networks: [traefik-public, internal]
     depends_on:
       - bible-mcp
@@ -64,12 +64,12 @@ services:
     image: ghcr.io/erom/buck-bible-mcp:${TAG:-latest}
     container_name: buck-bible-mcp
     restart: unless-stopped
-    env_file: /opt/buck/.env
+    env_file: ../.env
     environment:
       BIBLE_DB_PATH: /app/data/bible.db
       BIBLE_HTTP_PORT: '7801'
     volumes:
-      - /opt/buck/data/bible:/app/data
+      - ../data/bible:/app/data
     networks: [traefik-public, internal]
     labels:
       - traefik.enable=true
@@ -89,7 +89,7 @@ services:
     image: ghcr.io/erom/buck-markitdown-worker:${TAG:-latest}
     container_name: buck-markitdown-worker
     restart: unless-stopped
-    env_file: /opt/buck/.env
+    env_file: ../.env
     environment:
       OCR_LANGS: fra+eng
       MAX_UPLOAD_MB: '20'
