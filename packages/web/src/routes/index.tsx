@@ -78,7 +78,7 @@ function Home() {
         />
       }
       panelRight={({ collapsed, onToggle }) => (
-        <PanelRight collapsed={collapsed} onToggle={onToggle} sessionId={sessionId} />
+        <PanelRight collapsed={collapsed} onToggle={onToggle} />
       )}
     />
   );

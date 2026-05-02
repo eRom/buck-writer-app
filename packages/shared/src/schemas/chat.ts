@@ -1,6 +1,6 @@
 import { z } from 'zod';
 
-export const MODELS = ['gpt-5.4', 'gpt-5.4-mini', 'gpt-5.4-pro', 'gpt-5.4-nano'] as const;
+export const MODELS = ['gpt-5.4', 'gpt-5.4-mini', 'gpt-5.4-nano'] as const;
 export type ChatModel = (typeof MODELS)[number];
 
 export const CreateSessionInput = z.object({

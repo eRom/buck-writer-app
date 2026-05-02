@@ -1,8 +1,11 @@
 import { useEffect, useRef, useState, type KeyboardEvent, type DragEvent, type ClipboardEvent } from 'react';
-import { Paperclip, ArrowUp, Square, X, Mic } from 'lucide-react';
+import { ArrowUp, Square, X, Mic } from 'lucide-react';
 import { ALLOWED_MIME_TYPES } from '@buck/shared';
 import type { FileEntry } from '@buck/shared';
 import { AtReference } from './at-reference';
+import { ComposerActionsMenu } from './composer-actions-menu';
+import { ChatToolPills } from './chat-tool-pills';
+import { ModelEffortSelector } from './model-effort-selector';
 import { cn } from '@/lib/utils';
 import { useRealtimeStore } from '@/stores/realtime-store';
 import { useRealtimeVoice } from '@/hooks/use-realtime-voice';
@@ -177,6 +180,7 @@ export function ChatInput({
               ))}
             </div>
           )}
+          <ChatToolPills />
           <textarea
             ref={textareaRef}
             value={value}
@@ -200,15 +204,13 @@ export function ChatInput({
                 className="hidden"
                 onChange={handleFileChange}
               />
-              <button
-                type="button"
-                onClick={() => fileInputRef.current?.click()}
+              <ComposerActionsMenu
+                onUploadClick={() => fileInputRef.current?.click()}
                 disabled={disabled}
-                aria-label="Joindre un fichier"
-                className="hover-elevate rounded-md p-1.5 text-muted-foreground hover:text-foreground disabled:opacity-50"
-              >
-                <Paperclip className="size-4" />
-              </button>
+              />
+            </div>
+            <div className="flex items-center gap-1">
+              <ModelEffortSelector sessionId={chatSessionId ?? null} disabled={disabled} />
               {chatSessionId && (
                 <button
                   type="button"
@@ -230,27 +232,27 @@ export function ChatInput({
                   <Mic className="size-4" />
                 </button>
               )}
+              {isLoading ? (
+                <button
+                  type="button"
+                  onClick={onStop}
+                  aria-label="Stop"
+                  className="hover-elevate flex size-7 items-center justify-center rounded-full border border-destructive-border bg-destructive text-destructive-foreground"
+                >
+                  <Square className="size-3" />
+                </button>
+              ) : (
+                <button
+                  type="button"
+                  onClick={onSubmit}
+                  disabled={disabled || !canSend}
+                  aria-label="Envoyer"
+                  className="hover-elevate active-elevate-2 flex size-7 items-center justify-center rounded-full border border-primary-border bg-primary text-primary-foreground disabled:opacity-50"
+                >
+                  <ArrowUp className="size-3.5" />
+                </button>
+              )}
             </div>
-            {isLoading ? (
-              <button
-                type="button"
-                onClick={onStop}
-                aria-label="Stop"
-                className="hover-elevate flex size-7 items-center justify-center rounded-full border border-destructive-border bg-destructive text-destructive-foreground"
-              >
-                <Square className="size-3" />
-              </button>
-            ) : (
-              <button
-                type="button"
-                onClick={onSubmit}
-                disabled={disabled || !canSend}
-                aria-label="Envoyer"
-                className="hover-elevate active-elevate-2 flex size-7 items-center justify-center rounded-full border border-primary-border bg-primary text-primary-foreground disabled:opacity-50"
-              >
-                <ArrowUp className="size-3.5" />
-              </button>
-            )}
           </div>
         </div>
       </div>

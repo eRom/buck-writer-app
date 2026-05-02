@@ -22,7 +22,7 @@ export function GeneralSection() {
   async function handleModelChange(value: string) {
     setModel(value);
     try {
-      await updateSettings({ defaultModel: value as 'gpt-5.4' | 'gpt-5.4-mini' | 'gpt-5.4-pro' | 'gpt-5.4-nano' });
+      await updateSettings({ defaultModel: value as 'gpt-5.4' | 'gpt-5.4-mini' | 'gpt-5.4-nano' });
       toast.success('Modele par defaut mis a jour');
     } catch {
       toast.error('Erreur lors de la mise a jour');
