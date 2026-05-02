@@ -6,6 +6,7 @@ const HIDDEN_NAMES = new Set(['.git', 'skills', 'systems']);
 function isHidden(name: string): boolean {
   if (HIDDEN_NAMES.has(name)) return true;
   if (name.startsWith('.DS')) return true;
+  if (name.startsWith('._')) return true;
   return false;
 }
 
