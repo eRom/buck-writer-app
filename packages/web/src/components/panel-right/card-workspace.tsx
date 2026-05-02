@@ -15,10 +15,10 @@ export function CardWorkspace() {
   const [previewPath, setPreviewPath] = useState<string | null>(null);
 
   return (
-    <section className="rounded-lg border border-card-border bg-card p-3">
+    <section className="flex min-h-0 flex-1 flex-col rounded-lg border border-card-border bg-card p-3">
       <header className="mb-2 flex items-center justify-between">
         <h3 className="flex items-center gap-1.5 text-[13px] font-semibold">
-          <Folder className="size-3.5 text-muted-foreground" />
+          <Folder className="size-3.5 text-amber-500" />
           Dossier de travail
         </h3>
         <button
@@ -29,7 +29,7 @@ export function CardWorkspace() {
           <RefreshCw className="size-3.5" />
         </button>
       </header>
-      <div className="max-h-64 overflow-y-auto rounded-md border border-border bg-background/40 p-1.5">
+      <div className="min-h-0 flex-1 overflow-y-auto rounded-md border border-border bg-background/40 p-1.5">
         {isLoading ? (
           <p className="p-2 text-xs text-muted-foreground">Chargement...</p>
         ) : (

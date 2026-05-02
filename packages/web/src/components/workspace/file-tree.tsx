@@ -1,5 +1,7 @@
 import { useState } from 'react';
+import { Folder, FolderOpen, FileText, Brain, ChevronRight, ChevronDown } from 'lucide-react';
 import type { FileEntry } from '@buck/shared';
+import { cn } from '@/lib/utils';
 
 interface FileTreeProps {
   entries: FileEntry[];
@@ -14,10 +16,22 @@ interface FileTreeItemProps {
   onInsertReference?: (path: string) => void;
 }
 
+function entryIcon(entry: FileEntry, expanded: boolean) {
+  if (entry.type === 'directory') {
+    if (entry.name === 'knowledge') {
+      return { Icon: Brain, className: 'text-amber-500' };
+    }
+    return { Icon: expanded ? FolderOpen : Folder, className: 'text-amber-500' };
+  }
+  return { Icon: FileText, className: 'text-muted-foreground' };
+}
+
 function FileTreeItem({ entry, depth, onSelect, onInsertReference }: FileTreeItemProps) {
   const [expanded, setExpanded] = useState(depth === 0);
   const isDir = entry.type === 'directory';
   const indent = depth * 12;
+  const { Icon, className: iconClass } = entryIcon(entry, expanded);
+  const Chevron = expanded ? ChevronDown : ChevronRight;
 
   return (
     <div>
@@ -32,11 +46,14 @@ function FileTreeItem({ entry, depth, onSelect, onInsertReference }: FileTreeIte
           if (!isDir) onInsertReference?.(entry.path);
         }}
       >
-        <span className={isDir ? 'text-primary' : 'text-muted-foreground'}>
-          {isDir ? (expanded ? 'v ' : '> ') : '  '}
-        </span>
-        <span className={isDir ? 'text-primary' : 'text-muted-foreground'}>
-          {entry.name}{isDir ? '/' : ''}
+        {isDir ? (
+          <Chevron className="size-3 shrink-0 text-muted-foreground" />
+        ) : (
+          <span className="size-3 shrink-0" />
+        )}
+        <Icon className={cn('size-3.5 shrink-0', iconClass)} />
+        <span className={cn('truncate', isDir ? 'text-amber-500' : 'text-muted-foreground')}>
+          {entry.name}
         </span>
       </button>
       {isDir && expanded && entry.children?.map((child) => (
