@@ -288,6 +288,16 @@ ${entries.join('\n')}
     const body = await c.req.arrayBuffer();
     await fs.writeFile(abs, Buffer.from(body));
 
+    // Diagnostic: log header vs actual body size to debug Finder uploads landing as 0 bytes.
+    console.warn(
+      `[webdav] PUT ${relative} ` +
+        `cl=${c.req.header('content-length') ?? '-'} ` +
+        `te=${c.req.header('transfer-encoding') ?? '-'} ` +
+        `expect=${c.req.header('expect') ?? '-'} ` +
+        `ua=${c.req.header('user-agent') ?? '-'} ` +
+        `written=${body.byteLength}`,
+    );
+
     return new Response(null, { status: 201 });
   });
 
