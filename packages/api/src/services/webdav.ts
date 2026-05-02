@@ -1,4 +1,5 @@
 import { Hono } from 'hono';
+import crypto from 'node:crypto';
 import fs from 'node:fs/promises';
 import type { Stats } from 'node:fs';
 import path from 'node:path';
@@ -89,7 +90,7 @@ function forbidProtected(relative: string): Response | null {
   );
 }
 
-const DAV_METHODS = 'OPTIONS, PROPFIND, GET, HEAD, PUT, DELETE, MKCOL, MOVE, COPY';
+const DAV_METHODS = 'OPTIONS, PROPFIND, GET, HEAD, PUT, DELETE, MKCOL, MOVE, COPY, LOCK, UNLOCK';
 
 /**
  * WebDAV auth middleware. Extracts JWT from:
@@ -439,6 +440,41 @@ ${entries.join('\n')}
     await fs.cp(abs, destAbs, { recursive: true });
 
     return new Response(null, { status: 201 });
+  });
+
+  // LOCK / UNLOCK — stubbed for macOS Finder compatibility.
+  // Without these handlers, the OS X WebDAVFS client fails its 2-step
+  // upload (PUT placeholder → LOCK → PUT body) and aborts with error
+  // 100004, leaving 0-byte files on the server. We do not actually
+  // enforce locks (single-user app, low contention), but we honor the
+  // protocol shape that the client expects.
+  app.on('LOCK', '*', (c) => {
+    const lockToken = `urn:uuid:${crypto.randomUUID()}`;
+    const href = c.req.path;
+    const body = `<?xml version="1.0" encoding="utf-8"?>
+<D:prop xmlns:D="DAV:">
+  <D:lockdiscovery>
+    <D:activelock>
+      <D:locktype><D:write/></D:locktype>
+      <D:lockscope><D:exclusive/></D:lockscope>
+      <D:depth>infinity</D:depth>
+      <D:timeout>Second-3600</D:timeout>
+      <D:locktoken><D:href>${lockToken}</D:href></D:locktoken>
+      <D:lockroot><D:href>${encodeURI(href)}</D:href></D:lockroot>
+    </D:activelock>
+  </D:lockdiscovery>
+</D:prop>`;
+    return new Response(body, {
+      status: 200,
+      headers: {
+        'Content-Type': 'application/xml; charset=utf-8',
+        'Lock-Token': `<${lockToken}>`,
+      },
+    });
+  });
+
+  app.on('UNLOCK', '*', () => {
+    return new Response(null, { status: 204 });
   });
 
   // Error handler for HttpError (e.g. path traversal → 403)
