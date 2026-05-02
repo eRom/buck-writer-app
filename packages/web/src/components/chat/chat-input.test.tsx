@@ -1,5 +1,6 @@
 import { describe, it, expect, vi } from 'vitest';
 import { render, screen, fireEvent } from '@testing-library/react';
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 
 // Mock hooks to avoid realtime/store dependencies
 vi.mock('@/stores/realtime-store', () => ({
@@ -23,19 +24,24 @@ const baseProps = {
   onAttachmentsChange: vi.fn(),
 };
 
+function renderWithQuery(ui: React.ReactElement) {
+  const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+  return render(<QueryClientProvider client={qc}>{ui}</QueryClientProvider>);
+}
+
 describe('ChatInput', () => {
   it('affiche le bouton mic si chatSessionId présent', () => {
-    render(<ChatInput {...baseProps} chatSessionId="sess_123" />);
+    renderWithQuery(<ChatInput {...baseProps} chatSessionId="sess_123" />);
     expect(screen.getByRole('button', { name: /démarrer live/i })).toBeInTheDocument();
   });
 
   it('masque le bouton mic si chatSessionId absent', () => {
-    render(<ChatInput {...baseProps} />);
+    renderWithQuery(<ChatInput {...baseProps} />);
     expect(screen.queryByRole('button', { name: /live/i })).toBeNull();
   });
 
   it('click mic en idle appelle start', () => {
-    render(<ChatInput {...baseProps} chatSessionId="sess_123" />);
+    renderWithQuery(<ChatInput {...baseProps} chatSessionId="sess_123" />);
     fireEvent.click(screen.getByRole('button', { name: /démarrer live/i }));
     expect(mockStart).toHaveBeenCalledOnce();
   });

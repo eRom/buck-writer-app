@@ -7,6 +7,7 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
 import { MemoryBadge } from '@/components/memory-badge';
+import { BudgetWidget } from '@/components/layout/budget-widget';
 
 interface Props {
   collapsed: boolean;
@@ -49,6 +50,9 @@ export function SidebarLeftFooter({ collapsed, email, onLogout }: Props) {
     <div className="border-t border-sidebar-border p-2">
       <div className="px-2 pb-1">
         <MemoryBadge />
+      </div>
+      <div className="px-2 pb-2">
+        <BudgetWidget />
       </div>
       <DropdownMenu>
         <DropdownMenuTrigger asChild>

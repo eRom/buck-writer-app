@@ -16,8 +16,8 @@ import {
   DialogContent,
   DialogTitle,
 } from '@/components/ui/dialog';
-import { fetchMessages } from '@/lib/sessions';
-import { fetchUsageCurrent } from '@/lib/settings';
+import { fetchMessages, fetchSessions } from '@/lib/sessions';
+import { fetchSettings, fetchUsageCurrent } from '@/lib/settings';
 import { fetchWorkspaceTree } from '@/lib/workspace';
 import { uploadAttachments } from '@/lib/attachments';
 import { readCsrfCookie, CSRF_HEADER } from '@/lib/csrf';
@@ -196,7 +196,14 @@ function upsertImage(
 export function ChatStream({ sessionId, onSessionCreated }: ChatStreamProps) {
   const queryClient = useQueryClient();
   const recentTranscripts = useRealtimeStore((s) => s.recentTranscripts);
-  const [model] = useState('gpt-5.4-mini');
+  const { data: settings } = useQuery({ queryKey: ['settings'], queryFn: fetchSettings });
+  const { data: sessionsData } = useQuery({
+    queryKey: ['sessions'],
+    queryFn: () => fetchSessions(),
+  });
+  const currentSession = sessionsData?.sessions.find((s) => s.id === sessionId) ?? null;
+  const model =
+    currentSession?.model ?? settings?.defaultModel ?? 'gpt-5.4-mini';
   const [input, setInput] = useState('');
   const [pendingAttachments, setPendingAttachments] = useState<PendingAttachment[]>([]);
   const [messages, setMessages] = useState<ChatMessage[]>([]);
