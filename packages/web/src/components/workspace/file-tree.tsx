@@ -21,7 +21,7 @@ function entryIcon(entry: FileEntry, expanded: boolean) {
     if (entry.name === 'knowledge') {
       return { Icon: Brain, className: 'text-amber-500' };
     }
-    return { Icon: expanded ? FolderOpen : Folder, className: 'text-amber-500' };
+    return { Icon: expanded ? FolderOpen : Folder, className: 'text-foreground' };
   }
   return { Icon: FileText, className: 'text-muted-foreground' };
 }
@@ -52,7 +52,16 @@ function FileTreeItem({ entry, depth, onSelect, onInsertReference }: FileTreeIte
           <span className="size-3 shrink-0" />
         )}
         <Icon className={cn('size-3.5 shrink-0', iconClass)} />
-        <span className={cn('truncate', isDir ? 'text-amber-500' : 'text-muted-foreground')}>
+        <span
+          className={cn(
+            'truncate',
+            isDir
+              ? entry.name === 'knowledge'
+                ? 'text-amber-500'
+                : 'text-foreground'
+              : 'text-muted-foreground',
+          )}
+        >
           {entry.name}
         </span>
       </button>
