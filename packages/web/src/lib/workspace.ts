@@ -16,7 +16,9 @@ function filterTree(entries: FileEntry[]): FileEntry[] {
 }
 
 export async function fetchWorkspaceTree(): Promise<WorkspaceTreeResponse> {
-  const res = await apiFetch<WorkspaceTreeResponse>('/api/workspace/tree');
+  const res = await apiFetch<WorkspaceTreeResponse>('/api/workspace/tree', {
+    cache: 'no-store',
+  });
   return { ...res, tree: filterTree(res.tree) };
 }
 

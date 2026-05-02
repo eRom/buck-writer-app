@@ -11,7 +11,7 @@ import { cn } from '@/lib/utils';
 
 export function CardWorkspace() {
   const qc = useQueryClient();
-  const { data, isLoading } = useQuery({
+  const { data, isLoading, isFetching, refetch } = useQuery({
     queryKey: ['workspace-tree'],
     queryFn: fetchWorkspaceTree,
   });
@@ -48,12 +48,16 @@ export function CardWorkspace() {
             <Brain className={cn('size-3.5', syncMutation.isPending && 'animate-pulse')} />
           </button>
           <button
-            onClick={() => qc.invalidateQueries({ queryKey: ['workspace-tree'] })}
+            onClick={async () => {
+              const res = await refetch();
+              if (res.isError) toast.error('Rafraichissement échoué');
+            }}
+            disabled={isFetching}
             aria-label="Rafraichir l'arbre de fichiers"
             title="Rafraichir l'arbre de fichiers"
-            className="hover-elevate rounded-md p-1 text-muted-foreground"
+            className="hover-elevate rounded-md p-1 text-muted-foreground disabled:opacity-50"
           >
-            <RefreshCw className="size-3.5" />
+            <RefreshCw className={cn('size-3.5', isFetching && 'animate-spin')} />
           </button>
         </div>
       </header>
