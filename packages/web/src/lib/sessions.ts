@@ -70,6 +70,7 @@ export interface Message {
   model: string | null;
   toolMeta: string | null;
   imagesJson: string | null;
+  annotationsJson: string | null;
   createdAt: number;
   attachments?: MessageAttachment[];
 }

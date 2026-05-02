@@ -177,6 +177,19 @@ export type ResponsesEvent =
   | { type: 'response.content_part.done'; output_index: number; item_id: string; part: unknown }
   | { type: 'response.output_text.delta'; output_index: number; item_id: string; delta: string }
   | { type: 'response.output_text.done'; output_index: number; item_id: string; text: string }
+  | {
+      type: 'response.output_text.annotation.added';
+      output_index: number;
+      item_id: string;
+      annotation_index: number;
+      annotation: {
+        type: 'url_citation' | string;
+        url?: string;
+        title?: string;
+        start_index?: number;
+        end_index?: number;
+      };
+    }
   | { type: 'response.refusal.delta'; output_index: number; item_id: string; delta: string }
   | { type: 'response.refusal.done'; output_index: number; item_id: string; refusal: string }
   | { type: 'response.reasoning_summary_text.delta'; output_index: number; item_id: string; delta: string }

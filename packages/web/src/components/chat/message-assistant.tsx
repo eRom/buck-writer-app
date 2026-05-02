@@ -2,6 +2,8 @@ import { type ReactNode } from 'react';
 import { Sparkles } from 'lucide-react';
 import { MessageFooter } from './message-footer';
 import { MessageTtsButton } from './message-tts-button';
+import { CitationsList } from './citations-list';
+import type { Annotation } from './chat-stream';
 import { useFeatures } from '@/hooks/use-features';
 
 interface FooterProps {
@@ -16,12 +18,20 @@ interface FooterProps {
 interface Props {
   reasoning?: ReactNode;
   toolCalls?: ReactNode;
+  annotations?: Annotation[];
   children: ReactNode;
   footer?: FooterProps;
   messageId?: string;
 }
 
-export function MessageAssistant({ reasoning, toolCalls, children, footer, messageId }: Props) {
+export function MessageAssistant({
+  reasoning,
+  toolCalls,
+  annotations,
+  children,
+  footer,
+  messageId,
+}: Props) {
   const features = useFeatures();
   return (
     <div className="group flex gap-3">
@@ -32,6 +42,7 @@ export function MessageAssistant({ reasoning, toolCalls, children, footer, messa
         {reasoning}
         {toolCalls}
         <div className="text-sm leading-relaxed">{children}</div>
+        <CitationsList annotations={annotations} />
         <div className="flex items-center justify-between gap-2">
           {features.tts && messageId ? (
             <MessageTtsButton messageId={messageId} />

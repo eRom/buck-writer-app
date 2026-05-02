@@ -99,6 +99,7 @@ export const messages = sqliteTable(
     toolMeta: text('tool_meta'),
     source: text('source').notNull().default('text'),
     imagesJson: text('images_json'),
+    annotationsJson: text('annotations_json'),
     createdAt: integer('created_at').notNull(),
   },
   (t) => ({

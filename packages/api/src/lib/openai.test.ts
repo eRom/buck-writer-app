@@ -20,6 +20,19 @@ describe('parseResponsesEventBlock', () => {
     });
   });
 
+  it('parses response.output_text.annotation.added (url_citation)', () => {
+    const block =
+      'event: response.output_text.annotation.added\n' +
+      'data: {"type":"response.output_text.annotation.added","output_index":0,"item_id":"msg_1","annotation_index":0,"annotation":{"type":"url_citation","url":"https://example.com/x","title":"Example","start_index":10,"end_index":20}}';
+    const ev = parseResponsesEventBlock(block);
+    expect(ev?.type).toBe('response.output_text.annotation.added');
+    if (ev?.type === 'response.output_text.annotation.added') {
+      expect(ev.annotation.url).toBe('https://example.com/x');
+      expect(ev.annotation.title).toBe('Example');
+      expect(ev.annotation.start_index).toBe(10);
+    }
+  });
+
   it('parses response.function_call_arguments.done', () => {
     const block =
       'event: response.function_call_arguments.done\n' +

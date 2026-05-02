@@ -42,12 +42,21 @@ interface ToolMeta {
   isRunning?: boolean;
 }
 
+export interface Annotation {
+  type: 'url_citation';
+  url: string;
+  title?: string;
+  startIndex?: number;
+  endIndex?: number;
+}
+
 interface ChatMessage {
   id: string;
   role: 'user' | 'assistant';
   content: string;
   toolMetas?: ToolMeta[];
   images?: ImageBlockData[];
+  annotations?: Annotation[];
   attachments?: Array<{ id: string; filename: string; mimeType: string; sizeBytes: number }>;
 }
 
@@ -251,6 +260,9 @@ export function ChatStream({ sessionId, onSessionCreated }: ChatStreamProps) {
         })(),
         toolMetas: m.toolMeta ? (JSON.parse(m.toolMeta) as ToolMeta[]) : undefined,
         images: parseStoredImages(m.imagesJson),
+        annotations: m.annotationsJson
+          ? (JSON.parse(m.annotationsJson) as Annotation[])
+          : undefined,
         attachments: m.attachments,
       }));
       setMessages(loaded);
@@ -816,6 +828,25 @@ export function ChatStream({ sessionId, onSessionCreated }: ChatStreamProps) {
                     : m,
                 ),
               );
+            } else if (event === 'annotation') {
+              if (typeof parsed.url !== 'string') continue;
+              const next: Annotation = {
+                type: 'url_citation',
+                url: parsed.url,
+                title: typeof parsed.title === 'string' ? parsed.title : undefined,
+                startIndex:
+                  typeof parsed.startIndex === 'number' ? parsed.startIndex : undefined,
+                endIndex:
+                  typeof parsed.endIndex === 'number' ? parsed.endIndex : undefined,
+              };
+              setMessages((prev) =>
+                prev.map((m) => {
+                  if (m.id !== assistantId) return m;
+                  const existing = m.annotations ?? [];
+                  if (existing.some((a) => a.url === next.url)) return m;
+                  return { ...m, annotations: [...existing, next] };
+                }),
+              );
             } else if (event === 'image_partial') {
               const callId = String(parsed.callId ?? '');
               if (!callId) continue;
@@ -927,7 +958,12 @@ export function ChatStream({ sessionId, onSessionCreated }: ChatStreamProps) {
                 images.length === 0 &&
                 !showPending;
               return (
-                <MessageAssistant key={m.id} toolCalls={toolCalls} messageId={m.id}>
+                <MessageAssistant
+                  key={m.id}
+                  toolCalls={toolCalls}
+                  annotations={m.annotations}
+                  messageId={m.id}
+                >
                   {isThinking ? (
                     <span className="inline-flex items-center gap-2 text-xs text-muted-foreground">
                       <span className="inline-block size-2 animate-pulse rounded-full bg-primary" />

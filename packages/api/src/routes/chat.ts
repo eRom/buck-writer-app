@@ -424,6 +424,13 @@ export function createChatRoute(
       const collectedToolMetas: ToolMeta[] = [];
       const finalImages: ImageEntry[] = [];
       const imageUsageRows: Array<{ callId: string; costUsd: number }> = [];
+      const collectedAnnotations: Array<{
+        type: 'url_citation';
+        url: string;
+        title?: string;
+        startIndex?: number;
+        endIndex?: number;
+      }> = [];
       let pendingApproval = false;
       let lastRespId: string | undefined = previousResponseId;
       let step = 0;
@@ -473,6 +480,24 @@ export function createChatRoute(
                   accumulatedText += ev.delta;
                   sendEvent('content', { text: ev.delta });
                   break;
+
+                case 'response.output_text.annotation.added': {
+                  const ann = ev.annotation;
+                  if (ann?.type === 'url_citation' && typeof ann.url === 'string') {
+                    const entry = {
+                      type: 'url_citation' as const,
+                      url: ann.url,
+                      title: typeof ann.title === 'string' ? ann.title : undefined,
+                      startIndex:
+                        typeof ann.start_index === 'number' ? ann.start_index : undefined,
+                      endIndex:
+                        typeof ann.end_index === 'number' ? ann.end_index : undefined,
+                    };
+                    collectedAnnotations.push(entry);
+                    sendEvent('annotation', entry);
+                  }
+                  break;
+                }
 
                 case 'response.output_item.added': {
                   const item = ev.item;
@@ -844,6 +869,10 @@ export function createChatRoute(
                   : null,
               imagesJson:
                 finalImages.length > 0 ? JSON.stringify(finalImages) : null,
+              annotationsJson:
+                collectedAnnotations.length > 0
+                  ? JSON.stringify(collectedAnnotations)
+                  : null,
               createdAt: finishTs,
             })
             .run();

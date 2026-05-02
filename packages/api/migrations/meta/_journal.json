@@ -113,6 +113,13 @@
       "when": 1777680360000,
       "tag": "0015_drop_writing_tools",
       "breakpoints": true
+    },
+    {
+      "idx": 16,
+      "version": "6",
+      "when": 1777680420000,
+      "tag": "0016_add_message_annotations",
+      "breakpoints": true
     }
   ]
 }
