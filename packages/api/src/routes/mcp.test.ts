@@ -43,11 +43,11 @@ describe('MCP registry routes', () => {
         },
         {
           id: newId(),
-          name: 'writing-tools',
+          name: 'test-extra',
           core: 0,
           enabled: 0,
           transport: 'http-streamable',
-          configJson: JSON.stringify({ url: 'https://writing-mcp.example.com/mcp' }),
+          configJson: JSON.stringify({ url: 'https://test-extra.example.com/mcp' }),
           createdAt: Date.now(),
         },
       ])
@@ -68,7 +68,7 @@ describe('MCP registry routes', () => {
     };
     expect(body.servers).toHaveLength(2);
     const bible = body.servers.find((s) => s.name === 'bible');
-    const writing = body.servers.find((s) => s.name === 'writing-tools');
+    const writing = body.servers.find((s) => s.name === 'test-extra');
     expect(bible?.enabled).toBe(true);
     expect(bible?.core).toBe(true);
     expect(writing?.enabled).toBe(false);
@@ -92,7 +92,7 @@ describe('MCP registry routes', () => {
       .select()
       .from(mcpServers)
       .all()
-      .find((s) => s.name === 'writing-tools')!;
+      .find((s) => s.name === 'test-extra')!;
     const res = await app.request(`/api/mcp/${writing.id}`, {
       method: 'PATCH',
       headers: { 'content-type': 'application/json' },
@@ -111,7 +111,7 @@ describe('MCP registry routes', () => {
       .select()
       .from(mcpServers)
       .all()
-      .find((s) => s.name === 'writing-tools')!;
+      .find((s) => s.name === 'test-extra')!;
     const res = await app.request(`/api/mcp/${writing.id}`, {
       method: 'PATCH',
       headers: { 'content-type': 'application/json' },

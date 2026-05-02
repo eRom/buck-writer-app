@@ -121,7 +121,6 @@ export function AudioLiveSection() {
       <fieldset className="space-y-2">
         <legend className="text-sm font-medium">Outils</legend>
         <ToolToggle label="Bible MCP" value={s.realtimeTools.bible} onChange={(v) => patch({ realtimeTools: { ...s.realtimeTools, bible: v } })} />
-        <ToolToggle label="Writing Tools MCP" value={s.realtimeTools.writingTools} onChange={(v) => patch({ realtimeTools: { ...s.realtimeTools, writingTools: v } })} />
         <ToolToggle label="Web Search" value={s.realtimeTools.webSearch} onChange={(v) => patch({ realtimeTools: { ...s.realtimeTools, webSearch: v } })} />
       </fieldset>
     </section>

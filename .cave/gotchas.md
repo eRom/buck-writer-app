@@ -89,25 +89,21 @@ Mesure empirique : cosine similarity entre `"Quel est mon langage préféré ?"`
 Le endpoint retournait `byKind: { chat, realtime }` seulement. Le shared schema `UsageResponse` n'avait pas `byKind` du tout (strip côté frontend). UI Settings ne montrait que le total.
 **Fix** (commit `01cfcfd`) : extend `UsageResponse` avec `byKind: { chat, realtime, memory }`, summing des 4 memory kinds côté backend, 3 petites lignes sous la barre budget dans `budget-section.tsx`. Memory près de $0.00 sur les 1-2 premiers remember (~2e-6 USD chacun), mais la ligne doit exister.
 
-### `env_file` manquant sur bible-mcp + writing-tools-mcp (deploy prod)
+### `env_file` manquant sur bible-mcp (deploy prod)
 `vps/compose.yml` déclarait `OPENAI_API_KEY: ${OPENAI_API_KEY}` et `MCP_SHARED_SECRET: ${MCP_SHARED_SECRET:-}` via `environment:`. Docker Compose ne substitue `${VAR}` que depuis son propre shell (pas depuis un env_file d'un autre service). `deploy.sh` fait `docker compose up -d` sans sourcer `.env.production` → warning visible `"OPENAI_API_KEY variable is not set. Defaulting to a blank string"`. Résultat : bible-mcp boot **sans clé OpenAI** → embeddings bible cassées en prod. Silencieux jusqu'au 1er appel MCP.
-**Fix** (commit `77f747a`) : `env_file: ../.env` sur bible-mcp ET writing-tools-mcp (même path que buck-app). Path relatif au compose.yml (dans `vps/`) → remonte à `/opt/buck-writer-app/.env` côté VPS.
+**Fix** (commit `77f747a`) : `env_file: ../.env` sur bible-mcp (même path que buck-app). Path relatif au compose.yml (dans `vps/`) → remonte à `/opt/buck-writer-app/.env` côté VPS.
 
 ### Conflit container_name au re-deploy
 Après un rename/move du project compose (`/opt/buck-writer-app/` → `/opt/buck-writer-app/vps/`), les anciens containers nommés `buck-*` survivent au nouveau projet. `docker compose up -d` tape un `Conflict. The container name is already in use`.
-**Remède** : `docker rm -f buck-writing-tools-mcp buck-bible-mcp buck-bible-ui buck-app` sur le VPS, puis re-run deploy.
-
-### UX 1er call cold-start : "Responses API error"
-Après deploy ou container restart, **premier** POST `/api/chat` affiche un toast `Responses API error`. Retenter le même message immédiatement → OK. Hypothèse : OpenAI Responses fait un `tools/list` fetch sur les MCP remote au premier call ; writing-tools-mcp boot lourd (~3 GB torch/transformers/spacy) → tool list enum timeout → `external_connector_error`. 2e call : containers chauds + cache OpenAI → OK.
-Non tracé serveur (le `catch` dans `chat.ts:584` n'a pas de `console.warn`, l'erreur part seulement au client via SSE). À instrumenter si l'occurrence se répète. Fix UX possible : warmup ping MCP au boot buck-app, ou retry silencieux côté web au premier `Responses API error`.
+**Remède** : `docker rm -f buck-bible-mcp buck-bible-ui buck-app` sur le VPS, puis re-run deploy.
 
 ### Edge Functions 500 sur path complet
 `consolidate-memory` retourne 200 "skipped: only N episodes" tant que <3 episodes (OK). Avec ≥3 episodes injectés, 500 → path LLM ou upsert. `compact-state` retourne 500 sur payload bien formé. Pas tracé (pas de try/catch + console.error dans le code Deno). Non-bloquant (pg_cron retry nightly et fail-soft sur crash), mais à fixer pour débloquer la consolidation réelle.
 
 ### MCP remote désactivés en DB dev locale (workaround dev)
-`bible` et `writing-tools` dans `mcp_servers` ont `url: http://bible-mcp:7801/mcp` / `http://writing-tools-mcp:7802/mcp` — resolvables dans le Docker compose prod mais pas depuis OpenAI en dev. Quand OpenAI fait tools/list → 400 Bad Request → Buck stream plante avec `Responses API error`. En dev local, set `enabled=0` en DB :
+`bible` dans `mcp_servers` a `url: http://bible-mcp:7801/mcp` — resolvable dans le Docker compose prod mais pas depuis OpenAI en dev. Quand OpenAI fait tools/list → 400 Bad Request → Buck stream plante avec `Responses API error`. En dev local, set `enabled=0` en DB :
 ```sql
-UPDATE mcp_servers SET enabled=0 WHERE name IN ('bible','writing-tools');
+UPDATE mcp_servers SET enabled=0 WHERE name = 'bible';
 ```
 Le seed ne re-force pas `enabled` (ON CONFLICT DO UPDATE SET config_json, core — pas enabled). Pour retester bible en local : ngrok tunnel + override `MCP_BIBLE_URL` vers l'URL ngrok, ou pointer vers la prod publique.
 
@@ -194,9 +190,6 @@ Ne JAMAIS réutiliser `.env` dev en prod. Pièges trouvés : `E2E=1` → fail-fa
 
 ### bible-mcp Docker : pnpm deploy --prod + COPY /deploy → /app
 Le runtime stage copiait `packages/bible-mcp/node_modules` mais pnpm workspace hoist vers `/app/node_modules` → `Cannot find package 'express'`. Fix : `pnpm deploy --filter @buck/bible-mcp --prod /deploy` au build, puis COPY `/deploy → /app` au runtime. Dir flat self-contained. Pattern à reproduire pour tout package pnpm workspace dockerisé.
-
-### writing-tools-mcp : fichier `server.py` ET package `server/`
-Upstream wdm0006/writing-tools-mcp a les deux → `ImportError`. Fix : charger `server.py` via `importlib.util.spec_from_file_location` directement.
 
 ### uv-created venvs n'ont PAS pip
 `uv sync` crée un `.venv/` minimal sans pip. `python -m spacy download ...` crash. Fix : `uv pip install --python .venv/bin/python <URL wheel GitHub>`.

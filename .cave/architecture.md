@@ -126,7 +126,7 @@ Audio : micro → OpenAI, remote → <audio> + AudioContext → AnalyserNode →
 - `POST /write-to-chat` : tool local, insert `source='voice-injected'`
 - `DELETE /session/:id` : drop tracker + flush final
 
-**Tools Live** : MCP Bible/writing-tools + `web_search` natif + `write_to_chat` fn. `require_approval='never'` forcé sur tous MCP.
+**Tools Live** : MCP Bible + `web_search` natif + `write_to_chat` fn. `require_approval='never'` forcé sur tous MCP.
 
 **Tracker usage** : `Map<realtimeSessionId, TrackedUsage>` en mémoire, monotone strict, GC 60s/stale 2min, `unref()`.
 
@@ -147,9 +147,9 @@ Buck utilise `/v1/responses` (plus `/v1/chat/completions`). Les serveurs MCP son
 ```
 Chat → Buck /api/chat → OpenAI Responses (stream SSE)
                             ↓ (appel direct Bearer)
-                        Caddy (bible-mcp.buck.* / writing-mcp.buck.*)
+                        Caddy (bible-mcp.buck.*)
                             ↓ (reverse_proxy si Bearer OK)
-                        buck-bible-mcp:7801 / buck-writing-tools-mcp:7802
+                        buck-bible-mcp:7801
 ```
 
 SSE events : `content`, `mcp_call_started/done/error`, `mcp_approval`, `tool_approval` (local fn), `tool_result`, `done`, `error`.

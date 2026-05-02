@@ -27,7 +27,7 @@ const DEFAULT_OPTS = {
     silence_duration_ms: 500,
     interrupt_response: true,
   },
-  tools: { bible: true, writingTools: true, webSearch: true },
+  tools: { bible: true, webSearch: true },
 };
 
 beforeEach(() => {

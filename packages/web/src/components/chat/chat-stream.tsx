@@ -87,7 +87,6 @@ const LOCAL_TOOL_LABELS: Record<string, string> = {
 
 const SERVER_LABELS: Record<string, string> = {
   bible: 'Consultation de la bible',
-  'writing-tools': 'Analyse du texte',
 };
 
 interface SSEFrame {

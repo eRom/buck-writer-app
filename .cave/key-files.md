@@ -78,7 +78,7 @@
 - `packages/web/src/components/settings/budget-section.tsx` — 3 lignes sous la barre budget.
 - `packages/web/tests/e2e/memory.spec.ts` — refactor selectors sémantiques + URL assert post-click "Nouvelle session".
 - `.env.development` — `PUBLIC_BASE_URL=http://localhost:5173` (align Vite port).
-- `vps/compose.yml` — `env_file: ../.env` ajouté sur bible-mcp + writing-tools-mcp.
+- `vps/compose.yml` — `env_file: ../.env` ajouté sur bible-mcp.
 - `docs/superpowers/plans/m5-go-no-go.md` — validation complète + gaps tracés.
 
 ## API (packages/api/src/)
@@ -222,7 +222,7 @@
 
 - `scripts/deploy-vps.sh` — git pull + scp env + build + up + healthchecks
 - `Dockerfile.app` — multi-stage Node 20 Alpine
-- `Dockerfile.bible-mcp` + `Dockerfile.bible-ui` + `Dockerfile.writing-tools-mcp`
+- `Dockerfile.bible-mcp` + `Dockerfile.bible-ui`
 - `docker-compose.yml` + `docker-compose.local.yml`
 - `Caddyfile` (sur VPS `/opt/trinity-lifeos/caddy/Caddyfile`) — sites buck.* + bible.buck.*
 - `.env.production` (gitignored) scp vers VPS `/opt/buck-writer-app/.env`

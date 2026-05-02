@@ -244,7 +244,7 @@ describe('realtime routes', () => {
         headers: authHeaders(ctx.sessionJwt),
         body: JSON.stringify({
           sessionId: ctx.chatSessionId,
-          tools: { bible: false, writingTools: false, webSearch: false },
+          tools: { bible: false, webSearch: false },
         }),
       });
       expect(res.status).toBe(200);

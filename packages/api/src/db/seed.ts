@@ -5,13 +5,11 @@ export interface SeedOptions {
   databaseUrl: string;
   allowedEmails: string[];
   mcpBibleUrl: string;
-  mcpWritingToolsUrl?: string;
 }
 
 export interface SeedMcpOptions {
   databaseUrl: string;
   mcpBibleUrl: string;
-  mcpWritingToolsUrl?: string;
 }
 
 /**
@@ -29,7 +27,6 @@ export function runMcpSeed(opts: SeedMcpOptions): void {
     databaseUrl: opts.databaseUrl,
     allowedEmails: [],
     mcpBibleUrl: opts.mcpBibleUrl,
-    mcpWritingToolsUrl: opts.mcpWritingToolsUrl,
   });
   sqlite.close();
 }
@@ -40,7 +37,6 @@ export function runMcpSeed(opts: SeedMcpOptions): void {
  * of the env var holding the shared Bearer secret (never the secret itself).
  *
  * bible : read tools = never approval, write tools = always approval.
- * writing-tools : read-only, never approval.
  */
 export function seedMcpServers(sqlite: Database.Database, opts: SeedOptions): void {
   const now = Date.now();
@@ -73,20 +69,6 @@ export function seedMcpServers(sqlite: Database.Database, opts: SeedOptions): vo
     createdAt: now,
   });
 
-  insertMcp.run({
-    id: newId(),
-    name: 'writing-tools',
-    core: 0,
-    enabled: 1,
-    config: JSON.stringify({
-      url: `${opts.mcpWritingToolsUrl ?? 'http://writing-tools-mcp:7802'}/mcp`,
-      auth_header_env: 'MCP_SHARED_SECRET',
-      server_description:
-        'Text analysis: word/char count, readability, passive voice, keyword density, perplexity, stylometric analysis.',
-      require_approval: 'never',
-    }),
-    createdAt: now,
-  });
 }
 
 export function runSeed(opts: SeedOptions): void {
@@ -129,7 +111,6 @@ if (import.meta.url === `file://${process.argv[1]}`) {
     .map((e) => e.trim().toLowerCase())
     .filter(Boolean);
   const mcpBibleUrl = process.env.MCP_BIBLE_URL ?? 'http://bible-mcp:7801';
-  const mcpWritingToolsUrl = process.env.MCP_WRITING_TOOLS_URL;
   if (!url || emails.length === 0) {
     console.error('[seed] DATABASE_URL + AUTH_ALLOWED_EMAILS required');
     process.exit(1);
@@ -139,7 +120,6 @@ if (import.meta.url === `file://${process.argv[1]}`) {
       databaseUrl: url,
       allowedEmails: emails,
       mcpBibleUrl,
-      mcpWritingToolsUrl,
     });
     console.warn('[seed] done');
   } catch (err) {

@@ -61,8 +61,8 @@ export function classifyToolNames(names: string[]): McpClassification {
  * Iterates over enabled MCP servers with core=1. For each, calls tools/list,
  * classifies, and patches config_json.require_approval in-place.
  *
- * Non-core servers (e.g. writing-tools) keep whatever require_approval was
- * seeded — typically 'never' for read-only helpers.
+ * Non-core servers keep whatever require_approval was seeded — typically
+ * 'never' for read-only helpers.
  */
 export async function applyMcpToolClassifications(
   db: DbHandles,

@@ -22,7 +22,7 @@ const DEFAULT_START_OPTS = {
     silence_duration_ms: 500,
     interrupt_response: true,
   },
-  tools: { bible: false, writingTools: false, webSearch: false },
+  tools: { bible: false, webSearch: false },
 };
 
 function mockCreateSession() {

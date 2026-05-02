@@ -250,7 +250,7 @@ describe('settings routes', () => {
 
     it('round-trips realtimeTools JSON', async () => {
       ctx = await makeCtx();
-      const tools = { bible: false, writingTools: true, webSearch: false };
+      const tools = { bible: false, webSearch: false };
       const res = await ctx.app.request('/api/settings', {
         method: 'PATCH',
         headers: authMutHeaders(ctx.sessionJwt),
@@ -282,7 +282,6 @@ describe('settings routes', () => {
       });
       expect(body.realtimeTools).toEqual({
         bible: true,
-        writingTools: true,
         webSearch: true,
       });
       expect(body.chatTools).toEqual({ webSearch: false });

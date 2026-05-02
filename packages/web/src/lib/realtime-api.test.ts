@@ -25,7 +25,7 @@ describe('realtimeApi', () => {
       sessionId: 's1',
       voice: 'coral',
       turnDetection: { mode: 'server_vad', threshold: 0.5, prefix_padding_ms: 500, silence_duration_ms: 500, interrupt_response: true },
-      tools: { bible: true, writingTools: true, webSearch: true },
+      tools: { bible: true, webSearch: true },
     });
     expect(out.clientSecret).toBe('ek');
     expect(fetchMock).toHaveBeenCalledWith(

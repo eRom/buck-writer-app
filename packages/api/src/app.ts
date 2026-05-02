@@ -176,7 +176,7 @@ export function buildApp(deps: AppDeps) {
     },
   );
 
-  // ForwardAuth Bearer pour les MCPs (bible-mcp, writing-mcp).
+  // ForwardAuth Bearer pour les MCPs (bible-mcp).
   // Traefik fait GET sur cet endpoint et forward le header Authorization
   // original sous X-Forwarded-Authorization. On accepte les deux noms pour
   // permettre les tests directs (curl avec Authorization).

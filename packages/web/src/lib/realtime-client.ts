@@ -16,7 +16,7 @@ export interface StartOpts {
     silence_duration_ms: number;
     interrupt_response: boolean;
   };
-  tools: { bible: boolean; writingTools: boolean; webSearch: boolean };
+  tools: { bible: boolean; webSearch: boolean };
 }
 
 interface TranscriptEntry {

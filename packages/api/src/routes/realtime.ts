@@ -112,7 +112,7 @@ export function createRealtimeRoute(
       sessionId?: unknown;
       voice?: unknown;
       turnDetection?: unknown;
-      tools?: { bible?: boolean; writingTools?: boolean; webSearch?: boolean };
+      tools?: { bible?: boolean; webSearch?: boolean };
     };
 
     const sessionId = typeof body.sessionId === 'string' ? body.sessionId : null;
@@ -171,7 +171,6 @@ export function createRealtimeRoute(
     );
     const tools = {
       bible: body.tools?.bible ?? true,
-      writingTools: body.tools?.writingTools ?? true,
       webSearch: body.tools?.webSearch ?? true,
     };
     // Ordre : SYSTEM → TOOLS → RULES (concat tous les blocs non vides).

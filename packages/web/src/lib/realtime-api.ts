@@ -10,7 +10,7 @@ export interface CreateSessionInput {
     silence_duration_ms: number;
     interrupt_response: boolean;
   };
-  tools: { bible: boolean; writingTools: boolean; webSearch: boolean };
+  tools: { bible: boolean; webSearch: boolean };
 }
 
 export interface CreateSessionResult {

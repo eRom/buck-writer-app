@@ -210,7 +210,7 @@ export const userSettings = sqliteTable('user_settings', {
   realtimeSilenceTimeoutSec: integer('realtime_silence_timeout_sec').notNull().default(30),
   realtimeToolsJson: text('realtime_tools_json')
     .notNull()
-    .default('{"bible":true,"writingTools":true,"webSearch":true}'),
+    .default('{"bible":true,"webSearch":true}'),
   chatToolsJson: text('chat_tools_json')
     .notNull()
     .default('{"webSearch":false}'),

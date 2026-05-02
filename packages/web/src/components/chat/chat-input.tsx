@@ -215,7 +215,7 @@ export function ChatInput({
                   aria-label={realtimeState === 'idle' ? 'Démarrer Live' : 'Arrêter Live'}
                   onClick={() => {
                     if (realtimeState === 'idle') {
-                      void start({ voice: 'coral', turnDetection: { mode: 'server_vad', threshold: 0.5, prefix_padding_ms: 300, silence_duration_ms: 500, interrupt_response: true }, tools: { bible: true, writingTools: true, webSearch: true } });
+                      void start({ voice: 'coral', turnDetection: { mode: 'server_vad', threshold: 0.5, prefix_padding_ms: 300, silence_duration_ms: 500, interrupt_response: true }, tools: { bible: true, webSearch: true } });
                     } else {
                       void stop();
                     }

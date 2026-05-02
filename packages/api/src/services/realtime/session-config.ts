@@ -4,7 +4,7 @@ import type { RealtimeVoice, TurnDetectionConfig } from '@buck/shared';
 export interface BuildSessionConfigInput {
   voice: RealtimeVoice;
   turnDetection: TurnDetectionConfig;
-  tools: { bible: boolean; writingTools: boolean; webSearch: boolean };
+  tools: { bible: boolean; webSearch: boolean };
   mcpTools: McpToolDef[];
   systemPrompt: string;
   livePrompt: string;
@@ -39,7 +39,6 @@ export function buildSessionConfig(input: BuildSessionConfigInput): RealtimeSess
   const tools: ToolDef[] = [];
   const enabledLabels = new Set<string>();
   if (input.tools.bible) enabledLabels.add('bible');
-  if (input.tools.writingTools) enabledLabels.add('writing-tools');
 
   for (const mcp of input.mcpTools) {
     if (!enabledLabels.has(mcp.server_label)) continue;

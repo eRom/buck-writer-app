@@ -16,7 +16,6 @@ export type TurnDetectionInput = z.infer<typeof TurnDetection>;
 
 const RealtimeTools = z.object({
   bible: z.boolean(),
-  writingTools: z.boolean(),
   webSearch: z.boolean(),
 });
 

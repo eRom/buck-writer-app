@@ -18,7 +18,7 @@ const mockSettings = {
     interrupt_response: true,
   },
   realtimeSilenceTimeoutSec: 30,
-  realtimeTools: { bible: true, writingTools: true, webSearch: true },
+  realtimeTools: { bible: true, webSearch: true },
   chatTools: { webSearch: false, fileSearch: false },
   vectorStoreId: null,
   vectorStoreLastSyncAt: null,

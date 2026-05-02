@@ -44,7 +44,7 @@ function Home() {
       silence_duration_ms: 500,
       interrupt_response: true,
     },
-    tools: settings?.realtimeTools ?? { bible: true, writingTools: true, webSearch: true },
+    tools: settings?.realtimeTools ?? { bible: true, webSearch: true },
   };
 
   // Stop Live automatiquement si on change de session
