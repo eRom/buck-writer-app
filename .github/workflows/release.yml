@@ -20,7 +20,7 @@ jobs:
           - { name: buck-bible-ui,           dockerfile: deploy-vps/Dockerfile.bible-ui,           context: . }
           - { name: buck-markitdown-worker,  dockerfile: services/markitdown-worker/Dockerfile,    context: services/markitdown-worker }
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
 
       - uses: docker/setup-buildx-action@v3
 
