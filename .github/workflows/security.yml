@@ -15,7 +15,7 @@ jobs:
   pnpm-audit:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
       - uses: pnpm/action-setup@v4
         with:
           version: 9.12.0
@@ -30,7 +30,7 @@ jobs:
     runs-on: ubuntu-latest
     container: returntocorp/semgrep
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
       - run: |
           # generic.nginx.security.missing-internal.missing-internal : false positive.
           # Notre proxy_pass dans bible-ui/nginx.conf est un reverse-proxy public
@@ -58,7 +58,7 @@ jobs:
       contents: read
       pull-requests: write
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
         with:
           fetch-depth: 0
       - uses: gitleaks/gitleaks-action@v2
@@ -68,7 +68,7 @@ jobs:
   trivy-fs:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
       - uses: aquasecurity/trivy-action@0.35.0
         with:
           scan-type: fs
