@@ -27,5 +27,11 @@ export function securityHeaders(): MiddlewareHandler {
     c.header('Referrer-Policy', 'strict-origin-when-cross-origin');
     c.header('Content-Security-Policy', CSP);
     c.header('Cross-Origin-Opener-Policy', 'same-origin');
+    // Permissions-Policy: only microphone is needed (Realtime voice). All
+    // other powerful features are disabled site-wide.
+    c.header(
+      'Permissions-Policy',
+      'microphone=(self), camera=(), geolocation=(), payment=(), usb=(), magnetometer=(), gyroscope=(), accelerometer=()',
+    );
   };
 }

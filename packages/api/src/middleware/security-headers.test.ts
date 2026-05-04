@@ -35,4 +35,17 @@ describe('security-headers', () => {
     expect(csp).toContain("object-src 'none'");
     expect(csp).toContain("require-trusted-types-for 'script'");
   });
+
+  it('sets Permissions-Policy locking down powerful features (microphone allowed)', async () => {
+    const res = await mkApp().request('/');
+    const pp = res.headers.get('permissions-policy') ?? '';
+    expect(pp).toContain('microphone=(self)');
+    expect(pp).toContain('camera=()');
+    expect(pp).toContain('geolocation=()');
+    expect(pp).toContain('payment=()');
+    expect(pp).toContain('usb=()');
+    expect(pp).toContain('magnetometer=()');
+    expect(pp).toContain('gyroscope=()');
+    expect(pp).toContain('accelerometer=()');
+  });
 });
