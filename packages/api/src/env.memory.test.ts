@@ -15,13 +15,13 @@ describe('env memory variables', () => {
       ...base,
       SUPABASE_URL: 'https://x.supabase.co',
       SUPABASE_SERVICE_ROLE_KEY: 'k',
-      BUCK_USER_ID: '00000000-0000-0000-0000-000000000001',
+      BUCK_USER_ID: '00000000-0000-4000-8000-000000000001',
       MEMORY_ENABLED: 'true',
       OPENAI_EMBEDDING_MODEL: 'text-embedding-3-large',
       EDGE_INVOKE_KEY: 'secret',
     });
     expect(env.MEMORY_ENABLED).toBe(true);
-    expect(env.BUCK_USER_ID).toBe('00000000-0000-0000-0000-000000000001');
+    expect(env.BUCK_USER_ID).toBe('00000000-0000-4000-8000-000000000001');
   });
 
   it('MEMORY_ENABLED defaults to false', () => {

@@ -1,7 +1,7 @@
 import { z } from 'zod';
 
 export const AuthRequestInput = z.object({
-  email: z.string().email().max(254),
+  email: z.email().max(254),
 });
 export type AuthRequestInput = z.infer<typeof AuthRequestInput>;
 

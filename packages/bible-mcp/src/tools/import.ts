@@ -211,13 +211,13 @@ export function registerImportTools(server: McpServer, { sqlite, db }: DbInstanc
     {
       data: z
         .object({
-          characters: z.array(z.record(z.unknown())).optional(),
-          locations: z.array(z.record(z.unknown())).optional(),
-          events: z.array(z.record(z.unknown())).optional(),
-          interactions: z.array(z.record(z.unknown())).optional(),
-          world_rules: z.array(z.record(z.unknown())).optional(),
-          research: z.array(z.record(z.unknown())).optional(),
-          notes: z.array(z.record(z.unknown())).optional(),
+          characters: z.array(z.record(z.string(), z.unknown())).optional(),
+          locations: z.array(z.record(z.string(), z.unknown())).optional(),
+          events: z.array(z.record(z.string(), z.unknown())).optional(),
+          interactions: z.array(z.record(z.string(), z.unknown())).optional(),
+          world_rules: z.array(z.record(z.string(), z.unknown())).optional(),
+          research: z.array(z.record(z.string(), z.unknown())).optional(),
+          notes: z.array(z.record(z.string(), z.unknown())).optional(),
         })
         .describe("Objet JSON avec clés optionnelles par type d'entité"),
       on_conflict: z

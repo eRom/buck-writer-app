@@ -82,7 +82,7 @@ export const ToolApprovalChunk = z.object({
   type: z.literal('tool_approval'),
   toolCallId: z.string(),
   toolName: z.string(),
-  args: z.record(z.unknown()),
+  args: z.record(z.string(), z.unknown()),
 });
 export type ToolApprovalChunk = z.infer<typeof ToolApprovalChunk>;
 
@@ -97,7 +97,7 @@ export type ToolApprovalDecision = z.infer<typeof ToolApprovalDecision>;
 export const ToolMeta = z.object({
   toolCallId: z.string(),
   toolName: z.string(),
-  args: z.record(z.unknown()),
+  args: z.record(z.string(), z.unknown()),
   status: z.enum(['approved', 'denied', 'auto', 'blocked']),
   result: z.object({
     stdout: z.string().optional(),
@@ -117,7 +117,7 @@ export type ToolMeta = z.infer<typeof ToolMeta>;
 export const ToolApprovalRequest = z.object({
   toolCallId: z.string(),
   toolName: z.string(),
-  args: z.record(z.unknown()),
+  args: z.record(z.string(), z.unknown()),
   approved: z.boolean(),
 });
 export type ToolApprovalRequest = z.infer<typeof ToolApprovalRequest>;
