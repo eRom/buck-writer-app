@@ -42,6 +42,38 @@ describe('csrf middleware', () => {
     expect(res.status).toBe(200);
   });
 
+  describe('webdav bypass anchoring (VULN-006)', () => {
+    const mkWebdavApp = () => {
+      const app = new Hono();
+      app.use('*', csrfMiddleware());
+      app.put('/webdav', (c) => c.text('exact'));
+      app.put('/webdav/foo.txt', (c) => c.text('subpath'));
+      app.put('/webdavbypass', (c) => c.text('lookalike'));
+      return app;
+    };
+
+    it('bypasses CSRF on /webdav (exact match)', async () => {
+      const res = await mkWebdavApp().request('/webdav', { method: 'PUT' });
+      expect(res.status).toBe(200);
+    });
+
+    it('bypasses CSRF on /webdav/* (subpaths)', async () => {
+      const res = await mkWebdavApp().request('/webdav/foo.txt', {
+        method: 'PUT',
+      });
+      expect(res.status).toBe(200);
+    });
+
+    it('does NOT bypass CSRF on lookalike prefix /webdavbypass', async () => {
+      const res = await mkWebdavApp().request('/webdavbypass', {
+        method: 'PUT',
+      });
+      expect(res.status).toBe(403);
+      const body = (await res.json()) as { error: { code: string } };
+      expect(body.error.code).toBe('csrf_missing');
+    });
+  });
+
   it('does not crash on malformed percent-encoded cookie values', async () => {
     const res = await mkApp().request('/write', {
       method: 'POST',

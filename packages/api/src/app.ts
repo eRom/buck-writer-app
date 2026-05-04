@@ -2,6 +2,7 @@ import { Hono } from 'hono';
 import type { ContentfulStatusCode } from 'hono/utils/http-status';
 import { serveStatic } from '@hono/node-server/serve-static';
 import { eq } from 'drizzle-orm';
+import { verifyMcpBearer } from './utils/verify-mcp-bearer.js';
 import { newId } from '@buck/shared';
 import { healthRoute } from './routes/health.js';
 import { HttpError } from './utils/http-error.js';
@@ -191,8 +192,7 @@ export function buildApp(deps: AppDeps) {
     if (!expected) return c.body(null, 503);
     const auth =
       c.req.header('X-Forwarded-Authorization') ?? c.req.header('Authorization') ?? '';
-    if (auth === `Bearer ${expected}`) return c.body(null, 204);
-    return c.body(null, 401);
+    return verifyMcpBearer(auth, expected) ? c.body(null, 204) : c.body(null, 401);
   });
 
   // Rate-limit auth mutation endpoints (5 req/min per IP) to prevent magic-link spam
