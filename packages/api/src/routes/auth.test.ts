@@ -4,7 +4,7 @@ import path from 'node:path';
 import os from 'node:os';
 import { fileURLToPath } from 'node:url';
 import { Hono } from 'hono';
-import { createAuthRoutes } from './auth.js';
+import { createAuthRoutes, enforceFloor } from './auth.js';
 import { authGuard } from '../middleware/auth.js';
 import { openDb } from '../db/client.js';
 import { runMigrations } from '../db/migrate.js';
@@ -34,6 +34,7 @@ function makeApp(
   allowed: string[] = ['alice@example.com'],
   nowMs?: () => number,
   seedEmails?: string[],
+  minResponseMs: number = 0,
 ): TestCtx {
   const dbPath = tmp();
   const url = `file:${dbPath}`;
@@ -71,7 +72,7 @@ function makeApp(
       allowedEmails: allowed,
       publicBaseUrl: 'https://buck.example.com',
       nowMs: effectiveNowMs,
-      unknownEmailDelayMs: 0,
+      minResponseMs,
     }),
   );
   return { dbPath, app, emailsSent, mockEmail, jwt, handles };
@@ -300,6 +301,62 @@ describe('auth routes', () => {
         method: 'POST',
       });
       expect(res.status).toBe(401);
+    });
+  });
+
+  describe('VULN-008 — anti-enumeration response-time floor', () => {
+    describe('enforceFloor helper', () => {
+      it('does not sleep when work already exceeded the floor', async () => {
+        const t0 = Date.now() - 1000;
+        const start = Date.now();
+        await enforceFloor(t0, 100);
+        const elapsed = Date.now() - start;
+        expect(elapsed).toBeLessThan(20);
+      });
+
+      it('sleeps the remaining delta when work was faster than floor', async () => {
+        const t0 = Date.now();
+        const start = Date.now();
+        await enforceFloor(t0, 120);
+        const elapsed = Date.now() - start;
+        expect(elapsed).toBeGreaterThanOrEqual(110); // 10ms margin for jitter
+      });
+
+      it('is a no-op when minMs <= 0', async () => {
+        const start = Date.now();
+        await enforceFloor(0, 0);
+        await enforceFloor(0, -1);
+        const elapsed = Date.now() - start;
+        expect(elapsed).toBeLessThan(20);
+      });
+    });
+
+    it('whitelisted and non-whitelisted branches both honour the floor', async () => {
+      // 200ms is small enough to keep tests fast, large enough that the
+      // jitter on Date.now + setTimeout cannot mask a missing floor.
+      ctx = makeApp(['alice@example.com'], undefined, undefined, 200);
+
+      const tKnownStart = Date.now();
+      const knownRes = await ctx.app.request('/api/auth/request', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ email: 'alice@example.com' }),
+      });
+      const tKnown = Date.now() - tKnownStart;
+      expect(knownRes.status).toBe(200);
+
+      const tUnknownStart = Date.now();
+      const unknownRes = await ctx.app.request('/api/auth/request', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ email: 'stranger@example.com' }),
+      });
+      const tUnknown = Date.now() - tUnknownStart;
+      expect(unknownRes.status).toBe(200);
+
+      // Both branches must honour the 200ms floor (with margin for jitter).
+      expect(tKnown).toBeGreaterThanOrEqual(190);
+      expect(tUnknown).toBeGreaterThanOrEqual(190);
     });
   });
 });

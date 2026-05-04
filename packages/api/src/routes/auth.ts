@@ -14,7 +14,13 @@ export interface AuthRoutesDeps {
   allowedEmails: string[];
   publicBaseUrl: string;
   nowMs?: () => number;
-  unknownEmailDelayMs?: number;
+  /**
+   * Floor on the response time of `POST /api/auth/request` for both the
+   * whitelisted and non-whitelisted branches (anti-enumeration, VULN-008).
+   * The actual handler work runs first; if it completes earlier, we sleep
+   * the remaining delta. Default 600ms. Set to 0 to disable in tests.
+   */
+  minResponseMs?: number;
   /**
    * Optional Domain attribute appended to buck_session cookies. Set to
    * ".romain-ecarnot.com" to share the cookie with bible.buck.* (SSO via
@@ -27,14 +33,30 @@ const MAGIC_LINK_TTL_MS = 15 * 60 * 1000;
 const SESSION_TTL_SECONDS = 30 * 24 * 60 * 60;
 const SESSION_TTL_MS = SESSION_TTL_SECONDS * 1000;
 
+/**
+ * Sleeps until at least `minMs` milliseconds have elapsed since `t0`.
+ * Used by `/api/auth/request` to enforce a uniform response-time floor on
+ * both anti-enumeration branches so an attacker cannot infer whitelist
+ * membership from response timing (CWE-208 / VULN-008).
+ */
+export async function enforceFloor(t0: number, minMs: number): Promise<void> {
+  if (minMs <= 0) return;
+  const elapsed = Date.now() - t0;
+  const remaining = minMs - elapsed;
+  if (remaining > 0) {
+    await new Promise((r) => setTimeout(r, remaining));
+  }
+}
+
 export function createAuthRoutes(deps: AuthRoutesDeps): Hono {
   const now = deps.nowMs ?? Date.now;
   const whitelist = new Set(deps.allowedEmails.map((e) => e.toLowerCase()));
-  const unknownDelay = deps.unknownEmailDelayMs ?? 400;
+  const minResponseMs = deps.minResponseMs ?? 600;
   const app = new Hono();
   const domainAttr = deps.cookieDomain ? `; Domain=${deps.cookieDomain}` : '';
 
   app.post('/request', async (c) => {
+    const t0 = Date.now();
     const raw = await c.req.json().catch(() => ({}));
     const parsed = AuthRequestInput.safeParse(raw);
     if (!parsed.success) {
@@ -46,11 +68,11 @@ export function createAuthRoutes(deps: AuthRoutesDeps): Hono {
     const email = parsed.data.email.toLowerCase();
     const ts = now();
 
-    // Anti-enumeration: always respond 200 { sent: true }.
+    // Anti-enumeration: both the whitelisted and non-whitelisted branches
+    // run to completion first, then we floor the response time uniformly
+    // via enforceFloor(t0, minResponseMs).
     if (!whitelist.has(email)) {
-      if (unknownDelay > 0) {
-        await new Promise((r) => setTimeout(r, unknownDelay));
-      }
+      await enforceFloor(t0, minResponseMs);
       return c.json({ sent: true });
     }
 
@@ -87,6 +109,7 @@ export function createAuthRoutes(deps: AuthRoutesDeps): Hono {
     const magicUrl = `${deps.publicBaseUrl}/api/auth/callback?token=${token}`;
     await deps.email.sendMagicLink({ to: email, magicUrl });
 
+    await enforceFloor(t0, minResponseMs);
     return c.json({ sent: true });
   });
 
