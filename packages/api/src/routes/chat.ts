@@ -23,6 +23,7 @@ import {
   mcpCallEvents,
 } from '../db/schema.js';
 import { isImage } from '../services/extractor.js';
+import { logger } from '../lib/logger.js';
 import {
   extractAttachment,
   formatAttachmentBlock,
@@ -1032,11 +1033,11 @@ export function createChatRoute(
                   .run();
               })
               .catch((err: unknown) => {
-                console.warn('[api] title generation failed', err);
+                logger.warn({ err }, '[api] title generation failed');
               });
           }
         } catch (persistErr) {
-          console.warn('[api] persistence error', persistErr);
+          logger.warn({ err: persistErr }, '[api] persistence error');
         }
 
         await writer.close();

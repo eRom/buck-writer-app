@@ -6,6 +6,7 @@ import type { EmailService } from '../services/email.js';
 import type { JwtService } from '../services/jwt.js';
 import { authTokens, sessionsAuth, users } from '../db/schema.js';
 import { sha256Hex, randomTokenHex } from '../utils/crypto.js';
+import { logger } from '../lib/logger.js';
 
 export interface AuthRoutesDeps {
   db: DbHandles;
@@ -89,7 +90,7 @@ export function createAuthRoutes(deps: AuthRoutesDeps): Hono {
         .insert(users)
         .values({ id, email, createdAt: ts })
         .run();
-      console.warn(`[auth] auto-provisioned user ${id} (whitelist hit, DB miss)`);
+      logger.warn({ userId: id }, '[auth] auto-provisioned user (whitelist hit, DB miss)');
       existing = { id, email, createdAt: ts, lastLoginAt: null };
     }
 
