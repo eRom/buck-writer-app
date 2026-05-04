@@ -49,7 +49,14 @@ jobs:
             packages/
 
   gitleaks:
+    # Dependabot PRs run with a read-only GITHUB_TOKEN; gitleaks-action attempts
+    # to comment on the PR and fails with 403 on every rebase, spamming emails.
+    # Version-bump PRs don't introduce secrets, so skipping is safe.
+    if: github.actor != 'dependabot[bot]'
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: write
     steps:
       - uses: actions/checkout@v4
         with:
