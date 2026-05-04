@@ -48,9 +48,17 @@ import { recallTool, rememberTool } from '../services/memory/tools.js';
 import { buildSystemPromptWithMemory } from '../lib/prompts.js';
 import { buildMcpConnectorTools } from '../services/mcp-registry.js';
 
-// Local tools that require explicit user approval. Shell uses a hard whitelist
-// and is allowed to run without friction.
-const TOOLS_REQUIRING_APPROVAL = ['create_file', 'delete_file'];
+// Local tools that require explicit user approval before execution.
+// `shell_execute` is gated even though kill-switch maintains a hard
+// whitelist (rm/kill/sudo/metachars blocked) — prompt injection in a
+// document or web result could still chain allowed binaries (npm, npx,
+// git, mv, cp) into an unintended action. Approval gives the user a
+// last-chance veto.
+export const TOOLS_REQUIRING_APPROVAL: string[] = [
+  'create_file',
+  'delete_file',
+  'shell_execute',
+];
 
 const MAX_STEPS = 8;
 
