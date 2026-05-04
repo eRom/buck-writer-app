@@ -28,8 +28,11 @@ export function csrfMiddleware(opts: CsrfOptions = {}): MiddlewareHandler {
     const cookies = parseCookies(c.req.header('cookie'));
     const method = c.req.method.toUpperCase();
 
-    // WebDAV clients cannot send CSRF tokens — bypass for /webdav/* paths
-    if (c.req.path.startsWith('/webdav')) {
+    // WebDAV clients cannot send CSRF tokens — bypass for /webdav and
+    // /webdav/* paths only. The prefix match is anchored to a path
+    // boundary so a hypothetical future route like `/webdavbypass` could
+    // not accidentally inherit the bypass.
+    if (c.req.path === '/webdav' || c.req.path.startsWith('/webdav/')) {
       return next();
     }
 
