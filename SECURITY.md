@@ -86,3 +86,32 @@ These need GitHub Pro or GHAS, which the repo does not currently have:
 
 Until those are enabled, `main` is conventionally protected by the solo
 maintainer and CodeQL findings ship as workflow artifacts.
+
+### Accepted residual risks
+
+Findings the audit deliberately did not close, with their reasoning:
+
+- **CSP `style-src 'unsafe-inline'`** (REC-11). React + Radix + shadcn +
+  Tailwind v4 produce many `style="..."` attributes that the browser
+  treats as inline styles. Closing this would require per-request
+  nonces (no SSR today, Buck is a Vite SPA) or a Tailwind-v4
+  build-time hash export (not yet stable in 4.2). `script-src` already
+  excludes `'unsafe-inline'`, which is the high-impact half of the
+  protection. Re-evaluate when (a) we move to SSR or (b) Tailwind 4.x
+  ships `csp.hashes`.
+- **Rate-limiter buckets in RAM** (VULN-005). In-memory `Map` resets on
+  container restart, giving an attacker a fresh window after every
+  deploy or OOM. Compensating control: Caddy edge `caddy-rate-limit`
+  + fail2ban on the host. Re-evaluate when traffic warrants either
+  SQLite-persisted buckets or a Redis sidecar.
+- **Workspace HTML/SVG inline rendering** (VULN-003). `/api/workspace/file`
+  serves `*.html` / `*.svg` with their native MIME, which lets a
+  whitelisted user phish themselves on the app's origin. CSP
+  `script-src 'self'` blocks <script>-based XSS, but unauthenticated
+  CSS / form-action attacks on the same origin remain. Forcing
+  `Content-Disposition: attachment` would break the in-UI file viewer
+  for legitimate previews; the UX trade-off has not been made.
+- **MCP credentials at rest** (REC-08). Today MCP server config stores
+  only env-var *names* and a server URL — never a credential. The
+  encryption-at-rest work only matters once we let users add custom
+  MCPs with their own tokens, which is currently out of scope.
