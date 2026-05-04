@@ -55,8 +55,34 @@ Every push and PR runs, via `.github/workflows/security.yml`:
 - Gitleaks (full history)
 - Trivy fs (HIGH + CRITICAL, fail on findable CVEs)
 
+Every push and PR also runs, via `.github/workflows/codeql.yml`:
+
+- CodeQL on `javascript-typescript` with the `security-extended` query
+  pack. SARIF is published as a workflow artifact (this repo is private
+  without GitHub Advanced Security, so the Code scanning UI cannot accept
+  the results; toggle on GHAS or make the repo public to switch the
+  workflow to native Security-tab integration).
+
+Each `buck-v*` tag triggers `.github/workflows/release.yml`, which after
+the GHCR push runs:
+
+- Trivy image scan on every published image (HIGH + CRITICAL fixable,
+  `exit-code: 1`). A failing scan fails `build-push`, which blocks the
+  downstream `dispatch` from triggering the production deploy.
+
 Dependabot opens weekly PRs for npm, monthly for GitHub Actions and Docker
-base images.
+base images. Dependabot vulnerability alerts and automated security
+updates are enabled at the repo level.
 
 A static + SAST audit report lives under `reports/security/` and
 `security-audit-*.md`.
+
+### Settings still requiring manual action
+
+These need GitHub Pro or GHAS, which the repo does not currently have:
+
+- Branch protection on `main` requiring the security checks above.
+- Code scanning UI (Security tab) for CodeQL findings.
+
+Until those are enabled, `main` is conventionally protected by the solo
+maintainer and CodeQL findings ship as workflow artifacts.
