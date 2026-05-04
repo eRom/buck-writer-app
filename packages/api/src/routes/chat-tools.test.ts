@@ -4,6 +4,15 @@ import fsp from 'node:fs/promises';
 import path from 'node:path';
 import os from 'node:os';
 import { buildToolDefinitions, buildToolHandlers } from './chat-tools.js';
+import { TOOLS_REQUIRING_APPROVAL } from './chat.js';
+
+describe('TOOLS_REQUIRING_APPROVAL (VULN-004)', () => {
+  it('gates create_file, delete_file and shell_execute behind approval', () => {
+    expect(TOOLS_REQUIRING_APPROVAL).toContain('create_file');
+    expect(TOOLS_REQUIRING_APPROVAL).toContain('delete_file');
+    expect(TOOLS_REQUIRING_APPROVAL).toContain('shell_execute');
+  });
+});
 
 describe('buildToolDefinitions', () => {
   it('returns workspace tools when workspaceDir is set', () => {
