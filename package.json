@@ -24,6 +24,11 @@
     "docker:logs": "docker compose -f deploy-vps/compose.local.yml logs -f",
     "release": "commit-and-tag-version"
   },
+  "pnpm": {
+    "overrides": {
+      "@xmldom/xmldom@<0.8.13": ">=0.8.13"
+    }
+  },
   "devDependencies": {
     "@eslint/js": "^9.13.0",
     "@typescript-eslint/eslint-plugin": "^8.12.2",
