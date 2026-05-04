@@ -46,6 +46,18 @@ jobs:
           cache-from: type=gha,scope=${{ matrix.image.name }}
           cache-to:   type=gha,scope=${{ matrix.image.name }},mode=max
 
+      # Image-level Trivy gate. Scans the image we just pushed; if HIGH or
+      # CRITICAL fixable CVEs are found, the job fails which prevents the
+      # downstream `dispatch` from triggering a deploy.
+      - name: Trivy image scan (HIGH/CRITICAL gate)
+        uses: aquasecurity/trivy-action@v0.36.0
+        with:
+          image-ref: ghcr.io/erom/${{ matrix.image.name }}:${{ steps.ver.outputs.version }}
+          severity: HIGH,CRITICAL
+          exit-code: '1'
+          ignore-unfixed: true
+          vuln-type: 'os,library'
+
   dispatch:
     name: Trigger deploy on infra repo
     needs: build-push
