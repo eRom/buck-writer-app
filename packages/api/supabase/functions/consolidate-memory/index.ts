@@ -133,9 +133,13 @@ Deno.serve(async (req) => {
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
     const stack = err instanceof Error ? err.stack : undefined;
+    // Full diagnostic stays in Supabase Logs (retained, ops-only access).
     console.error(JSON.stringify({ fn: FN, stage: stage.current, error: msg, stack }));
+    // Body kept narrow on purpose: `message:` was removed (VULN-009 / CodeQL
+    // js/stack-trace-exposure) so internal column / query / value fragments
+    // surfaced by the underlying error never leave the Edge runtime.
     return new Response(
-      JSON.stringify({ error: 'internal', stage: stage.current, message: msg }),
+      JSON.stringify({ error: 'internal', stage: stage.current }),
       { status: 500, headers: { 'Content-Type': 'application/json' } },
     );
   }
