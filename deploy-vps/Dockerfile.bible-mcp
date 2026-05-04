@@ -1,6 +1,15 @@
 # Dockerfile.bible-mcp
 FROM node:20-alpine AS builder
-RUN apk add --no-cache python3 make g++ sqlite
+# Pin apk versions (Hadolint DL3018) for reproducible builds. Refresh
+# these when bumping the `node:20-alpine` base tag — the resolver fails
+# fast at build time if the version is no longer in the alpine index.
+# Captured 2026-05-04 from `apk update && apk search -e <pkg>` on
+# node:20-alpine.
+RUN apk add --no-cache \
+    python3=3.12.13-r0 \
+    make=4.4.1-r3 \
+    g++=15.2.0-r2 \
+    sqlite=3.51.2-r0
 WORKDIR /app
 
 COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
@@ -18,7 +27,7 @@ RUN pnpm --filter @buck/bible-mcp build
 RUN pnpm deploy --filter @buck/bible-mcp --prod /deploy
 
 FROM node:20-alpine AS runtime
-RUN apk add --no-cache sqlite
+RUN apk add --no-cache sqlite=3.51.2-r0
 WORKDIR /app
 COPY --from=builder /deploy/dist ./dist
 COPY --from=builder /deploy/node_modules ./node_modules
