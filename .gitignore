@@ -46,6 +46,7 @@ __pycache__/
 
 # Claude Code local MCP config (not shared)
 .mcp.json
+.claude/scheduled_tasks.lock
 
 # Worktrees
 .worktrees/
