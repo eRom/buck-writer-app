@@ -38,6 +38,11 @@ function openBrowser(url: string): void {
   const platform = process.platform;
   const cmd =
     platform === "darwin" ? "open" : platform === "win32" ? "start" : "xdg-open";
+  // `url` is built from an env-derived host + a fixed path inside this
+  // module — never from request input. Static analysis (eslint-plugin-
+  // security/detect-child-process) cannot prove this, so the rule is
+  // disabled for this single call.
+  // eslint-disable-next-line security/detect-child-process
   exec(`${cmd} ${url}`, (err) => {
     if (err) console.error(`[http] Impossible d'ouvrir le navigateur : ${err.message}`);
   });

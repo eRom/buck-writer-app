@@ -3,6 +3,7 @@ import tsParser from '@typescript-eslint/parser';
 import tsPlugin from '@typescript-eslint/eslint-plugin';
 import reactHooks from 'eslint-plugin-react-hooks';
 import reactRefresh from 'eslint-plugin-react-refresh';
+import security from 'eslint-plugin-security';
 
 export default [
   {
@@ -81,6 +82,37 @@ export default [
       'no-redeclare': 'off',
       '@typescript-eslint/no-redeclare': 'off',
       'no-console': ['warn', { allow: ['warn', 'error'] }],
+    },
+  },
+  // eslint-plugin-security (REC-02). Lightweight SAST on the API + shared
+  // surfaces — these are the paths that touch fs, child_process, regex on
+  // user input, etc. Most rules are `error`; `detect-object-injection` is
+  // off (high FP rate on TS-typed code), and a couple are `warn` because
+  // they overlap with patterns we already audit by hand.
+  {
+    files: [
+      'packages/api/src/**/*.{ts,tsx}',
+      'packages/shared/src/**/*.{ts,tsx}',
+      'packages/bible-mcp/src/**/*.{ts,tsx}',
+    ],
+    plugins: { security },
+    rules: {
+      'security/detect-eval-with-expression': 'error',
+      'security/detect-non-literal-fs-filename': 'warn',
+      'security/detect-child-process': 'error',
+      'security/detect-pseudoRandomBytes': 'error',
+      'security/detect-possible-timing-attacks': 'warn',
+      'security/detect-unsafe-regex': 'error',
+      'security/detect-non-literal-regexp': 'warn',
+      'security/detect-non-literal-require': 'error',
+      'security/detect-buffer-noassert': 'error',
+      'security/detect-disable-mustache-escape': 'error',
+      'security/detect-no-csrf-before-method-override': 'error',
+      'security/detect-bidi-characters': 'error',
+      // High false-positive rate on TS-typed object access. `assertSafePath`
+      // is our actual guard; turning this on flags every legitimate dynamic
+      // map lookup.
+      'security/detect-object-injection': 'off',
     },
   },
   // Browser-specific globals for web + bible-ui packages
