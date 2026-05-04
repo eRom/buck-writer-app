@@ -1,6 +1,6 @@
 fastapi==0.115.6
 uvicorn[standard]==0.34.0
-python-multipart==0.0.22
+python-multipart==0.0.26
 markitdown[pdf,docx,pptx,xlsx]==0.1.5
 pytesseract==0.3.13
 pillow==12.2.0
