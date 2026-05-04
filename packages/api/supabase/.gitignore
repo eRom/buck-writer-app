@@ -1,0 +1,8 @@
+# Local state created by `supabase link` / CLI.
+# Contains project-ref, pooler-url and version metadata — not secrets,
+# but local-only and recreated on every machine that runs the CLI.
+.temp/
+
+# Local Supabase Studio data — never commit (potentially contains
+# rows from local dev DB).
+.branches/
