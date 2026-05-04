@@ -1,6 +1,30 @@
 # Architecture — Buck Writer
 
-> MAJ 2026-04-22 (M6 MarkItDown shipped)
+> MAJ 2026-05-04 (workspace explorer UI + security workflow stabilisé)
+
+## Workspace explorer in-app (rc.18, 2026-05-04)
+
+Mini explorateur de fichiers dans le panneau « Dossier de travail » (à droite du chat) — alternative au WebDAV pour les opérations courantes.
+
+```
+panel-right/card-workspace.tsx (orchestrateur)
+  ├── header 5 boutons : [+ Fichier] [+ Dossier] [Import] | [Brain] [Refresh]
+  ├── drop zone full-panel (overlay primary/dashed quand isDragOver)
+  ├── <FileTree entries creating actions onSelect onInsertReference />
+  └── <FilePreviewModal path />
+
+workspace/file-tree.tsx
+  ├── état per-row : expanded, renaming, confirmDelete, isDropTarget, busy
+  ├── menu "..." DropdownMenu en hover (opacity-0 → group-hover:100)
+  ├── actions inline : rename inline (RenameRow), delete avec InlineConfirm
+  ├── drop sur dossier : counter + e.stopPropagation, expand auto
+  └── CreateRow : input vide, Enter valide / Escape annule / blur commit
+
+workspace/inline-confirm.tsx
+  └── pattern erom : bg-destructive/10 + border-destructive/20 + 2 boutons
+```
+
+Backend reste intact (routes existantes `/tree`, GET/POST/PATCH/DELETE `/file`, POST `/directory`). Côté client, **validation 5 Mo + types texte/image** dans `lib/workspace.ts:validateUpload`. Multipart via `fetch` direct (bypass `apiFetch` qui JSON-stringifie). `createEmptyFile()` = POST multipart d'un `new File([''], name, {type:'text/plain'})` pour matérialiser un fichier vide à la création.
 
 ## Vue d'ensemble
 
@@ -172,14 +196,17 @@ SSE events : `content`, `mcp_call_started/done/error`, `mcp_approval`, `tool_app
 - Rollout prod 2026-04-21 : round-trip `remember` → `recall` en nouvelle session validé. 2 rows `buck_memories` créées sur smoke test (user `3c2245f3-...`).
 - Ventilation coûts dans Settings : `byKind.memory` = somme 4 kinds (memory_embedding / memory_consolidation / memory_compaction / memory_dedup). Ligne UI dans `budget-section.tsx`.
 
-## Production
+## Production (refonte 2026-04-26 → orchestrator pattern)
 
-- **URLs** : `buck.romain-ecarnot.com` (auth), `bible.buck.romain-ecarnot.com` (SSO via Caddy `forward_auth` → `/api/auth/verify-session`).
-- **VPS** : Hostinger 72.62.239.98, `/opt/buck-writer-app` via deploy key SSH.
-- **DNS** : Cloudflare `buck` + `*.buck` en grey (DNS only) pour Caddy challenge HTTP.
-- **Caddy** : stack Buck + Trinity sur réseau `caddy-public`. Caddyfile source `/opt/trinity-lifeos/caddy/Caddyfile`.
-- **SSO** : cookie `buck_session` avec `Domain=.romain-ecarnot.com`.
-- **Deploy** : `scripts/deploy-vps.sh` (git pull + scp .env + build + healthchecks). Pas de CI/CD.
+- **URLs** : `buck.apps.romain-ecarnot.com` (auth), `bible.buck.apps.romain-ecarnot.com` (SSO via Traefik `forward_auth` → `/api/auth/verify-session`). Anciens `*.romain-ecarnot.com` retirés.
+- **VPS** : Hostinger 72.62.239.98 (alias SSH `srv1314306`), `/opt/<app>/deploy-vps/` par app.
+- **Reverse-proxy** : Traefik (remplace Caddy), réseau `traefik-public`, certresolver `acme-cloudflare`. Config dans `traefik/dynamic/<app>.yml` (orchestrator).
+- **SSO** : cookie `buck_session` avec `Domain=.apps.romain-ecarnot.com`.
+- **Orchestrateur** : repo séparé `eRom/vps-docker-manager-prod` (`$VPS_ORCHESTRATOR_PATH`) — 4 apps : buck, hermes (hors pattern), n8n, trinity. Chaque app a `apps/<app>/deploy-state.yaml` + `secrets/<app>.enc.yaml` chiffré sops (3 recipients age : laptop + VPS + GA runner).
+- **Deploy tag-driven** : `git tag buck-vX.Y.Z && git push --tags` → `.github/workflows/release.yml` build matrix GHCR (4 images : buck-app + buck-bible-mcp + buck-bible-ui + buck-markitdown-worker) + `repository_dispatch` vers orchestrator → `deploy.yml` (decrypt sops, scp `.env`, `docker compose pull && up`, healthcheck, commit `deploy-state.yaml`).
+- **Skills hostinger:** : `bootstrap`, `deploy`, `rollback`, `logs`, `secret-rotate`, `env-sync`, `status`, `dns`, `update-checker`, `deploy-clean`, `deploy-doctor`.
+- **QW3b citations** (2026-05-02, v1.0.0-rc.10) : tool `web_search_preview` rend ses `url_citation` annotations comme pills (favicon Google s2 + hostname) sous chaque bulle assistant. Persistées dans `messages.annotations_json` (migration 0016).
+- **Writing-tools-mcp décommissionné** (commit 44bdc70, 2026-05-02) : retiré du compose prod, table cleanup migration 0015. `realtime_tools_json` default `{bible:true, webSearch:true}`.
 
 ## DX
 

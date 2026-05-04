@@ -1,6 +1,39 @@
 # Fichiers clés — Buck Writer
 
-> MAJ 2026-04-22 (M6 MarkItDown shipped)
+> MAJ 2026-05-04 (workspace explorer UI + security workflow)
+
+## Workspace explorer in-app (rc.18, 2026-05-04)
+
+- `packages/web/src/lib/workspace.ts` — `fetchWorkspaceTree`, `createDirectory`, `renameFile`, `deleteFile`, `downloadFile`, **NEW** `uploadFile` / `createEmptyFile` / `validateUpload` / `joinWorkspacePath` / `MAX_UPLOAD_SIZE` (5 Mo). Filtre hidden (`.git`, `skills`, `systems`, `.DS*`, `._*`).
+- `packages/web/src/components/workspace/file-tree.tsx` — refonte complète. Props `{entries, creating, actions, onSelect, onInsertReference}`. Sub-components internes `FileTreeItem`, `RenameRow`, `CreateRow`. Menu `MoreVertical` au hover (opacity-0 → group-hover), drop sur dossier avec dragCounter, expand auto à `creating?.parentPath === entry.path`.
+- `packages/web/src/components/workspace/inline-confirm.tsx` — **NEW**, pattern erom destructive.
+- `packages/web/src/components/panel-right/card-workspace.tsx` — header 5 boutons, drop zone full-panel (counter + dataTransfer.types Files), `useState<CreatingState>`, `<input type="file" hidden>` ref pour Import. Mutations inline (pas de `useMutation`) : `actions: FileTreeActions = { rename, remove, uploadInto, requestCreate, submitCreate, cancelCreate }`.
+
+## Security workflow (2026-05-04)
+
+- `.github/workflows/security.yml` — 4 jobs : `pnpm-audit`, `semgrep`, `gitleaks` (skipped sur `dependabot[bot]`), `trivy-fs`. Permissions `pull-requests: write` sur gitleaks pour PRs humaines.
+- `package.json` — `pnpm.overrides` pin `@xmldom/xmldom@<0.8.13` → `>=0.8.13` (mammoth transitive, 5 high CVE).
+- `services/markitdown-worker/requirements.txt` — `pillow==12.2.0` (CVE-2026-25990 + 40192) + `python-multipart==0.0.22` (CVE-2026-24486 path traversal).
+
+## QW3b — Citations web_search (2026-05-02)
+
+- `packages/api/migrations/0016_add_message_annotations.sql` — ALTER `messages` ADD `annotations_json` text
+- `packages/api/src/lib/openai.ts:181` — type `response.output_text.annotation.added` ajouté à `ResponsesEvent`
+- `packages/api/src/routes/chat.ts` — `collectedAnnotations[]` (ligne ~430), case SSE `annotation` (~488), persistance `annotationsJson` sur insert message (~849)
+- `packages/api/src/lib/openai.test.ts` — test parsing `url_citation`
+- `packages/web/src/components/chat/citations-list.tsx` — composant pills (favicon Google s2 + hostname tronqué, max-w-[180px])
+- `packages/web/src/components/chat/chat-stream.tsx` — type `Annotation` exporté, `ChatMessage.annotations`, parse au mount, 2 handlers SSE event `annotation` (boucle initiale + boucle resume), passe à `MessageAssistant`
+- `packages/web/src/components/chat/message-assistant.tsx` — prop `annotations`, render `<CitationsList />` sous le contenu
+- `packages/web/src/lib/sessions.ts` — `Message.annotationsJson: string | null`
+
+## Deploy & secrets (2026-05-02)
+
+- `scripts/env-sync-to-prod.sh` — wrapper safe sync .env → sops avec whitelist filter + `--filename-override` (corrige bugs upstream `/hostinger:env-sync`)
+- `.env.prod.allowed` — whitelist explicite des keys autorisées en prod (filtre E2E, BUCK_USER_ID dev-only)
+- `deploy-vps/compose.yml` — compose prod avec `name: buck` top-level (gotcha F13)
+- `deploy-vps/compose.local.yml` — dev hybride (bible-mcp + markitdown-worker en Docker)
+- `deploy-vps/Dockerfile.app` + `Dockerfile.bible-mcp` + `Dockerfile.bible-ui` (Dockerfile.writing-tools-mcp retiré)
+- `.github/workflows/release.yml` — build matrix GHCR + dispatch vers `eRom/vps-docker-manager-prod`
 
 ## M6 — MarkItDown sidecar (2026-04-22)
 

@@ -1,6 +1,49 @@
 # Patterns et conventions — Buck Writer
 
-> MAJ 2026-04-22 (M6 MarkItDown shipped)
+> MAJ 2026-05-04 (workspace explorer UX + sécurité CI)
+
+## Pattern multipart upload : `fetch` direct (bypass `apiFetch`)
+
+`apiFetch` JSON-stringifie systématiquement le body si non-string et set `content-type: application/json`. Pour un upload `multipart/form-data` il FAUT que le browser pose lui-même le boundary header → utiliser `fetch` brut avec `headers: { [CSRF_HEADER]: readCsrfCookie() }, credentials: 'include', body: formData`. Voir `lib/attachments.ts` (chat) et `lib/workspace.ts:postFile` (workspace explorer).
+
+## Pattern feedback visuel TanStack Query : `refetch()` + `isFetching`
+
+`invalidateQueries` ne déclenche pas toujours un fetch immédiat (selon staleTime / focus state) → bouton Refresh donne l'illusion de ne rien faire. Pattern correct : `const { refetch, isFetching } = useQuery(...)` + bouton `onClick={() => refetch()} disabled={isFetching}` + icône `<RefreshCw className={isFetching && 'animate-spin'} />`. Coupler avec `cache: 'no-store'` dans le `queryFn` quand on veut forcer un round-trip réseau (workspace tree). Appliqué dans `card-workspace.tsx`.
+
+## Pattern validation client quand backend ne valide pas
+
+`POST /api/workspace/file` n'a ni cap de taille ni allowlist MIME (contrairement à `/api/attachments` qui pose `MAX_ATTACHMENT_SIZE` 20 Mo + magic-byte sniff). Pour l'explorateur in-app, validation gate côté client avant envoi : `validateUpload(file)` throw si `size > 5 Mo` ou type hors liste (`image/*` | `text/*` | extensions whitelist `.md/.json/.yaml/.csv/.log...`). Le backend reste permissif intentionnellement (utilisé aussi par flows internes de confiance comme `images/save`). Pattern à reproduire pour tout endpoint multi-usage où un caller user-facing a besoin de garde-fous spécifiques.
+
+## Pattern InlineConfirm > Modal Dialog pour suppressions
+
+Modale destructive ouvre une couche flottante, casse le focus, demande un mouvement de souris loin de la cible. Pattern erom-design : la row se transforme **sur place** en bandeau rouge (`bg-destructive/10 border-destructive/20`) avec 2 boutons `Annuler` / `Supprimer`. Coût UX = quasi-zéro, lecture du nom à supprimer reste dans son contexte. Composant générique `workspace/inline-confirm.tsx` réutilisable. Préférer ce pattern aux `<AlertDialog>` shadcn pour toute suppression où la cible est visible inline.
+
+## Pattern `pnpm.overrides` pour CVE transitive
+
+Quand une vuln HIGH apparaît sur une dep transitive (ex: `mammoth > @xmldom/xmldom@0.8.12` flagué par `pnpm audit --prod --audit-level high` → 5 advisories), 3 options : (1) bumper la dep parent (souvent une majeure invasive), (2) `pnpm.overrides` ciblé pour pinner la transitive à la patched version semver-compat, (3) ignorer l'advisory. Pattern préféré = (2). Syntaxe : `"pnpm": { "overrides": { "@xmldom/xmldom@<0.8.13": ">=0.8.13" } }` dans root `package.json`. Vérifier `pnpm install --no-frozen-lockfile` puis `pnpm audit` localement avant push. Le format `pkg@<version` ne match QUE les versions vulnérables, sans casser les autres ranges du graph deps.
+
+## Pattern workflow CI : skip jobs faillibles sur Dependabot
+
+Les PRs Dependabot tournent avec un `GITHUB_TOKEN` read-only. Toute action qui veut **commenter** ou **labeler** la PR (`gitleaks-action@v2`, plusieurs scanners) → `403 Resource not accessible by integration` → fail répété à chaque rebase auto Dependabot → spam mails. Pattern : `if: github.actor != 'dependabot[bot]'` au niveau du job + `permissions: { contents: read, pull-requests: write }` pour les PRs humaines. Les version-bump PRs n'introduisent pas de secrets, le skip est safe. Appliqué sur `gitleaks` dans `.github/workflows/security.yml`.
+
+## Pattern whitelist explicite pour sync .env → secret prod
+
+**Contexte** : un `.env` local contient inévitablement des vars dev-only (E2E flags, fixtures, URLs localhost) qui sont DANGEREUSES en prod (peuvent crashloop le serveur ou ouvrir des backdoors). Le sync naïf "copy all" est un foot-gun.
+
+**Pattern** : maintenir un fichier `.env.prod.allowed` à la racine du repo (1 key par ligne, commentaires `#` autorisés). Wrapper script `scripts/env-sync-to-prod.sh` :
+1. Lit la whitelist
+2. Filtre `.env`, ne garde que les keys dans la liste
+3. Pipe le YAML stream vers `sops --filename-override secrets/<app>.enc.yaml -e /dev/stdin` (depuis cwd = orchestrator pour que `.sops.yaml` soit trouvé)
+4. Affiche le résumé `Included` + `Skipped` (visibilité explicite)
+
+**À retenir** :
+- Si une nouvelle var d'env runtime arrive en prod, l'ajouter à `.env.prod.allowed` ou elle sera silencieusement ignorée.
+- Si une var doit rester dev-only (E2E, BUCK_USER_ID), elle n'apparaît pas dans la whitelist — c'est volontaire.
+- Le wrapper corrige aussi un bug du script upstream `/hostinger:env-sync` (manque `--filename-override`, qui fait que sops ne match aucune creation_rule).
+
+Pattern reproductible pour toute nouvelle app sur le pattern `hostinger:` (créer son `.env.prod.allowed` + adapter le script à son `APP=`).
+
+
 
 ## Pattern extraction au send (vs post-upload)
 

@@ -1,6 +1,103 @@
 # Gotchas — Buck Writer
 
-> MAJ 2026-04-24 (M8B image_generation + drizzle migration skippée)
+> MAJ 2026-05-04 (security workflow + workspace explorer + Dependabot rebase + Dependabot triage cascade)
+
+## PRs Dependabot : workflow file vient de la branche PR, pas de main (session 2026-05-04)
+
+Quand on fixe un workflow CI sur `main` (ex: `if: github.actor != 'dependabot[bot]'` sur gitleaks), les PRs Dependabot **déjà ouvertes** continuent à utiliser **leur propre snapshot** du `security.yml` (figé à leur date de création). Tant que la PR n'a pas été rebased, son `pull_request` trigger lance l'**ancien** workflow → mêmes échecs.
+
+Idem pour les fix de lockfile (ex: `b407d85 fix(security): bump pillow + python-multipart`) : les PRs ouvertes avant le fix gardent l'ancien `pnpm-lock.yaml` → trivy continue à flagger les CVE corrigées sur main.
+
+**Solution** : `gh pr comment <N> --body "@dependabot rebase"` sur chaque PR stale → Dependabot repush la branche basée sur main courant → CI repasse avec les fix.
+
+Variante : `@dependabot recreate` pour partir d'un fresh diff.
+
+## `pnpm vitest run` à la racine ne respecte pas les configs per-package (session 2026-05-04)
+
+Les tests `packages/web/src/lib/realtime-client.test.ts` & co exigent `environment: 'jsdom'` (configuré dans `packages/web/vitest.config.ts`). Lancer `pnpm vitest run` depuis la racine ignore ces configs → `ReferenceError: window is not defined`. **Toujours** utiliser `pnpm test` (= `pnpm -r test`) qui délègue à chaque package, ou `pnpm --filter @buck/<pkg> test` pour scoper.
+
+## Auto-merge GitHub désactivé sur le repo (session 2026-05-04)
+
+`gh pr merge --auto --squash` retourne `GraphQL: Auto merge is not allowed for this repository (enablePullRequestAutoMerge)`. Le repo n'a pas l'auto-merge activé dans Settings → Pull Requests. Workaround : merger directement avec `gh pr merge <N> --squash --delete-branch` (la commande exit silencieusement si succès, vérifier via `gh pr view <N> --json state,mergedAt`).
+
+## eslint-plugin-react-hooks v7 : 3 nouvelles règles strictes non-bloquantes (session 2026-05-04)
+
+Le bump `5.2.0 → 7.1.1` (PR #11) ajoute 3 règles activées par défaut dans le preset implicite : `react-hooks/set-state-in-effect`, `react-hooks/refs`, `react-hooks/purity`. Sur le code existant : 5+1+2 = 8 nouvelles erreurs lint qui pointent du tech debt légitime (setState dans useEffect, mutation de ref pendant render). **Non-bloquant** car le projet a déjà 102 erreurs lint baseline et `pnpm lint` n'est pas dans CI gate. À traiter en passe dédiée si on veut nettoyer.
+
+## Security workflow GitHub Actions : 3 sources de spam mail (session 2026-05-04)
+
+Le workflow `.github/workflows/security.yml` failait à CHAQUE push (sur main et sur les PRs Dependabot après rebase auto), spammant les mails. Diagnostic : 3 causes empilées.
+
+### 1. `pnpm-audit` — 5 high CVE sur `@xmldom/xmldom@0.8.12`
+Transitive via `mammoth@1.12.0` (déclarée dans `packages/api` pour extraction docx). DoS recursion + 4× injection XML (DocumentType/PI/comment/node serialization). Fix `>=0.8.13` semver-compat avec `mammoth@^0.8.6`. **Fix** : `pnpm.overrides: { "@xmldom/xmldom@<0.8.13": ">=0.8.13" }` dans root `package.json`. Reste 1 advisory `moderate` sur `uuid@10` (CVE-2026 bounds check `v3/v5/v6` quand buffer fourni — on utilise `v4`, non concerné), ignoré par `--audit-level high`.
+
+### 2. `trivy-fs` — 3 high CVE sur sidecar Python
+`services/markitdown-worker/requirements.txt` : `pillow==11.0.0` (CVE-2026-25990 OOB write PSD + CVE-2026-40192 DoS FITS) + `python-multipart==0.0.20` (CVE-2026-24486 arbitrary file write path traversal). **Fix** : `pillow==12.2.0` + `python-multipart==0.0.22`. Vérification via `pip install --dry-run` que markitdown[pdf,docx,pptx,xlsx]==0.1.5 + pdf2image + pytesseract résolvent clean.
+
+### 3. `gitleaks-action@v2` 403 sur PRs Dependabot
+PRs Dependabot tournent avec `GITHUB_TOKEN` read-only par défaut (sécurité GitHub). gitleaks-action essaie de commenter sur la PR via API → `403 Resource not accessible by integration` → job fail. Comme Dependabot rebase ses 13 PRs ouvertes à chaque push sur main, chaque push déclenche N×4 jobs dont N gitleaks fails → mails. **Fix** : `if: github.actor != 'dependabot[bot]'` sur le job gitleaks + `permissions: { contents: read, pull-requests: write }` pour les PRs humaines. Cf `patterns.md#workflow CI : skip jobs faillibles sur Dependabot`.
+
+**Diagnostic clé** : `gh run list --workflow=security --limit 20 --json databaseId,event,headBranch,conclusion --jq '.[] | "\(.conclusion) \(.event) \(.headBranch)"'` montre quel push/PR fait quoi. Et `gh api repos/:owner/:repo/actions/runs/<id>/jobs --jq '.jobs[] | "\(.conclusion) \(.name)"'` ventile par job, dispense d'ouvrir la web UI.
+
+## `apiFetch` JSON-stringifie le body → multipart cassé silencieusement
+
+`packages/web/src/lib/api.ts:14-50` : `apiFetch` set `content-type: application/json` et JSON-stringifie tout body non-string. Si on appelle `apiFetch('/api/workspace/file', { method: 'POST', body: formData })` → le browser ne pose pas le boundary multipart, le serveur reçoit du JSON malformé, l'erreur est cryptique (`missing_file` ou `Failed to parse body`). **Fix** : utiliser `fetch` direct pour multipart, avec `headers: { [CSRF_HEADER]: readCsrfCookie() }, credentials: 'include', body: formData` (PAS de `content-type` — le browser le pose avec le boundary). Pattern dans `lib/attachments.ts` et `lib/workspace.ts:postFile`. À encapsuler si on multiplie les uploads.
+
+## Backend `POST /api/workspace/file` ne valide ni taille ni MIME
+
+`packages/api/src/routes/workspace.ts:145-166` accepte n'importe quel multipart `file + path`. Pas de cap (contrairement à `/api/attachments` 20 Mo + allowlist MIME + magic-byte). Volontaire pour permettre l'usage interne (`POST /api/images/save` génère du base64 → File). **Conséquence** : tout caller user-facing DOIT valider côté client (taille, MIME, extension) avant envoi. Pattern dans `lib/workspace.ts:validateUpload` (5 Mo + texte/image). Si un jour on ajoute une auth scope-restricted, le backend POURRAIT poser un cap par scope plutôt que par endpoint.
+
+## Dependabot rebase ses PRs à chaque push main → re-trigger workflow
+
+Dépôts avec `dependabot.yml` actif : à chaque push sur `main`, Dependabot rebase automatiquement TOUTES ses PRs ouvertes pour les garder mergeables. Chaque rebase = nouveau push sur la branche dependabot/* = re-trigger des workflows configurés sur `pull_request:`. Avec 13 PRs ouvertes et un workflow `security` à 4 jobs : 1 push sur main = 52 jobs déclenchés. Si UN job fail (gitleaks 403) → 13 mails. **Conséquence** : tenir les PRs Dependabot triées rapidement (cf gerber task `1529d586` créée 2026-05-04 pour script de tri auto). Pattern de défense : `if: github.actor != 'dependabot[bot]'` sur les jobs susceptibles de fail spécifiquement sur Dependabot.
+
+## Workspace UI : drop-on-folder vs drop-on-panel — stopPropagation requis
+
+`card-workspace.tsx` pose les listeners drag/drop au niveau panneau (drop = upload racine). `file-tree.tsx` pose les mêmes listeners par row de type `directory` (drop = upload dans ce dossier). Sans `e.stopPropagation()` dans les handlers du dossier, le drop bubble jusqu'au panneau et upload **deux fois** (une dans le dossier, une à la racine). **Fix** : `e.preventDefault(); e.stopPropagation();` dans `handleDragEnter/Leave/Over/Drop` du `FileTreeItem` quand `isDir`. Pour les rows fichier, on laisse bubble (drop = root upload, comportement attendu).
+
+## Workspace UI : `dragCounter` ref pour éviter le flicker enter/leave
+
+Pattern `onDragEnter` ↔ `onDragLeave` est piégeux : entrer dans un enfant émet `dragleave` sur le parent puis `dragenter` sur l'enfant. Si on toggle `setIsDragOver` sur enter/leave, ça flicker à chaque mouvement de souris. **Fix** : `dragCounter = useRef(0)`, increment sur enter, decrement sur leave, set `isDragOver = (counter > 0)`. Reset à 0 sur drop. Pattern utilisé à 2 niveaux dans le tree (panel + dir rows) — chaque niveau a son propre counter.
+
+## Sync .env → sops propage les vars dev-only en prod (session 2026-05-02)
+
+**Symptôme** : après `/hostinger:env-sync buck` (rotation OPENAI_API_KEY), buck-app crashloop au boot avec :
+```
+Error: [fatal] refusing to start: E2E=1 is incompatible with NODE_ENV=production
+(file:///app/dist/index.js:4997)
+```
+Healthcheck `https://buck.apps.romain-ecarnot.com/healthz` → 404, container `Restarting (1)`.
+
+**Cause** : le script upstream `/hostinger:env-sync` copie *toutes* les keys du `.env` local vers le secret sops, y compris dev-only (`E2E=1`, `BUCK_USER_ID=<fixture>`). Le garde-fou `app.ts:~120` (VULN-004) bloque le boot si `E2E=1 && NODE_ENV=production`.
+
+**Fix immédiat** : decrypt sops → strip ligne E2E → re-encrypt + redeploy.
+
+**Fix durable** (commit `e8b...` 2026-05-02) : wrapper local `scripts/env-sync-to-prod.sh` + whitelist `.env.prod.allowed`. Le wrapper filtre les keys via la whitelist avant de pipe vers sops, ignore silencieusement les keys hors liste, et utilise `--filename-override secrets/buck.enc.yaml` (le script upstream a aussi ce bug — sans override, sops ne match aucune `creation_rule` → "no matching creation rules found"). Toujours utiliser le wrapper local maintenant. Voir `feedback_env_sync_dev_only_vars.md` en mémoire + note gerber `413847ab`.
+
+## Untracked files sur VPS bloquent le `git pull` du clone orchestrateur (session 2026-05-02)
+
+**Symptôme** : `deploy.yml` step `Run deploy.sh` fail avec :
+```
+error: The following untracked working tree files would be overwritten by merge:
+  traefik/dynamic/hermes.yml
+Please move or remove them before you merge.
+```
+
+**Cause** : sur le VPS, le clone `/opt/_infra` (orchestrateur) avait un fichier `traefik/dynamic/hermes.yml` déposé manuellement avant que le même fichier soit committé upstream. Le `git pull` sur le VPS refuse d'écraser un untracked. Pareil pour `.htpasswd-hermes`, `.htpasswd-dashboard` (mais ceux-là sont gitignore probablement).
+
+**Fix** : SSH sur VPS, `mv traefik/dynamic/hermes.yml /tmp/bak && git pull && rm /tmp/bak` (le fichier identique est dans main, pas de perte). Pour `.htpasswd-*` : laisser, ils sont attendus comme générés en local sur VPS.
+
+**Prévention** : tout fichier déposé directement sur le VPS doit aussi être commit côté orchestrateur dans le même commit. Ne pas livrer une feature à demi (cas hermes : déployé hors-pattern, fichiers Traefik mis à la main).
+
+## URLs prod ont changé : *.apps.romain-ecarnot.com (refonte 2026-04-26)
+
+L'ancienne URL `https://buck.romain-ecarnot.com` n'existe plus. Le nouveau domaine est `https://buck.apps.romain-ecarnot.com` (Traefik Hostinger pattern). Conséquences si non synchronisé :
+- `PUBLIC_BASE_URL` dans le secret sops doit pointer vers la nouvelle URL, sinon le middleware CSRF rejette les POST avec 403 `bad_origin` (`origin` request != `expectedOrigin`).
+- `VITE_BIBLE_UI_URL` est BAKED dans le bundle React au moment du `pnpm build` côté CI. Une mise à jour de la var sops ne change pas le bundle déployé tant qu'on ne re-build pas (nouvelle release tag). Le runtime du buck-app ne lit pas cette var.
+
+Symptôme rencontré : utilisateur ouvre une conv, click "Nouvelle session" → `POST /api/sessions` → 403 silencieux côté front. Fix : update `PUBLIC_BASE_URL` dans sops + redeploy.
+
+
 
 ## M8B — Migration drizzle skippée silencieusement si `when` plus petit (session 2026-04-24)
 
