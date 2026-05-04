@@ -12,6 +12,7 @@ import * as fs from 'node:fs/promises';
 import * as path from 'node:path';
 import { HttpError } from '../utils/http-error.js';
 import { assertSafePath } from '../utils/path-safe.js';
+import { contentDisposition } from '../utils/content-disposition.js';
 
 export interface AttachmentRouteDeps {
   db: DbHandles;
@@ -96,24 +97,6 @@ function mimeMatches(claimed: string, buf: Buffer): boolean {
     default:
       return false;
   }
-}
-
-/**
- * Build a safe `Content-Disposition` value. Defends against CRLF / quote
- * injection in `filename`: the original `filename` is stripped of any
- * non-printable / quote / control character (HTTP token-safe ASCII), and the
- * full UTF-8 form is exposed via `filename*=` (RFC 5987). Browsers prefer
- * `filename*` when both are present.
- */
-function contentDisposition(
-  type: 'inline' | 'attachment',
-  filename: string,
-): string {
-  // ASCII fallback: keep only printable safe ASCII excluding `"` and `\`.
-  const ascii = filename.replace(/[^\x20-\x21\x23-\x5B\x5D-\x7E]/g, '_');
-  // RFC 5987 percent-encoding for the UTF-8 form.
-  const utf8 = encodeURIComponent(filename).replace(/['()]/g, escape);
-  return `${type}; filename="${ascii}"; filename*=UTF-8''${utf8}`;
 }
 
 function extFromMime(mime: string): string {

