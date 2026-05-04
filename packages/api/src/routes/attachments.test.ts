@@ -285,6 +285,58 @@ describe('GET /api/attachments/:id', () => {
     const body = (await res.json()) as { error: { code: string } };
     expect(body.error.code).toBe('not_found');
   });
+
+  it('sanitizes Content-Disposition header against CRLF / quote injection (VULN-001)', async () => {
+    const ctx = await makeCtx();
+
+    // Drop the file on disk under the user-scoped attachments dir.
+    const attId = newId();
+    const relPath = `.attachments/${ctx.userId}/${attId}.txt`;
+    const absPath = path.join(ctx.workspaceDir, relPath);
+    fs.mkdirSync(path.dirname(absPath), { recursive: true });
+    fs.writeFileSync(absPath, 'payload');
+
+    // Filename containing CRLF (header injection) + double-quote (filename
+    // termination) + non-ASCII (Unicode) — must all be neutralised.
+    const evilFilename =
+      'evil"\r\nSet-Cookie: pwn=1\r\nX-Injected: yes\r\néclair.txt';
+
+    ctx.db.db
+      .insert(attachments)
+      .values({
+        id: attId,
+        messageId: null,
+        userId: ctx.userId,
+        filename: evilFilename,
+        mimeType: 'text/plain',
+        sizeBytes: 7,
+        path: relPath,
+        createdAt: Date.now(),
+        extractionStatus: 'ok',
+      })
+      .run();
+
+    const res = await ctx.app.request(`/${attId}`, {
+      headers: { cookie: `buck_session=${ctx.token}` },
+    });
+    expect(res.status).toBe(200);
+
+    const cd = res.headers.get('content-disposition') ?? '';
+    // No CRLF survives — would otherwise enable header injection.
+    expect(cd).not.toContain('\r');
+    expect(cd).not.toContain('\n');
+    // No injected response header was emitted server-side.
+    expect(res.headers.get('set-cookie')).toBeNull();
+    expect(res.headers.get('x-injected')).toBeNull();
+    // ASCII fallback uses a single quoted filename — exactly two `"` (open
+    // and close), the inner one having been replaced.
+    const quoteCount = (cd.match(/"/g) ?? []).length;
+    expect(quoteCount).toBe(2);
+    // The full UTF-8 form is exposed via RFC 5987 filename*=UTF-8''…
+    expect(cd).toMatch(/filename\*=UTF-8''/);
+    // Non-ASCII char survives only inside the percent-encoded filename*.
+    expect(cd).toContain('%C3%A9'); // 'é' percent-encoded
+  });
 });
 
 describe('GET /api/attachments/:id/meta', () => {

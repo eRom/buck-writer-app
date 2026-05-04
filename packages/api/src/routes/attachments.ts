@@ -98,6 +98,24 @@ function mimeMatches(claimed: string, buf: Buffer): boolean {
   }
 }
 
+/**
+ * Build a safe `Content-Disposition` value. Defends against CRLF / quote
+ * injection in `filename`: the original `filename` is stripped of any
+ * non-printable / quote / control character (HTTP token-safe ASCII), and the
+ * full UTF-8 form is exposed via `filename*=` (RFC 5987). Browsers prefer
+ * `filename*` when both are present.
+ */
+function contentDisposition(
+  type: 'inline' | 'attachment',
+  filename: string,
+): string {
+  // ASCII fallback: keep only printable safe ASCII excluding `"` and `\`.
+  const ascii = filename.replace(/[^\x20-\x21\x23-\x5B\x5D-\x7E]/g, '_');
+  // RFC 5987 percent-encoding for the UTF-8 form.
+  const utf8 = encodeURIComponent(filename).replace(/['()]/g, escape);
+  return `${type}; filename="${ascii}"; filename*=UTF-8''${utf8}`;
+}
+
 function extFromMime(mime: string): string {
   const map: Record<string, string> = {
     'image/jpeg': '.jpg',
@@ -275,7 +293,9 @@ export function createAttachmentRoutes(
       throw new HttpError(404, 'not_found', 'attachment not found');
     }
 
-    const absPath = path.join(workspaceDir, row.path);
+    // Defense-in-depth: row.path is server-generated at upload time, but
+    // assertSafePath catches future regressions or DB tampering.
+    const absPath = await assertSafePath(workspaceDir, row.path);
     let content: Buffer;
     try {
       content = await fs.readFile(absPath);
@@ -287,7 +307,7 @@ export function createAttachmentRoutes(
       status: 200,
       headers: {
         'content-type': row.mimeType,
-        'content-disposition': `inline; filename="${row.filename}"`,
+        'content-disposition': contentDisposition('inline', row.filename),
       },
     });
   });
