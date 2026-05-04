@@ -41,3 +41,19 @@ jobs:
         uses: github/codeql-action/analyze@v3
         with:
           category: '/language:${{ matrix.language }}'
+          # This is a private repo without GitHub Advanced Security, so the
+          # SARIF cannot land in the Code scanning UI. We keep the scan
+          # running for signal (job fails on critical findings) and publish
+          # the SARIF as a workflow artifact for manual review. To enable the
+          # full UI integration: enable GHAS in repo Settings or make the
+          # repo public, then drop the `upload` line.
+          upload: never
+          output: codeql-results
+
+      - name: Upload SARIF artifact
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: codeql-${{ matrix.language }}-sarif
+          path: codeql-results/
+          retention-days: 14
