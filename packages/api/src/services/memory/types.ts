@@ -8,7 +8,7 @@ export const RememberInput = z.object({
   content: z.string().min(1).max(2000),
   type: z.enum(['episodic', 'semantic']),
   importance: z.number().min(0).max(1).default(0.5),
-  metadata: z.record(z.unknown()).optional(),
+  metadata: z.record(z.string(), z.unknown()).optional(),
 });
 export type RememberInput = z.infer<typeof RememberInput>;
 

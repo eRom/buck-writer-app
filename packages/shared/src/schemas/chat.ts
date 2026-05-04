@@ -33,7 +33,7 @@ export const MessagesQueryInput = z.object({
 export type MessagesQueryInput = z.infer<typeof MessagesQueryInput>;
 
 export const ChatRequestInput = z.object({
-  sessionId: z.string().uuid().optional(),
+  sessionId: z.uuid().optional(),
   model: z.enum(MODELS).optional(),
 });
 export type ChatRequestInput = z.infer<typeof ChatRequestInput>;
