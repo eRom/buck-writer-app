@@ -1,6 +1,45 @@
 # Patterns et conventions — Buck Writer
 
-> MAJ 2026-05-04 (workspace explorer UX + sécurité CI)
+> MAJ 2026-05-04 (audit sécurité 2026-05-04 closeout — patterns durcissement)
+
+## Pattern timingSafeEqual avec length short-circuit
+Comparer un header secret (Bearer, token) en constant-time **après** vérif de longueur — `crypto.timingSafeEqual` throw sur length différente, donc on doit guarder. La longueur n'est pas le secret ; le contenu l'est.
+```ts
+const a = Buffer.from(authHeader);
+const b = Buffer.from(`Bearer ${expectedSecret}`);
+if (a.length !== b.length) return false;
+return timingSafeEqual(a, b);
+```
+Voir `utils/verify-mcp-bearer.ts`.
+
+## Pattern enforceFloor pour anti-enum / anti-timing
+Toute branche conditionnelle qui leak via timing (whitelist/non, valid/invalid token) doit honorer un floor uniforme :
+```ts
+const t0 = Date.now();
+// ... work
+await enforceFloor(t0, 600);
+return c.json({ sent: true });
+```
+Le helper export depuis `routes/auth.ts` est testable unitairement (3 probes) + integration probe smokant les 2 branches.
+
+## Pattern Pino redact paths
+`lib/logger.ts` expose `logger` configuré avec ~20 redact paths : request-scoped (Authorization, Cookie, CSRF), free-floating (`*.token`, `*.email`, `*.apiKey`), env-name spécifiques (AUTH_JWT_SECRET, OPENAI_API_KEY…). Substituer `console.warn`/`error` par `logger.warn`/`error` dans tout path qui peut surfacer PII / secret. `console.*` reste OK pour ops messages purement opérationnels (boot lines sans secrets).
+
+## Pattern force-download par extension
+`routes/workspace.ts` : ne **jamais** servir un fichier user-uploaded en `Content-Type` natif si l'extension permet rendu inline (`html/htm/xhtml/svg/xml/js/mjs/cjs/css`). Force `octet-stream` + `Content-Disposition: attachment` via le helper RFC 5987 (CRLF/quote-safe). Les images raster (png/jpg/gif/webp) gardent leur MIME — preview fonctionne.
+
+## Pattern hard-cap defense-in-depth sur TTL externe
+`lib/realtime.ts` : ne **jamais** trust un `expires_at` retourné par un upstream externe. Calculer `ttlSeconds` puis throw au-dessus du cap (600s). Optionnellement warn-log au-dessus d'un seuil intermédiaire (300s) pour spotter le drift avant qu'il atteigne le cap. `nowMs` injectable rend testable sans wall-clock.
+
+## Pattern résiduel-accepté documenté in-code
+Quand une décision sécurité est **deferred** (pas fixé) :
+1. Bloc-commentaire long en tête du fichier concerné expliquant le pourquoi
+2. Section dédiée dans `SECURITY.md` "Accepted residual risks"
+3. Trigger-to-revisit explicite (condition qui doit déclencher la revue)
+
+Exemples :
+- `middleware/security-headers.ts` — REC-11 `style-src 'unsafe-inline'`
+- `middleware/rate-limit.ts` — VULN-005 RAM-only buckets
 
 ## Pattern multipart upload : `fetch` direct (bypass `apiFetch`)
 

@@ -1,6 +1,52 @@
 # Architecture — Buck Writer
 
-> MAJ 2026-05-04 (workspace explorer UI + security workflow stabilisé)
+> MAJ 2026-05-04 (audit sécurité closeout 7 sprints + repo public + branch protection)
+
+## Posture sécurité (audit 2026-05-04 closeout)
+
+Audit complet livré en 7 sprints (PR #23, #28-33). 18/19 findings traités, 1 backlog (REC-08, conditional UX MCP custom).
+
+```
+┌──────────────────────────────────────────────────────────────┐
+│ Github (PUBLIC depuis 2026-05-04, ruleset "protect-main")    │
+│   - 5 required checks : Analyze javascript-typescript +      │
+│     semgrep + gitleaks + trivy-fs + pnpm-audit               │
+│   - no force-push / no deletion / no bypass (admin inclus)   │
+│   - PR obligatoire (0 review minimum)                        │
+└─────────────────┬────────────────────────────────────────────┘
+                  │ (sur PR + push main)
+                  ▼
+┌──────────────────────────────────────────────────────────────┐
+│ CI workflows .github/workflows/                              │
+│   - security.yml  : pnpm-audit, semgrep, gitleaks, trivy-fs │
+│   - codeql.yml    : security-extended, upload natif Security│
+│   - release.yml   : Trivy image gate après push GHCR        │
+│     (HIGH/CRIT exit 1 → block dispatch deploy)               │
+└─────────────────┬────────────────────────────────────────────┘
+                  │
+                  ▼
+┌──────────────────────────────────────────────────────────────┐
+│ Code-level defense                                           │
+│ - Pino redact ~20 paths (tokens, env names, cookies)         │
+│ - timingSafeEqual (verify-mcp-bearer)                        │
+│ - enforceFloor 600ms (anti-enum sur /auth/request)           │
+│ - REALTIME_MAX_TTL_SECONDS hard cap 600                      │
+│ - TOOLS_REQUIRING_APPROVAL = create_file/delete_file/        │
+│   shell_execute                                              │
+│ - FORCE_DOWNLOAD_EXTS (html/svg/js/css/xml/.cjs/.mjs/...)    │
+│ - contentDisposition() RFC 5987 (CRLF/quote-safe)            │
+│ - Permissions-Policy (microphone=self, autres ())            │
+└──────────────────────────────────────────────────────────────┘
+```
+
+**Résiduels acceptés** documentés dans `SECURITY.md` "Accepted residual risks" :
+- `style-src 'unsafe-inline'` (REC-11) — pas de SSR, Tailwind v4.2 sans `csp.hashes`
+- Rate-limit RAM-only (VULN-005) — Caddy edge + fail2ban compensation
+- REC-08 MCP encryption-at-rest — backlog conditional UX MCP custom
+
+**E2E security probes Phase 1** (Playwright) : `packages/web/tests/e2e/security/` — 10 probes sur `headers.spec.ts` (4) + `csrf.spec.ts` (4) + `e2e-gate.spec.ts` (2 conditional `E2E_GATE_EXPECT_404=1`). Phase 2/3 documentées dans le README local, deferred sur helpers JWT/DB.
+
+**Edge Functions Supabase déployées** 2026-05-04 : `compact-state` + `consolidate-memory` (runtime v1.73.3) avec body 500 réduit (`message:` retiré, stack reste dans Supabase Logs).
 
 ## Workspace explorer in-app (rc.18, 2026-05-04)
 

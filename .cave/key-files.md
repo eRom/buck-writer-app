@@ -1,6 +1,58 @@
 # Fichiers clés — Buck Writer
 
-> MAJ 2026-05-04 (workspace explorer UI + security workflow)
+> MAJ 2026-05-04 (audit sécurité 2026-05-04 closeout — 7 sprints + repo public + ruleset)
+
+## Audit sécurité 2026-05-04 — fichiers ajoutés / modifiés
+
+### CI workflows
+- `.github/workflows/codeql.yml` — **NEW**. CodeQL `security-extended` sur `javascript-typescript`. Push main + PR + cron weekly Monday 04:00 UTC. Upload natif Security tab depuis 2026-05-04 (repo public).
+- `.github/workflows/release.yml` — étendu : Trivy image gate par image après push GHCR (`exit-code: 1` HIGH/CRIT, `ignore-unfixed: true`). Bloque le job `dispatch` si vulnérabilité.
+- `.github/workflows/security.yml` — pré-existait (pnpm-audit, semgrep, gitleaks, trivy-fs).
+
+### Documentation sécurité
+- `SECURITY.md` — disclosure email + SLA + section "Accepted residual risks" (REC-11, VULN-005, VULN-003 historique, REC-08).
+- `docs/runbooks/secrets-rotation.md` — **NEW**. Runbooks 6 secrets (AUTH_JWT, RESEND, OPENAI, GEMINI, MCP_SHARED, EDGE_INVOKE).
+
+### API / utilities sécurité
+- `packages/api/src/lib/logger.ts` — **NEW**. Pino instance avec `redact.paths` (~20 paths). Pretty-print en dev, JSON struct en prod.
+- `packages/api/src/lib/logger.test.ts` — **NEW**. 4 probes redact (auth/cookie/email/env names).
+- `packages/api/src/utils/verify-mcp-bearer.ts` — **NEW**. `timingSafeEqual` Bearer compare (VULN-007). 6 probes.
+- `packages/api/src/utils/content-disposition.ts` — **NEW**. RFC 5987 helper (filename ASCII-safe + `filename*=UTF-8''…`). Partagé `attachments.ts` + `workspace.ts`.
+
+### API / paths modifiés
+- `packages/api/src/middleware/security-headers.ts` — `Permissions-Policy: microphone=(self)` + tout le reste `()`. Comment block REC-11 sur `style-src 'unsafe-inline'` accepté.
+- `packages/api/src/middleware/csrf.ts` — webdav bypass anchored `path === '/webdav' || startsWith('/webdav/')`.
+- `packages/api/src/middleware/rate-limit.ts` — comment block VULN-005 sur RAM-only accepté + trigger-to-revisit.
+- `packages/api/src/routes/auth.ts` — `enforceFloor(t0, minResponseMs)` exporté + appliqué aux 2 branches anti-enum (default 600ms).
+- `packages/api/src/routes/attachments.ts` — `contentDisposition()` extrait vers util + `assertSafePath` defense-in-depth GET /:id.
+- `packages/api/src/routes/workspace.ts` — `FORCE_DOWNLOAD_EXTS` set (.html/.htm/.xhtml/.svg/.xml/.js/.mjs/.cjs/.css) → `octet-stream` + `Content-Disposition: attachment`.
+- `packages/api/src/routes/chat.ts` — `TOOLS_REQUIRING_APPROVAL` exporté + `'shell_execute'` ajouté ; `console.warn` → `logger.warn` sur les 2 catch errors persist/title.
+- `packages/api/src/lib/realtime.ts` — `REALTIME_MAX_TTL_SECONDS = 600` exporté ; throw si TTL > 600 ; warn si > 300 ; `nowMs` injectable.
+- `packages/api/supabase/functions/compact-state/index.ts` + `consolidate-memory/index.ts` — `message:` retiré du body 500 (deployed 2026-05-04 v1.73.3).
+- `packages/api/supabase/.gitignore` — **NEW**. Ignore `.temp/` (CLI link state) + `.branches/`.
+- `packages/bible-mcp/src/http.ts` — eslint-disable inline justifié sur `exec(...)` openBrowser (env-derived, non-tainted).
+
+### E2E security probes Phase 1 (Playwright)
+- `packages/web/tests/e2e/security/headers.spec.ts` — **NEW**. 4 probes (HSTS/X-CTO/X-Frame/Referrer/CSP/Permissions-Policy/COOP).
+- `packages/web/tests/e2e/security/csrf.spec.ts` — **NEW**. 4 probes (missing/mismatch/bad-origin/VULN-006 webdav anchor).
+- `packages/web/tests/e2e/security/e2e-gate.spec.ts` — **NEW**. 2 probes conditional `E2E_GATE_EXPECT_404=1`.
+- `packages/web/tests/e2e/security/README.md` — **NEW**. Phase 2/3 enumeration + CI integration deferred.
+
+### ESLint
+- `eslint.config.mjs` — `eslint-plugin-security` activé sur api/shared/bible-mcp avec 12 règles (8 errors + 3 warns + 1 off `detect-object-injection`).
+- `package.json` — `eslint-plugin-security` ^4.0.0 ajouté en devDep workspace.
+
+### Tests
+- `packages/api/src/middleware/security-headers.test.ts` — +1 probe Permissions-Policy.
+- `packages/api/src/middleware/csrf.test.ts` — +3 probes webdav anchoring (VULN-006).
+- `packages/api/src/routes/attachments.test.ts` — +1 probe Content-Disposition CRLF/quote sanitisation (VULN-001).
+- `packages/api/src/routes/auth.test.ts` — +4 probes enforceFloor + branch parity (VULN-008).
+- `packages/api/src/routes/chat-tools.test.ts` — +1 probe TOOLS_REQUIRING_APPROVAL (VULN-004).
+- `packages/api/src/routes/workspace.test.ts` — +11 probes force-download (VULN-003).
+- `packages/api/src/lib/realtime.test.ts` — rewritten avec `nowMs` déterministe, 4 probes REC-09.
+- Total après audit : **484 vitest** (was 449 pre-audit) + 10 Playwright security.
+
+## Workspace explorer in-app (rc.18, 2026-05-04)
 
 ## Workspace explorer in-app (rc.18, 2026-05-04)
 
