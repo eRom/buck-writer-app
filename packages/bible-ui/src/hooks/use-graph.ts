@@ -103,7 +103,7 @@ export function useGraph() {
     const addEdge = (key: string, source: string, target: string, color = '#52525b', size = 0.8) => {
       if (source === target) return;
       if (!g.hasNode(source) || !g.hasNode(target)) return;
-      if (g.hasEdge(key)) return;
+      if (g.hasEdge(key) || g.hasEdge(source, target) || g.hasEdge(target, source)) return;
       g.addEdgeWithKey(key, source, target, { color, size });
     };
 

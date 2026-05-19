@@ -1,6 +1,57 @@
 # Gotchas — Buck Writer
 
-> MAJ 2026-05-04 (security workflow + workspace explorer + Dependabot rebase + Dependabot triage cascade)
+> MAJ 2026-05-04 (audit sécurité closeout 7 sprints — pièges découverts)
+
+## Audit sécurité 2026-05-04 — pièges récoltés
+
+### GHAS / Code Scanning UI = repo public OR GitHub Pro+GHAS
+Sur un repo **PRIVATE sans GHAS**, `github/codeql-action/analyze@v3` fait tourner le scan correctement (388 fichiers TS scannés OK), mais l'upload SARIF échoue avec `##[error]Code scanning is not enabled for this repository`. Workaround Sprint 1 : `upload: never` + `output: codeql-results` + step `actions/upload-artifact` (14 jours retention). Réverté en Sprint 7 quand le repo est passé public — l'upload natif Security tab marche directement.
+
+### Branch protection sur repo privé = GitHub Pro
+L'API `PUT /repos/.../branches/main/protection` retourne `403 Upgrade to GitHub Pro or make this repository public`. Pas de chemin technique pour contourner. Solution Sprint 7 : repo passé public + ruleset "protect-main" gratuit avec required checks + no force-push + no bypass.
+
+### `current_user_can_bypass: never` sur un ruleset = même admin doit PR
+Quand le ruleset est créé sans `bypass_actors`, **même le owner du repo** doit ouvrir une PR pour merger sur main. Le `git push origin main` direct retourne erreur. Workflow change : tous les fixes via branch + PR + checks verts (~3min CI) + squash-merge.
+
+### Ruleset `required_status_checks` ≠ nom du workflow
+Le ruleset GitHub veut le **check name** (= job name affiché dans la PR), pas le filename du workflow. Pour CodeQL avec matrix `language: [javascript-typescript]`, le check name est `Analyze javascript-typescript`. Sprint 1 a mis `CodeQL` (le workflow name) qui marchait bizarrement, Sprint 7 a updated vers `Analyze javascript-typescript`.
+
+### `pnpm.overrides` peut casser des transitives non-bumped upstream
+`pnpm up uuid@^14 -r` ne bump que les **directs**. La transitive `resend > svix > uuid@10` reste car svix n'a pas re-bumped. `pnpm audit --audit-level high` exit 0 (severity moderate), mais `pnpm audit` brut affiche encore le finding. Décision Sprint 2 : accepter le moderate transitif (svix usage interne ne touche pas v3/v5/v6 buf path vulnérable).
+
+### `as const` casse `.includes()` sur narrowed string union
+```ts
+const TOOLS = ['create_file', 'delete_file'] as const;
+TOOLS.includes(fc.name) // TS error : string not assignable to '"create_file" | "delete_file"'
+```
+Solution Sprint 3 (VULN-004) : déclarer `string[]` explicite plutôt qu'`as const` :
+```ts
+export const TOOLS_REQUIRING_APPROVAL: string[] = ['create_file', 'delete_file', 'shell_execute'];
+```
+
+### Pino redact path syntax — bracket notation pour `set-cookie`
+`res.headers["set-cookie"]` a un tiret → bracket notation requise dans la liste de paths Pino. Idem `req.headers["x-csrf-token"]`, `req.headers["x-forwarded-authorization"]`. Sans les brackets, le path n'est pas reconnu et le redact silencieusement skip.
+
+### Tests qui spy `console.warn` cassent migration vers `logger`
+`realtime.test.ts` Sprint 3 fait `vi.spyOn(console, 'warn')` pour tester REC-09 TTL warn. Migrer ce call site vers `logger.warn` Sprint 4 nécessiterait de réécrire les spies → décision : laisser `console.warn` pour le `[realtime]` log (ne contient pas de PII, juste un TTL integer). Documenter dans le commit que la migration est case-by-case.
+
+### Edge Functions Deno tests = 0 (Vitest pas applicable)
+`packages/api/supabase/functions/` tourne sous Deno runtime sur Supabase Edge. Vitest ne les exécute pas. VULN-009 fix livré sans test — vérification se fait via `supabase functions deploy` + smoke en prod (forcer une exception, vérifier body 500 sans `message:`).
+
+### Supabase CLI link crée `.temp/` non-gitignored
+`supabase link --project-ref ...` écrit `packages/api/supabase/.temp/{project-ref,linked-project.json,pooler-url,...}`. Pas de secret réel mais state local-only. Solution : `.gitignore` à `packages/api/supabase/` ignore `.temp/` + `.branches/` (Studio data).
+
+### `gh pr checks --watch` summary cache les détails
+Le mode `--watch` du `gh pr checks` retourne un summary `"Passed: X, Failed: Y, Pending: Z"` qui ne montre PAS quels checks. Pour avoir les noms : `gh api /repos/.../commits/<sha>/check-runs -q '.check_runs[] | "\(.name)\t\(.status)\t\(.conclusion)"'`.
+
+### Workspace SVG était déjà cassé avant VULN-003
+Avant Sprint 6, `routes/workspace.ts` mimeMap ne contenait pas `.svg` → retournait `application/octet-stream` par défaut. Le `<img src="/api/workspace/file?path=icon.svg">` du modal preview ne rendait pas (browser respecte `octet-stream`). VULN-003 a formalisé en force-download, **zéro régression UI**.
+
+### CodeQL queries pack `security-extended` = ~50 queries supplémentaires
+Au-dessus de `security-and-quality` (default GitHub setup). Couvre CWE-94 (Code injection), CWE-918 (SSRF), CWE-915 (Prototype pollution), CWE-079 (XSS variants), etc. Tournée 3-4 min sur le codebase Buck (388 TS files). 0 finding actuel sur main.
+
+### `.env.example` + `.env.development` + `.env.prod.allowed` = OK pour repo public
+Audit pre-public : ces 3 fichiers contiennent **uniquement** des chemins, des URL localhost, ou des **noms** de variables (whitelist). Aucune valeur secrète. Le seul "secret" en commit : `MARKITDOWN_INTERNAL_TOKEN=local-dev-token-do-not-use-in-prod` (clairement labeled). Gitleaks history vert sur les 30 derniers runs → pas de fuite passée non plus.
 
 ## PRs Dependabot : workflow file vient de la branche PR, pas de main (session 2026-05-04)
 

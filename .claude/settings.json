@@ -1,0 +1,15 @@
+{
+  "permissions": {
+    "allow": [
+      "Agent",
+      "WebFetch(domain:platform.openai.com)",
+      "WebSearch",
+      "WebFetch(domain:developers.openai.com)",
+      "mcp__gerber__issue_list"
+    ]
+  },
+  "enabledPlugins": {
+    "vtsls@claude-code-lsps": true,
+    "hostinger@erom-marketplace": true
+  }
+}
