@@ -35,7 +35,7 @@ jobs:
         # buck-v1.2.3 -> v1.2.3
         run: echo "version=${GITHUB_REF_NAME#*-}" >> $GITHUB_OUTPUT
 
-      - uses: docker/build-push-action@v5
+      - uses: docker/build-push-action@v7
         with:
           context: ${{ matrix.image.context }}
           file: ${{ matrix.image.dockerfile }}
