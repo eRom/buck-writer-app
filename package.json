@@ -31,9 +31,9 @@
   },
   "devDependencies": {
     "@eslint/js": "^9.13.0",
-    "@typescript-eslint/eslint-plugin": "^8.59.1",
-    "@typescript-eslint/parser": "^8.59.1",
-    "commit-and-tag-version": "^12.7.1",
+    "@typescript-eslint/eslint-plugin": "^8.61.0",
+    "@typescript-eslint/parser": "^8.61.0",
+    "commit-and-tag-version": "^12.7.3",
     "eslint": "^9.13.0",
     "eslint-plugin-react-hooks": "^7.1.1",
     "eslint-plugin-react-refresh": "^0.5.2",
