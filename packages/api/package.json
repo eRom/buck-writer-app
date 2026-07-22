@@ -19,7 +19,7 @@
   "dependencies": {
     "@buck/shared": "workspace:*",
     "@google/genai": "^1.51.0",
-    "@hono/node-server": "^1.13.5",
+    "@hono/node-server": "^2.0.10",
     "@modelcontextprotocol/sdk": "^1.28.0",
     "@supabase/supabase-js": "^2.105.1",
     "better-sqlite3": "^12.9.0",
